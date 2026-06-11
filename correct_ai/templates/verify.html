@@ -1,0 +1,653 @@
+{% extends "layout.html" %}
+
+{% block extra_css %}
+<style>
+    /* Adjust height to fit within layout */
+    .main-container-verify {
+        height: calc(100vh - 80px);
+        /* Adjust based on navbar height */
+        display: flex;
+        flex-direction: column;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .toolbar {
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .content-area {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+    }
+
+    .pdf-panel {
+        flex: 1;
+        border-right: 1px solid #dee2e6;
+    }
+
+    .editor-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        padding: 15px;
+        background-color: #fff;
+    }
+
+    .section-header {
+        font-weight: bold;
+        margin-top: 15px;
+        margin-bottom: 5px;
+        color: #495057;
+    }
+
+    .status-badge {
+        margin-left: 10px;
+    }
+
+    #extraction-editor,
+    #extraction-preview {
+        width: 100%;
+        height: 500px;
+        font-family: monospace;
+        font-size: 0.85rem;
+    }
+
+    #extraction-preview {
+        overflow-y: auto;
+        padding: 10px;
+        border: 1px solid #ced4da;
+        /* Match bootstrap form-control */
+        border-radius: 0.25rem;
+        display: none;
+        /* Hidden by default */
+        background-color: #f8f9fa;
+        /* Slightly different bg */
+        font-family: system-ui, -apple-system, sans-serif;
+        /* Normal font */
+    }
+</style>
+</style>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']]
+        },
+        svg: {
+            fontCache: 'global'
+        }
+    };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-svg.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="main-container-verify">
+    <!-- Toolbar -->
+    <div class="toolbar d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-3">
+            <h5 class="mb-0">Validateur</h5>
+            <select id="copy-select" class="form-select form-select-sm" style="width: 200px;">
+                <option value="">Chargement...</option>
+            </select>
+        </div>
+        <div>
+            <span id="save-status" class="badge bg-secondary status-badge">Prêt</span>
+            <button id="save-btn" class="btn btn-primary btn-sm ms-2">Enregistrer Tout</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content-area">
+        <!-- PDF Viewer -->
+        <div class="pdf-panel">
+            <iframe id="pdf-viewer" src="" width="100%" height="100%" style="border:none;"></iframe>
+        </div>
+
+        <!-- Editors -->
+        <div class="editor-panel">
+
+            <!-- Question Selector Row -->
+            <div class="d-flex align-items-center mb-3 p-2 bg-light border rounded">
+                <button id="prev-question-btn" class="btn btn-outline-secondary btn-sm me-2" title="Question Précédente"
+                    disabled>◀</button>
+                <label for="question-select" class="fw-bold me-2">Question :</label>
+                <select id="question-select" class="form-select form-select-sm flex-grow-1" disabled>
+                    <option value="">Sélectionner une copie d'abord</option>
+                </select>
+                <button id="next-question-btn" class="btn btn-outline-secondary btn-sm ms-2" title="Question Suivante"
+                    disabled>▶</button>
+            </div>
+
+            <!-- Extraction Editor -->
+            <div class="section-header d-flex justify-content-between align-items-center">
+                <span>Extraction OCR (Markdown)</span>
+                <button id="toggle-preview-btn" class="btn btn-sm btn-outline-secondary" title="Voir Aperçu / Editer">
+                    👁️ Aperçu
+                </button>
+            </div>
+            <textarea id="extraction-editor" class="form-control mb-3" spellcheck="false"></textarea>
+            <div id="extraction-preview" class="mb-3"></div>
+
+            <!-- Correction Fields -->
+            <div class="section-header">Correction (Données Structurées)</div>
+            <div class="card bg-light">
+                <div class="card-body">
+                    <form id="correction-form">
+                        <!-- 1. Réponse Étudiant -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Réponse Étudiant (CSV)</label>
+                            <textarea id="field-reponse" class="form-control form-control-sm" rows="2"></textarea>
+                        </div>
+
+                        <!-- 2. Barème / Consignes -->
+                        <div class="mb-3 p-2 bg-white border rounded text-muted">
+                            <strong class="d-block mb-1">Barème / Correction :</strong>
+                            <small id="question-details" style="white-space: pre-wrap;">Consignes...</small>
+                        </div>
+
+                        <!-- 3. Commentaire -->
+                        <div class="mb-3">
+                            <label class="form-label">Commentaire du modèle</label>
+                            <textarea id="field-commentaire" class="form-control form-control-sm" rows="2"></textarea>
+                        </div>
+
+                        <!-- 4. Notation -->
+                        <div class="row mb-2 pt-2 border-top">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Note</label>
+                                <input type="number" step="0.25" id="field-note"
+                                    class="form-control form-control-sm fw-bold">
+                            </div>
+                            <div class="col-md-2 qcm-field">
+                                <label class="form-label">Bonnes</label>
+                                <input type="number" step="0.5" id="field-bonnes" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-2 qcm-field">
+                                <label class="form-label">Mauvaises</label>
+                                <input type="number" step="0.5" id="field-mauvaises"
+                                    class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-3 qcm-field">
+                                <label class="form-label">Rédaction</label>
+                                <input type="number" step="0.5" id="field-redaction"
+                                    class="form-control form-control-sm">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentCopy = null;
+    let currentCorrectionData = []; // Array of objects
+    let currentBareme = []; // Array of objects
+
+    const copySelect = document.getElementById('copy-select');
+    const questionSelect = document.getElementById('question-select');
+    const pdfViewer = document.getElementById('pdf-viewer');
+    const extractionEditor = document.getElementById('extraction-editor');
+    const extractionPreview = document.getElementById('extraction-preview');
+    const togglePreviewBtn = document.getElementById('toggle-preview-btn');
+    let isPreviewMode = false;
+    const saveStatus = document.getElementById('save-status');
+    const saveBtn = document.getElementById('save-btn');
+    const prevQuestionBtn = document.getElementById('prev-question-btn');
+    const nextQuestionBtn = document.getElementById('next-question-btn');
+
+    // Fields
+    const fNote = document.getElementById('field-note');
+    const fBonnes = document.getElementById('field-bonnes');
+    const fMauvaises = document.getElementById('field-mauvaises');
+    const fRedaction = document.getElementById('field-redaction');
+    const fCommentaire = document.getElementById('field-commentaire');
+    const fReponse = document.getElementById('field-reponse');
+    const qDetails = document.getElementById('question-details');
+    const qcmFields = document.querySelectorAll('.qcm-field');
+
+    // Init
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadBareme();
+        await loadCopies();
+
+        copySelect.addEventListener('change', loadCopyData);
+        questionSelect.addEventListener('change', updateFormFromSelection);
+
+        // Listen for form changes to update local state immediately
+        [fNote, fBonnes, fMauvaises, fRedaction, fCommentaire, fReponse].forEach(el => {
+            el.addEventListener('input', updateLocalState);
+        });
+
+        saveBtn.addEventListener('click', saveAll);
+        togglePreviewBtn.addEventListener('click', togglePreview);
+        prevQuestionBtn.addEventListener('click', () => navigateQuestion(-1));
+        nextQuestionBtn.addEventListener('click', () => navigateQuestion(1));
+    });
+
+    function navigateQuestion(delta) {
+        const currentIndex = questionSelect.selectedIndex;
+        const newIndex = currentIndex + delta;
+        if (newIndex >= 0 && newIndex < questionSelect.options.length) {
+            questionSelect.selectedIndex = newIndex;
+            updateFormFromSelection();
+        }
+    }
+
+    function updateNavButtons() {
+        const idx = questionSelect.selectedIndex;
+        const len = questionSelect.options.length;
+        // Disable Prev if at start (index 0 is usually "Select valid copy" but here options are populated dynamically)
+        // Check if we have valid options
+        if (len === 0) {
+            prevQuestionBtn.disabled = true;
+            nextQuestionBtn.disabled = true;
+            return;
+        }
+        prevQuestionBtn.disabled = (idx <= 0);
+        nextQuestionBtn.disabled = (idx >= len - 1);
+    }
+
+    async function loadBareme() {
+        try {
+            const res = await fetch('/api/bareme');
+            currentBareme = await res.json();
+        } catch (e) {
+            console.error("Erreur chargement bareme", e);
+        }
+    }
+
+    async function loadCopies() {
+        const res = await fetch('/api/copies');
+        const copies = await res.json();
+
+        copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
+        copies.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.innerText = c;
+            copySelect.appendChild(opt);
+        });
+    }
+
+    // Global State for Segments (Moved from bottom)
+    let markdownSegments = {};   // Map<QId, Content>
+    let segmentOrder = [];       // Array<QId> to preserve order
+    let markdownPreamble = "";   // Header text before first Q
+
+    // ... existing vars ...
+
+    // Modified loadCopyData
+    async function loadCopyData() {
+        const copyId = copySelect.value;
+        if (!copyId) {
+            currentCopy = null;
+            resetUI();
+            return;
+        }
+        currentCopy = copyId;
+
+        // 1. PDF
+        pdfViewer.src = `/api/pdf/${copyId}`;
+
+        // 2. Extraction (Load full text then parse)
+        const extRes = await fetch(`/api/extraction/${copyId}`);
+        const extData = await extRes.json();
+        fullMarkdownText = extData.content || "";
+        parseMarkdown(fullMarkdownText);
+
+        // 3. Correction
+        const corRes = await fetch(`/api/correction/${copyId}`);
+        currentCorrectionData = await corRes.json();
+
+        // Populate Questions
+        populateQuestionsMap();
+        questionSelect.disabled = false;
+
+        setSaveStatus("Prêt", "secondary");
+    }
+
+    // Logic definitions moved to bottom or consolidated
+
+
+    function resetUI() {
+        pdfViewer.src = "";
+        extractionEditor.value = "";
+        questionSelect.innerHTML = '<option value="">Sélectionner une copie d\'abord</option>';
+        questionSelect.disabled = true;
+        document.getElementById('correction-form').reset();
+    }
+
+    function populateQuestionsMap() {
+        // Merge bareme info with correction data to build the dropdown
+        questionSelect.innerHTML = "";
+
+        // Use bareme as base for structure
+        currentBareme.forEach(bRow => {
+            const qId = bRow['question'];
+            const opt = document.createElement('option');
+            opt.value = qId;
+            // Try to find if it's graded
+            const corrRow = currentCorrectionData.find(r => r.question === qId);
+            const score = corrRow ? corrRow.note : "-";
+            opt.innerText = `${qId} (Note: ${score})`;
+            questionSelect.appendChild(opt);
+        });
+
+        // Select first by default if exists
+        if (currentBareme.length > 0) {
+            questionSelect.value = currentBareme[0].question;
+            updateFormFromSelection();
+        }
+    }
+
+    // updateFormFromSelection replaced below is removed from here
+
+    function updateLocalState() {
+        const qId = questionSelect.value;
+        if (!qId || !currentCorrectionData) return;
+
+        let row = currentCorrectionData.find(r => r.question === qId);
+        if (!row) {
+            console.warn("Row missing for update local state");
+            return;
+        }
+
+        row['note'] = fNote.value;
+        row['commentaires éventuels du correcteur'] = fCommentaire.value;
+        row['réponses étudiant'] = fReponse.value;
+        row['nbre de bonnes réponses si QCM'] = fBonnes.value;
+        row['nbre de mauvaises réponses si QCM'] = fMauvaises.value;
+        row['Rédaction si QCM'] = fRedaction.value;
+
+        setSaveStatus("Modifié (non enregistré)", "warning");
+    }
+
+    // saveAll replaced below
+
+    function setSaveStatus(text, colorClass) {
+        saveStatus.innerText = text;
+        saveStatus.className = `badge bg-${colorClass} status-badge`;
+    }
+
+    // parseMarkdown defined below
+
+    // --- Markdown Parsing Logic (Robust) ---
+    // function normalizeMarkdown(text) {
+    //     // Ensure newlines before Question headers if they are stuck to text
+    //     // Pattern matches "**Q1" or "**Q1." preceded by non-newline char.
+    //     // Captures: $1 (char before), $2 (the header start)
+    //     return text.replace(/([^\n])(\*\*Q\d+(?:\s*(?:bis|ter|quater))?(?:\.|:|\)))/g, '$1\n$2');
+    // }
+
+    /**
+     * Analyse et découpe le texte Markdown complet d'une copie en segments par question.
+     * 
+     * @param {string} text - Le contenu Markdown brut complet de la copie (entrée attendue).
+     * 
+     * Éléments et variables modifiées :
+     * - `markdownSegments` (Global Object) : Remplit cet objet avec { "ID_Question": "Contenu..." }.
+     * - `segmentOrder` (Global Array) : Remplit cette liste avec l'ordre des IDs trouvés ["Q1", "Q2", ...].
+     * - `markdownPreamble` (Global String) : Stocke le texte avant la première question.
+     * 
+     * Résultat attendu :
+     * - Le texte est normalisé (sauts de ligne ajoutés avant les en-têtes mal formés).
+     * - Le texte est découpé par question.
+     * - Les balises de gras non fermées (`**`) sont corrigées automatiquement (ajout de `**` final si impair).
+     */
+    function parseMarkdown(text) {
+        // 1. Normalize
+        //text = normalizeMarkdown(text);
+
+        markdownSegments = {};
+        segmentOrder = [];
+        markdownPreamble = "";
+
+        const lines = text.split('\n');
+
+        let currentQId = null;
+        let currentContentLines = [];
+        let preambleLines = [];
+
+        // Helper to save and fix segments
+        const saveSegment = (qid, linesArr) => {
+            let content = linesArr.join('\n');
+
+            // Fix unbalanced bold: If odd number of '**', append '**'
+            // This fixes cases where the regex might have stolen closing stars or LLM forgot them.
+            // const starCount = (content.match(/\*\*/g) || []).length;
+            // if (starCount % 2 !== 0) {
+            //     content += "**";
+            // }
+
+            markdownSegments[qid] = content;
+            segmentOrder.push(qid);
+        };
+
+        // Regex to identify a Question Header at start of line
+        // Matches "Q0", "Q1.1", "Q_part2.1a", "1.1)", "2.1) " etc. (with or without **)
+        // Optional leading ** and trailing **
+        const headerRegex = /^\**\**((?:Q)?(?:\d+(?:\.(?:\d+|[a-z]+))?|Partie\s+\d+|[a-z]+\d*))\s*[\):\.]?\s*\**\**/;
+
+        for (let line of lines) {
+            const stripped = line.trim();
+            const match = stripped.match(headerRegex);
+
+            if (match) {
+                // Found a new question header
+                if (currentQId) {
+                    saveSegment(currentQId, currentContentLines);
+                } else {
+                    // Save Preamble
+                    markdownPreamble = preambleLines.join('\n');
+                }
+
+                // Normalize ID: clean and convert to match bareme format
+                let qId = match[1].trim();
+                // Remove trailing ) or : or . and whitespace
+                qId = qId.replace(/[\)\.\:]$/g, '').trim();
+                // Skip "Partie X" entries - they are section headers, not questions
+                if (qId.startsWith('Partie')) {
+                    // Still save as preamble or skip
+                    preambleLines.push(line);
+                    continue;
+                }
+                // Add Q prefix if it's a bare number without Q
+                if (!qId.startsWith('Q')) {
+                    qId = 'Q' + qId;
+                }
+                // Start new segment
+                currentQId = qId;
+                currentContentLines = [line];
+            } else {
+                // Continuation of current question
+                if (currentQId) {
+                    currentContentLines.push(line);
+                } else {
+                    preambleLines.push(line);
+                }
+            }
+        }
+
+        // Save the last segment
+        if (currentQId) {
+            saveSegment(currentQId, currentContentLines);
+        } else {
+            // No questions found, everything is preamble
+            if (preambleLines.length > 0) markdownPreamble = preambleLines.join('\n');
+        }
+
+        console.log("Parsed Segments:", segmentOrder);
+    }
+
+    function getReconstructedMarkdown() {
+        let full = markdownPreamble;
+        segmentOrder.forEach(qId => {
+            full += markdownSegments[qId];
+        });
+        return full;
+    }
+
+    function updateFormFromSelection() {
+        const qId = questionSelect.value;
+        updateNavButtons(); // Update buttons state
+        if (!qId) return;
+
+        // --- Correction Data ---
+        let row = currentCorrectionData.find(r => r.question === qId);
+        const meta = currentBareme.find(r => r.question === qId);
+        if (!row) row = {};
+
+        const isQCM = meta ? (meta['qcm (oui/non)'] === 'oui') : false;
+        qcmFields.forEach(el => el.style.display = isQCM ? 'block' : 'none');
+
+        fNote.value = row['note'] || "";
+        fCommentaire.value = row['commentaires éventuels du correcteur'] || "";
+        fReponse.value = row['réponses étudiant'] || "";
+
+        if (isQCM) {
+            fBonnes.value = row['nbre de bonnes réponses si QCM'] || "";
+            fMauvaises.value = row['nbre de mauvaises réponses si QCM'] || "";
+            fRedaction.value = row['Rédaction si QCM'] || "";
+        }
+
+        if (meta) {
+            if (isQCM) {
+                const correct = meta['réponse attendue'] || '';
+                qDetails.innerText = `Correctes: ${correct} | Barème QCM (+1/-0.5/+1)`;
+            } else {
+                const answer = meta['réponse attendue'] || '';
+                const pts = meta['points'] || '';
+                qDetails.innerText = `Réponse attendue: ${answer} (${pts} pts)`;
+            }
+        } else {
+            qDetails.innerText = "";
+        }
+
+        // --- Extraction Segment Display ---
+        // NEW: Display student answer from CSV instead of parsing markdown
+        // This is more reliable as it comes from the LLM correction
+        const corrRow = currentCorrectionData.find(r => r.question === qId);
+        if (corrRow && corrRow['réponses étudiant']) {
+            extractionEditor.value = corrRow['réponses étudiant'];
+            extractionEditor.dataset.activeKey = qId;
+        } else {
+            // Fallback: try to parse markdown if CSV doesn't have student answer
+            let segmentKey = qId;
+            if (!markdownSegments[segmentKey]) {
+                const qIdClean = qId.replace(/\s+/g, '');
+                let foundKey = segmentOrder.find(k => k.replace(/\s+/g, '') === qIdClean);
+                if (!foundKey) {
+                    const baseMatch = qId.match(/^(Q\d+(?:\s*(?:bis|ter|quater))?)/i);
+                    if (baseMatch) {
+                        const baseId = baseMatch[1];
+                        if (markdownSegments[baseId]) {
+                            foundKey = baseId;
+                        } else {
+                            foundKey = segmentOrder.find(k => k.startsWith(baseId));
+                        }
+                    }
+                }
+                if (foundKey) segmentKey = foundKey;
+            }
+            if (segmentKey && markdownSegments[segmentKey]) {
+                extractionEditor.value = markdownSegments[segmentKey];
+                extractionEditor.dataset.activeKey = segmentKey;
+            } else {
+                extractionEditor.value = "(Section introuvable dans le markdown)";
+                extractionEditor.dataset.activeKey = "";
+            }
+        }
+
+        // Refresh Preview if active
+        if (isPreviewMode) {
+            const markdownText = extractionEditor.value;
+            extractionPreview.innerHTML = marked.parse(markdownText);
+            if (window.MathJax) {
+                MathJax.typesetPromise([extractionPreview]).catch((err) => console.log(err));
+            }
+        }
+    }
+
+    // Hook for updating segments on input
+    extractionEditor.addEventListener('input', () => {
+        const key = extractionEditor.dataset.activeKey;
+        if (key) {
+            markdownSegments[key] = extractionEditor.value;
+            setSaveStatus("Modifié (non enregistré)", "warning");
+        }
+    });
+
+    // Toggle Preview Logic
+    function togglePreview() {
+        isPreviewMode = !isPreviewMode;
+        if (isPreviewMode) {
+            // Switch to Preview
+            const markdownText = extractionEditor.value;
+            // Use marked to parse
+            extractionPreview.innerHTML = marked.parse(markdownText);
+
+            // Trigger MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([extractionPreview]).catch((err) => console.log(err));
+            }
+
+            extractionEditor.style.display = 'none';
+            extractionPreview.style.display = 'block';
+            togglePreviewBtn.innerHTML = "📝 Editer";
+            togglePreviewBtn.classList.replace('btn-outline-secondary', 'btn-secondary');
+        } else {
+            // Switch to Edit
+            extractionEditor.style.display = 'block';
+            extractionPreview.style.display = 'none';
+            togglePreviewBtn.innerHTML = "👁️ Aperçu";
+            togglePreviewBtn.classList.replace('btn-secondary', 'btn-outline-secondary');
+        }
+    }
+
+    // Update saveAll to use reconstruction
+    async function saveAll() {
+        if (!currentCopy) return;
+        setSaveStatus("Enregistrement...", "info");
+
+        try {
+            // 1. Save Extraction (Reconstructed)
+            const fullText = getReconstructedMarkdown();
+            await fetch(`/api/extraction/${currentCopy}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: fullText })
+            });
+
+            // 2. Save Correction
+            await fetch(`/api/correction/${currentCopy}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentCorrectionData)
+            });
+
+            setSaveStatus("Enregistré !", "success");
+            setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
+        } catch (e) {
+            console.error(e);
+            setSaveStatus("Erreur Sauvegarde", "danger");
+        }
+    }
+
+    // Cleanup old scrollToQuestion
+    function scrollToQuestion(specificQId) { }
+
+</script>
+{% endblock %}

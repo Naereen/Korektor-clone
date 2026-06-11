@@ -1,0 +1,219 @@
+{% extends "layout.html" %}
+
+{% block extra_css %}
+<style>
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+
+    .card {
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+        border: 2px solid transparent;
+    }
+
+    .card.continuation {
+        border-color: #3b82f6;
+        background-color: #eff6ff;
+    }
+
+    .card.new-copy {
+        border-color: #10b981;
+    }
+
+    .card-img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-bottom: 1px solid #eee;
+        min-height: 100px;
+        background: #eee;
+    }
+
+    .card-body {
+        padding: 15px;
+    }
+
+    .card-title {
+        font-weight: bold;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .status-text {
+        font-weight: bold;
+        color: #10b981;
+    }
+
+    .student-select-container {
+        margin-top: 10px;
+    }
+
+    .student-select {
+        width: 100%;
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+
+    .header-ctrl {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="header-ctrl">
+    <div>
+        <h3>Découpage & Désanonymisation</h3>
+        <p class="mb-0 text-muted">Par défaut, les pages sont des "Suites". Sélectionnez un étudiant pour créer une
+            <b>Nouvelle Copie</b> (Verte).</p>
+    </div>
+    <button id="submitBtn" class="btn btn-success fw-bold" onclick="submitData()">Valider et Traiter</button>
+</div>
+
+<div id="grid" class="grid"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const totalItems = {{ total_items }};
+    const students = {{ students | tojson }};
+    const cardsData = [];
+
+    function refreshStudentOptions() {
+        const selectedIds = new Set();
+        cardsData.forEach(c => {
+            if (c.student_id && c.student_id !== "__UNKNOWN__") {
+                selectedIds.add(c.student_id);
+            }
+        });
+
+        const selects = document.querySelectorAll('.student-select');
+        selects.forEach((select, cardIndex) => {
+            const currentVal = cardsData[cardIndex].student_id;
+            for (let i = 0; i < select.options.length; i++) {
+                const opt = select.options[i];
+                const val = opt.value;
+                if (!val || val === "__UNKNOWN__") continue;
+
+                if (selectedIds.has(val) && val !== currentVal) {
+                    opt.disabled = true;
+                    if (!opt.text.includes(" (Déjà assigné)")) {
+                        opt.text += " (Déjà assigné)";
+                    }
+                } else {
+                    opt.disabled = false;
+                    opt.text = opt.text.replace(" (Déjà assigné)", "");
+                }
+            }
+        });
+    }
+
+    function init() {
+        const grid = document.getElementById('grid');
+        let html = '';
+
+        let studentOptions = '<option value="">-- Suite (ou choisir étudiant) --</option>';
+        studentOptions += '<option value="__UNKNOWN__">⚠️ Étudiant Inconnu (Nouvelle Copie)</option>';
+        students.forEach(s => {
+            studentOptions += `<option value="${s.id}">${s.label}</option>`;
+        });
+
+        for (let i = 0; i < totalItems; i++) {
+            const pageNum = i * 4 + 1;
+            cardsData.push({
+                page_num: pageNum,
+                is_continuation: true,
+                student_id: null
+            });
+
+            html += `
+                <div class="card continuation" id="card-${i}">
+                    <img src="/api/split/thumbnail/${pageNum}" class="card-img" alt="Page ${pageNum}" loading="lazy">
+                    <div class="card-body">
+                        <div class="card-title">
+                            <span>Page ${pageNum}</span>
+                            <span class="status-text" id="status-${i}" style="color: #3b82f6;">SUITE</span>
+                        </div>
+                        <div class="student-select-container">
+                            <select class="student-select" onchange="updateStudent(${i}, this.value)">
+                                ${studentOptions}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        grid.innerHTML = html;
+        refreshStudentOptions();
+    }
+
+    function updateStudent(index, val) {
+        cardsData[index].student_id = (val === "" || val === "__UNKNOWN__") ? null : val;
+
+        const cardEl = document.getElementById(`card-${index}`);
+        const statusEl = document.getElementById(`status-${index}`);
+
+        if (val === "") {
+            cardsData[index].is_continuation = true;
+            cardsData[index].student_id = null;
+            cardEl.className = "card continuation";
+            statusEl.innerText = "SUITE";
+            statusEl.style.color = "#3b82f6";
+        } else {
+            cardsData[index].is_continuation = false;
+            cardEl.className = "card new-copy";
+            statusEl.innerText = val === "__UNKNOWN__" ? "NOUVELLE COPIE (Inconnu)" : "NOUVELLE COPIE";
+            statusEl.style.color = "#10b981";
+        }
+        refreshStudentOptions();
+    }
+
+    async function submitData() {
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = "Traitement en cours...";
+        showLoading();
+
+        try {
+            const response = await fetch('/api/split/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cardsData)
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert("Traitement terminé ! " + result.message);
+                btn.innerText = "Terminé";
+                // Redirect or update UI?
+            } else {
+                alert("Erreur: " + result.error);
+                btn.disabled = false;
+                btn.innerText = "Valider et Traiter";
+            }
+        } catch (e) {
+            alert("Erreur réseau: " + e);
+            btn.disabled = false;
+            btn.innerText = "Valider et Traiter";
+        } finally {
+            hideLoading();
+        }
+    }
+
+    init();
+</script>
+{% endblock %}

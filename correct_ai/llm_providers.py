@@ -1,0 +1,279 @@
+"""Configuration des différents providers LLM compatibles OpenAI.
+
+Chaque provider est défini par :
+- url : endpoint /v1/chat/completions compatible OpenAI
+- model : nom du modèle à utiliser
+- api_key_env : nom de la variable d'environnement contenant la clé (None si pas nécessaire)
+"""
+
+import os
+import base64
+import io
+import fitz  # PyMuPDF
+import requests
+from dataclasses import dataclass
+from typing import Dict, Optional, List
+
+
+@dataclass
+class ProviderConfig:
+    name: str
+    url: str
+    model: str
+    api_key_env: Optional[str] = None
+    verify_ssl: bool = True
+
+    def api_key(self) -> str:
+        if not self.api_key_env:
+            return "sk-dummy" # Some providers require a non-empty string even if not checked
+        return os.getenv(self.api_key_env, "sk-dummy")
+
+
+# Registre des providers connus
+PROVIDERS: Dict[str, ProviderConfig] = {
+    "MISTRAL_LARGE": ProviderConfig(
+        name="MISTRAL_LARGE",
+        url="https://api.mistral.ai/v1/chat/completions",
+        model="mistral-large-latest",
+        #model="pixtral-12b-2409", # Using Pixtral for Vision capabilities
+        api_key_env="MISTRAL_API_KEY",
+    ),
+    "MISTRAL_NEMO": ProviderConfig(
+        name="MISTRAL_NEMO",
+        url="https://api.mistral.ai/v1/chat/completions",
+        model="open-mistral-nemo",
+        api_key_env="MISTRAL_API_KEY",
+    ),
+    "MISTRAL_CODESTRAL": ProviderConfig(
+        name="MISTRAL_CODESTRAL",
+        url="https://codestral.mistral.ai/v1/chat/completions",
+        model="codestral-latest",
+        api_key_env="CODESTRAL_API_KEY",
+    ),
+    "LOCAL_QWEN_CODER": ProviderConfig(
+        name="LOCAL_QWEN_CODER",
+        url="http://127.0.0.1:8080/v1/chat/completions",
+        model="qwen3-32b-instruct",
+        api_key_env=None,
+    ),
+    "IRMA_LLMCODE": ProviderConfig(
+        name="IRMA_LLMCODE",
+        url="http://llmcode.math.unistra.fr:8090/v1/chat/completions",
+        model="qwen2.5-coder-instruct",
+        api_key_env=None,
+    ),
+    "PALGANIA_QWEN3": ProviderConfig(
+        name="PALGANIA_QWEN3",
+        url="https://palgania.ovh:8106/v1/chat/completions",
+        model="Qwen3-30B",
+        api_key_env="TEXTSYNTH_API_KEY",
+        verify_ssl=False,
+    ),
+    "ILAAS_OSS": ProviderConfig(
+        name="ILASS_OSS",
+        url="https://llm.ilaas.fr/v1/chat/completions",
+        model="gpt-oss-120b",
+        # model="qwen-3-30b",
+        # model="mistral-small-3.2-24b",
+        api_key_env="ILAAS_API_KEY",
+    ),
+    "OPENAI_MODEL": ProviderConfig(
+        name="OPENAI_MODEL",
+        url="https://api.openai.com/v1/chat/completions",
+        model="gpt-4.1",
+        api_key_env="OPENAI_API_KEY",
+    ),
+    "NVIDIA_MODEL": ProviderConfig(
+        name="NVIDIA_MODEL",
+        url="https://integrate.api.nvidia.com/v1/chat/completions",
+        model="nvidia/nemotron-3-nano-30b-a3b",
+        api_key_env="NVIDIA_API_KEY",
+    ),
+    "UNISTRA_QWEN": ProviderConfig(
+        name="UNISTRA_QWEN",
+        url="https://conversation-test.ia.unistra.fr/api/v1/chat/completions",
+        model="chat-qwen",
+        api_key_env="UNISTRA_API_KEY",
+    ),
+    "GB10B_QWEN36": ProviderConfig(
+        name="GB10B_QWEN36",
+        url="http://127.0.0.1:6806/v1/chat/completions",
+        model="qwen36",
+        api_key_env=None,
+    ),
+    "GB10B_QWEN": ProviderConfig(
+        name="GB10B_QWEN",
+        url="http://localhost:6806/v1/chat/completions",
+        model="qwen36",
+        api_key_env=None,
+    ),
+}
+
+# DEFAULT_PROVIDER = "MISTRAL_CODESTRAL"
+# DEFAULT_PROVIDER = "IRMA_LLMCODE"
+DEFAULT_PROVIDER = "UNISTRA_QWEN"
+# DEFAULT_PROVIDER = "GB10B_QWEN"
+# DEFAULT_PROVIDER = "MISTRAL_NEMO"
+# DEFAULT_PROVIDER = "LOCAL_QWEN_CODER"
+# DEFAULT_PROVIDER = "MISTRAL_LARGE"
+# DEFAULT_PROVIDER = "PALGANIA_QWEN3"
+
+
+def get_provider(
+    name: Optional[str] = None,
+    override_model: Optional[str] = None,
+    override_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> ProviderConfig:
+    """Retourne la configuration d'un provider.
+    
+    Args:
+        name: Nom du provider dans PROVIDERS (None => DEFAULT_PROVIDER)
+        override_model: Remplace le nom de modèle si fourni
+        override_url: Remplace l'URL si fourni
+        api_key: Forcer une clé spécifique (sinon variable d'env)
+    """
+    if name is None:
+        name = DEFAULT_PROVIDER
+    if name not in PROVIDERS:
+        raise ValueError(
+            f"Provider inconnu: {name}. Providers disponibles: {list(PROVIDERS.keys())}"
+        )
+
+    base = PROVIDERS[name]
+    model = override_model or base.model
+    url = override_url or base.url
+    
+    # Create a new instance, but we can't just pass api_key to __init__ because it's not a field
+    # We'll rely on the property or the user manual check.
+    # To support overrides, we might return a customized object or just use the base.
+    # For now, we return base modified.
+    
+    return ProviderConfig(name=name, url=url, model=model, api_key_env=base.api_key_env, verify_ssl=base.verify_ssl)
+
+
+def pdf_to_base64_images(pdf_path: str) -> List[str]:
+    """Convertit toutes les pages d'un PDF en images base64 (JPEG)."""
+    doc = fitz.open(pdf_path)
+    images_b64 = []
+    
+    for page in doc:
+        # Render page to pixmap (image)
+        # dpi=150 is usually a good balance for LLM vision
+        pix = page.get_pixmap(dpi=150)
+        img_data = pix.tobytes("jpeg")
+        base64_str = base64.b64encode(img_data).decode("utf-8")
+        images_b64.append(base64_str)
+        
+    return images_b64
+
+
+def ask_llm_with_pdf(
+    provider: ProviderConfig,
+    pdf_path: str,
+    prompt_text: str,
+    system_prompt: str = "Tu es une IA expert en OCR et transcription manuscrite. Tu dois transcrire fidèlement le texte. Pas de bavardage."
+) -> str:
+    """Envoie un PDF (converti en images) à l'API LLM Vision."""
+    
+    # 1. Convertir le PDF en images
+    print(f"Conversion du PDF {pdf_path} en images...")
+    images_b64 = pdf_to_base64_images(pdf_path)
+    
+    # 2. Construire le contenu message utilisateur
+    # Format standard OpenAI Vision: [{"type": "text", ...}, {"type": "image_url", ...}]
+    user_content = [{"type": "text", "text": prompt_text}]
+    
+    for b64_img in images_b64:
+        user_content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{b64_img}"
+            }
+        })
+
+    payload = {
+        "model": provider.model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {provider.api_key()}"
+    }
+
+    print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
+    
+    try:
+        response = requests.post(provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl)
+        response.raise_for_status()
+        
+        result_json = response.json()
+        content = result_json["choices"][0]["message"]["content"]
+        return content
+        
+    except Exception as e:
+        print(f"Erreur lors de l'appel LLM: {e}")
+        if 'response' in locals():
+            print(f"Response (si dispo): {response.text}")
+        raise
+
+
+def ask_llm(
+    provider: ProviderConfig,
+    prompt_text: str,
+    system_prompt: str = "Tu es une IA utile.",
+    thinking: bool = True
+) -> str:
+    """Envoie une requête texte simple à l'API LLM."""
+    
+    payload = {
+        "model": provider.model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt_text}
+        ]
+    }
+    
+    # Disable thinking mode for Qwen models (works with chat_template_kwargs)
+    if not thinking and "QWEN" in provider.model.upper():
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {provider.api_key()}"
+    }
+
+    print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
+    
+    try:
+        response = requests.post(provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl)
+        response.raise_for_status()
+        
+        result_json = response.json()
+        
+        # Check if 'choices' exists
+        if "choices" not in result_json:
+             print(f"Unexpected API response format: {result_json}")
+             raise ValueError(f"API returned unexpected format: {result_json}")
+
+        # Extract content
+        content = result_json["choices"][0]["message"]["content"]
+        
+        if content is None or content == "":
+             print(f"Warning: API returned None/Empty content. Full response: {result_json}")
+             return ""
+
+        print(f"DEBUG: Content received length: {len(content)}")
+        return content
+        
+    except Exception as e:
+        print(f"Erreur lors de l'appel LLM: {e}")
+        if 'response' in locals():
+             print(f"Response (si dispo): {response.text}")
+        raise
+
+__all__ = ["ProviderConfig", "PROVIDERS", "get_provider", "DEFAULT_PROVIDER", "ask_llm_with_pdf", "ask_llm"]

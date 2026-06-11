@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-gear-fill me-2"></i>Configuration du Projet</h5>
+                </div>
+                <div class="card-body">
+                    {% if error %}
+                    <div class="alert alert-danger" role="alert">
+                        {{ error }}
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="/settings">
+                        <div class="mb-4">
+                            <label for="project_dir" class="form-label fw-bold">Dossier du Projet (Session
+                                d'Examen)</label>
+                            <input type="text" class="form-control font-monospace" id="project_dir" name="project_dir"
+                                value="{{ current_dir }}" required>
+                            <div class="form-text">
+                                Chemin absolu vers le dossier contenant les fichiers :
+                                <code>sujet.md</code>, <code>corrige.md</code>, <code>liste-etudiants.csv</code>, etc.
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <h6>Structure attendue :</h6>
+                            <ul class="mb-0 small">
+                                <li><code>sujet.md</code> : Le sujet de l'examen</li>
+                                <li><code>corrige.md</code> : Le corrigé type</li>
+                                <li><code>bareme.csv</code> : Le barème de notation</li>
+                                <li><code>liste-etudiants.csv</code> : La liste des étudiants</li>
+                                <li><code>copiesA4_sorted.pdf</code> : (Généré) Le PDF splitté</li>
+                                <li><code>copies_anonymes_validees/</code> : (Généré) Dossier des corrections</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="/" class="btn btn-outline-secondary me-2">Annuler</a>
+                            <button type="submit" class="btn btn-primary">Enregistrer</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

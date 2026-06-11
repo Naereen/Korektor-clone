@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Project specific
+.correctai_config.json
+temp_import.pdf
+
+# Example data (maybe keep example but ignore generated output inside it?)
+# For now, let's keep 'exemple/' in git as it seems like a template reference, 
+# but ignore potentially large generated PDF there if any.
+exemple/*.pdf
+!exemple/copiesA3.pdf
+!exemple/copiesA4_sorted.pdf
+
+# Artifacts
+.gemini/

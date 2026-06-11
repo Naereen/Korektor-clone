@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">1. Importation & Scan</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead">Importez votre fichier PDF scanné (format A3 ou A4).</p>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Si vous avez scanné en A3 (2 pages par feuille), l'outil va automatiquement les découper en pages A4
+                    individuelles.
+                </div>
+
+                <div class="card bg-light mb-4">
+                    <div class="card-body">
+                        <h6 class="card-title fw-bold"><i class="bi bi-folder2-open me-2"></i>Fichiers requis dans le
+                            dossier du projet :</h6>
+                        <ul class="list-unstyled mb-0 small">
+                            <li><i class="bi bi-file-earmark-markdown-fill text-primary"></i> <code>sujet.md</code> : Le
+                                sujet de l'examen.</li>
+                            <li><i class="bi bi-file-earmark-markdown-fill text-success"></i> <code>corrige.md</code> :
+                                Le corrigé type (contexte pour l'IA).</li>
+                            <li><i class="bi bi-table text-warning"></i> <code>bareme.csv</code> : Le barème de notation
+                                précis.</li>
+                            <li><i class="bi bi-people-fill text-info"></i> <code>liste-etudiants.csv</code> : Liste
+                                pour identification (Num, Nom, Prénom).</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <form id="uploadForm" class="mt-4">
+                    <div class="mb-3">
+                        <label for="pdfFile" class="form-label fw-bold">Fichier PDF (A3 Paysage)</label>
+                        <input class="form-control form-control-lg" type="file" id="pdfFile" accept=".pdf" required>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="sortBooklet" checked>
+                        <label class="form-check-label" for="sortBooklet">
+                            Réorganiser les pages (Mode Livret: 4,1,2,3 → 1,2,3,4)
+                        </label>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg" id="btnUpload">
+                            Lancer le Traitement
+                        </button>
+                    </div>
+                </form>
+
+                <div id="progressArea" class="mt-4" style="display:none;">
+                    <h5>Traitement en cours...</h5>
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                            style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const fileInput = document.getElementById('pdfFile');
+        const sortBooklet = document.getElementById('sortBooklet').checked;
+
+        if (!fileInput.files[0]) {
+            alert("Veuillez sélectionner un fichier.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('sort_booklet', sortBooklet);
+
+        document.getElementById('btnUpload').disabled = true;
+        document.getElementById('progressArea').style.display = 'block';
+
+        try {
+            const response = await fetch('/api/import', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert("Traitement réussi ! Redirection vers le découpage...");
+                window.location.href = "/split";
+            } else {
+                alert("Erreur: " + result.error);
+                document.getElementById('btnUpload').disabled = false;
+                document.getElementById('progressArea').style.display = 'none';
+            }
+        } catch (error) {
+            alert("Erreur réseau: " + error);
+            document.getElementById('btnUpload').disabled = false;
+            document.getElementById('progressArea').style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}
