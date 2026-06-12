@@ -594,8 +594,10 @@ def list_copies():
         # Or put the PDF INSIDE the folder?
         # Let's check batch scripts later. For now, let's list PDF files based on naming convention.
         
-        # Quick fix: scan for Copy_*.pdf
-        return jsonify([f.replace(".pdf", "") for f in files if f.startswith("Copie_") and f.endswith(".pdf")])
+        # Quick fix: scan for Copy_*.pdf and sort numerically
+        pdf_files = [f for f in files if f.startswith("Copie_") and f.endswith(".pdf")]
+        pdf_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
+        return jsonify([f.replace(".pdf", "") for f in pdf_files])
         
     return jsonify(copies)
 
