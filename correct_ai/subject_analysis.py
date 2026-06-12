@@ -163,9 +163,9 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
         
         response = ask_llm(provider, prompt, system_prompt="Tu es un expert en évaluation.", thinking=False)
         
-        cleaned = re.sub(r'^```json\s*', '', response.strip())
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-        enrichment = json.loads(cleaned)
+        # Use json_repair to parse JSON (handles markdown blocks, LaTeX, etc.)
+        import json_repair
+        enrichment = json_repair.loads(response)
         
         # Convert to Dict for easy lookup
         enrich_map = {item['numero']: item for item in enrichment}
