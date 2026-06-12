@@ -3,7 +3,6 @@ import os
 import argparse
 import csv
 import json
-import re
 from llm_providers import get_provider, ask_llm
 
 BASE_DIR = "copies_anonymes_validees"
@@ -126,43 +125,18 @@ def correct_copy(copy_number, provider_name="UNISTRA_QWEN", bareme_data=None, fo
             f.write(response)
         print(f"DEBUG: Raw response saved to /tmp/llm_raw_response_copie02.txt")
 
-        # POST-PROCESSING: Double-escape ALL backslashes for LaTeX in JSON
-        # This ensures \frac becomes \\frac in JSON, which parses to \frac
-        response = response.replace('\\', '\\\\')
-
         if stop_callback and stop_callback():
              print("Opération annulée (Post-LLM - Sauvegarde ignorée).")
              return False
 
-        # Extract JSON from response (handle potential markdown blocks)
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0)
-            # Cleanup common JSON errors from LLMs
-            json_str = json_str.replace(r'\_', '_') # erroneous escape of underscore
-            # Attempt to fix invalid backslashes (single \ that should be \\)
-            # This is tricky without breaking valid escapes like \n or \". 
-            # A tailored approach: replace \ that is NOT followed by " or \ or / or b or f or n or r or t or u
-            # But simplistic approach is often sufficient or we trust json.loads specific error handling.
-             
-            try:
-                correction_data = json.loads(json_str)
-            except json.JSONDecodeError as e:
-                # Try json_repair for resilient parsing
-                print(f"JSON Decode Error: {e}. Attempting repair with json_repair...")
-                try:
-                    import json_repair
-                    correction_data = json_repair.loads(json_str)
-                except Exception as e2:
-                    print(f"json_repair failed: {e2}. Attempting manual cleanup...")
-                    # Remove Markdown code block markers
-                    json_str = json_str.replace("```json", "").replace("```", "")
-                    # Double-escape all backslashes for LaTeX
-                    json_str = json_str.replace('\\', '\\\\')
-                    correction_data = json.loads(json_str)
-        else:
-             # Fallback if no json block found but maybe raw json
-             correction_data = json.loads(response)
+        # Use json_repair to extract and parse JSON from response (handles markdown blocks, LaTeX, etc.)
+        try:
+            import json_repair
+            correction_data = json_repair.loads(response)
+        except Exception as e:
+            print(f"Erreur lors du parsing JSON (même avec json_repair): {e}")
+            print(f"Réponse brute : {response[:500]}...")
+            return False
 
         # Merge with bareme data and write to CSV
         fieldnames = list(bareme_data[0].keys()) # Start with bareme columns
