@@ -48,18 +48,35 @@
 
 3.  **Workflow** :
     *   **Découpage** : Importez vos PDF (A3 ou A4) et validez le découpage et l'identification des étudiants.
-    *   **Traitement** (Batch) : Lancez l'extraction (OCR) puis la correction pour tout ou partie des copies.
-    *   **Vérification** : Passez en revue chaque copie. L'interface affiche le PDF à gauche et le formulaire de notation à droite.
+    *   **Extraction OCR** : Transcrivez le contenu manuscrit en Markdown via l'onglet "Vérification OCR".
+    *   **Traitement** (Batch) : Lancez la correction IA pour tout ou partie des copies.
+    *   **Vérification** : Passez en revue chaque copie via l'onglet "Vérification". L'interface affiche :
+        *   Le PDF à gauche
+        *   **5 champs clairs** à droite :
+            - Réponse Étudiant (les réponses transcrites)
+            - Barème / Réponse Attendue (le corrigé)
+            - Commentaire (retour du LLM)
+            - **Raisonnement LLM** (explication détaillée du processus de correction)
+            - Note + champs QCM (si applicable)
         *   Modifiez les notes ou commentaires si nécessaire.
-        *   Cliquez sur "Enregistrer Tout". Vos modifications sont sauvées dans `correction_prof.csv`.
+        *   Cliquez sur "Enregistrer Tout". Vos modifications sont sauvées dans la **base SQLite** (`korektor.db`).
 
-## Structure des Fichiers de Données
+## Structure des Données
 
-Pour chaque copie (ex: `Copie_01`), le système génère :
+### Base de Données SQLite (`korektor.db`)
+Le système utilise désormais une base SQLite pour stocker toutes les corrections avec :
+*   Table `sujet` : Contenu du sujet
+*   Table `corrige` : Corrigé officiel
+*   Table `bareme` : Barème avec questions, réponses attendues, points
+*   Table `copies` : Métadonnées des copies
+*   Table `corrections` : **Toutes les corrections avec `raisonnement_llm`** (note, commentaire, raisonnement détaillé, champs QCM)
+
+### Fichiers par copie (ex: `Copie_01`)
+Pour compatibilité, le système conserve aussi :
 *   `Copie_01.pdf` : Le scan individuel.
-*   `extraction.md` : Le contenu transcrit.
-*   `correction.csv` : La correction proposée par l'IA.
-*   `correction_prof.csv` : La correction validée/modifiée par l'enseignant (prioritaire).
+*   `extraction.md` : Le contenu transcrit (vérifiable via l'onglet "Vérification OCR").
+*   `correction.csv` : Ancienne correction IA (compatibilité).
+*   `correction_prof.csv` : Ancienne correction validée (compatibilité).
 
 ## Configuration API
 
@@ -88,6 +105,25 @@ export MISTRAL_API_KEY="votre_cle_ici"
 
 ---
 
+## API REST
+
+### Endpoints de Base de Données (SQLite)
+Des nouvelles routes permettent d'accéder directement aux données depuis la base :
+
+```bash
+# Récupérer le barème depuis la DB
+GET /api/db/bareme
+
+# Lister toutes les copies depuis la DB  
+GET /api/db/copies
+
+# Récupérer toutes les corrections d'une copie (avec raisonnement_llm)
+GET /api/db/corrections/<copie_id>
+
+# Statistiques de correction
+GET /api/db/stats
+```
+
 ## Commandes CLI
 
 ### Générer le barème
@@ -113,7 +149,37 @@ python correct_ai/batch_correction.py --project-dir mon_projet --provider UNISTR
 - `--no-thinking` : Désactive le mode reasoning (pour les modèles Qwen)
 - `--force` : Réécrase les corrections existantes
 
+### Correction Incrémentale (v2)
+Le module `batch_correction_v2.py` implémente une approche avancée :
+
+```bash
+# Correction incrémentale avec raisonnement détaillé
+python correct_ai/batch_correction_v2.py --project-dir exemple2 --start 1 --end 20
+
+# Avec sélection aléatoire de copies précédentes pour contexte
+python correct_ai/batch_correction_v2.py --random-context 10
+```
+
+**Fonctionnalités** :
+- **Raisonnement détaillé** : Chaque correction inclut un champ `raisonnement_llm` expliquant le processus
+- **Contexte historique** : Le LLM utilise les corrections des copies précédentes pour uniformiser les notes
+- **Sélection aléatoire** : Jusqu'à 10 copies déjà corrigées sont sélectionnées aléatoirement pour le contexte
+- **Retry automatique** : En cas d'échec API, retry 2 fois avant de passer à la copie suivante
+- **Logging** : Progress logging avec timestamps toutes les 30 secondes
+
 ---
+
+## Nouvelle Interface : Vérification OCR
+
+Un nouvel onglet dédié permet de vérifier et corriger manuellement l'extraction OCR :
+
+**Fonctionnalités** :
+- Visualisation page par page des PDF
+- Édition du contenu Markdown extrait
+- Prévisualisation en temps réel
+- Aperçu LaTeX via MathJax
+
+**Accès** : `http://127.0.0.1:5000/verify_ocr`
 
 ## Dépannage
 
