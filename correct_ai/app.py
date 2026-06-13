@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_providers import get_provider
 import batch_extraction 
 import batch_correction
+from database import get_db, get_bareme as db_get_bareme, get_all_extractions
 
 # --- Configuration & Path Management ---
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -316,7 +317,7 @@ class BatchJob:
                                  print(f"Correcting Copy {i}/{end}...")
                                  self.current_action = f"Correction Copie {i}"
                                  
-                                 batch_correction.correct_copy(i, bareme_data=bareme, force=force, project_dir=project_dir, stop_callback=check_stop)
+                                 batch_correction.correct_copy(i, bareme_data=bareme, force=force, project_dir=project_dir, stop_callback=check_stop, thinking=False)
                                  
                                  count += 1
                                  self.progress = int((count / total) * 100)
@@ -692,6 +693,253 @@ def handle_correction(copie_id):
                 reader = csv.DictReader(f)
                 rows = list(reader)
         return jsonify(rows)
+
+
+# --- ROUTES: DB Verification (SQLite) ---
+
+@app.route('/api/db/bareme')
+def get_db_bareme():
+    """Recupere le bareme depuis la base de donnees SQLite"""
+    try:
+        db = get_db(config.project_dir)
+        bareme = db_get_bareme(db)
+        return jsonify([dict(row) for row in bareme])
+    except Exception as e:
+        print(f"Error reading bareme from DB: {e}")
+        return get_bareme()
+
+
+@app.route('/api/db/copies')
+def list_db_copies():
+    """Liste toutes les copies depuis la base de donnees SQLite"""
+    try:
+        db = get_db(config.project_dir)
+        copies = db.execute("SELECT id FROM copies ORDER BY id").fetchall()
+        return jsonify([row['id'] for row in copies])
+    except Exception as e:
+        print(f"Error listing copies from DB: {e}")
+        return jsonify([])
+
+
+@app.route('/api/db/corrections/<int:copie_id>')
+def get_db_corrections(copie_id):
+    """Recupere toutes les corrections d'une copie depuis la base de donnees SQLite"""
+    try:
+        db = get_db(config.project_dir)
+        corrections = db.execute("""
+            SELECT 
+                c.bareme_id,
+                b.question,
+                b.texte_question,
+                b.type_qcm,
+                b.reponse_attendue,
+                b.points,
+                c.reponse_etudiant,
+                CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END as note,
+                CASE WHEN c.validee_par_prof THEN c.commentaire_prof ELSE c.commentaire_llm END as commentaire,
+                c.raisonnement_llm as raisonnement,
+                c.nb_bonnes_llm,
+                c.nb_mauvaises_llm,
+                c.bonus_redaction_llm,
+                c.validee_par_prof
+            FROM corrections c
+            JOIN bareme b ON c.bareme_id = b.id
+            WHERE c.copie_id = ?
+            ORDER BY b.id
+        """, [copie_id]).fetchall()
+        
+        result = []
+        for row in corrections:
+            result.append({
+                'question': row['question'],
+                'texte_question': row['texte_question'],
+                'qcm (oui/non)': 'oui' if row['type_qcm'] else 'non',
+                'reponse attendue': row['reponse_attendue'],
+                'points': row['points'],
+                'reponses etudiant': row['reponse_etudiant'],
+                'note': row['note'],
+                'commentaires eventuels du correcteur': row['commentaire'],
+                'raisonnement_llm': row['raisonnement'],
+                'nbre de bonnes reponses si QCM': row['nb_bonnes_llm'],
+                'nbre de mauvaises reponses si QCM': row['nb_mauvaises_llm'],
+                'Redaction si QCM': row['bonus_redaction_llm'],
+                'validee_par_prof': row['validee_par_prof']
+            })
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error reading corrections from DB for copy {copie_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify([])
+
+
+# --- ROUTES: OCR Verification ---
+
+@app.route('/verify_ocr')
+def verify_ocr_page():
+    return render_template('verify_ocr.html', active_page='verify_ocr')
+
+
+def get_ocr_project_dir():
+    """Get the exemple2 directory path for OCR verification"""
+    return os.path.join(APP_ROOT, 'exemple2')
+
+
+def get_ocr_copy_dir(copie_id):
+    """Get directory for a specific copy in exemple2"""
+    base_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
+    d = os.path.join(base_dir, copie_id)
+    if not os.path.exists(d):
+        os.makedirs(d, exist_ok=True)
+    return d
+
+
+@app.route('/api/ocr/copies')
+def list_ocr_copies():
+    """List all copies in exemple2/copies_anonymes_validees"""
+    copies_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
+    copies = []
+    
+    if os.path.exists(copies_dir):
+        for item in os.listdir(copies_dir):
+            item_path = os.path.join(copies_dir, item)
+            # Only add directories that start with Copie_
+            if os.path.isdir(item_path) and item.startswith('Copie_'):
+                copies.append(item)
+    
+    copies.sort(key=lambda x: int(x.replace('Copie_', '')))
+    return jsonify(copies)
+
+
+@app.route('/api/ocr/pdf/<copie_id>')
+def get_ocr_pdf(copie_id):
+    """Get PDF for a copy in exemple2"""
+    from flask import request
+    
+    page_num = request.args.get('page', None)
+    
+    copies_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
+    
+    # First try: Copie_XX/Copie_XX.pdf
+    pdf_path = os.path.join(copies_dir, copie_id, f"{copie_id}.pdf")
+    if not os.path.exists(pdf_path):
+        # Second try: Copie_XX.pdf directly in copies_anonymes_validees
+        pdf_path = os.path.join(copies_dir, f"{copie_id}.pdf")
+    
+    if not os.path.exists(pdf_path):
+        return "PDF not found", 404
+    
+    # If a specific page is requested, return it as an image
+    if page_num is not None:
+        try:
+            page_index = int(page_num) - 1
+            doc = fitz.open(pdf_path)
+            if 0 <= page_index < len(doc):
+                page = doc[page_index]
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+                doc.close()
+                from io import BytesIO
+                return send_file(BytesIO(img_bytes), mimetype='image/png')
+            doc.close()
+        except Exception as e:
+            print(f"Error generating page image: {e}")
+            pass
+    
+    # Otherwise return the full PDF
+    return send_file(pdf_path)
+
+
+@app.route('/api/ocr/pages/<copie_id>')
+def get_ocr_pages(copie_id):
+    """Get list of pages with markdown content for a copy"""
+    copy_dir = get_ocr_copy_dir(copie_id)
+    pages = {}
+    
+    if os.path.exists(copy_dir):
+        for f in os.listdir(copy_dir):
+            if f.startswith('page') and f.endswith('.md'):
+                try:
+                    # Remove 'page' prefix and '.md' suffix
+                    page_num = f.replace('page', '').replace('.md', '')
+                    # Normalize to integer for sorting, but keep original string
+                    file_path = os.path.join(copy_dir, f)
+                    with open(file_path, 'r', encoding='utf-8') as fp:
+                        pages[page_num] = fp.read()
+                except Exception as e:
+                    print(f"Error reading page file {f}: {e}")
+    
+    # Count total pages from PDF
+    pdf_path = os.path.join(copy_dir, f"{copie_id}.pdf")
+    total_pages = 0
+    if os.path.exists(pdf_path):
+        try:
+            doc = fitz.open(pdf_path)
+            total_pages = len(doc)
+            doc.close()
+        except:
+            pass
+    
+    return jsonify({
+        "pages": pages,
+        "total_pages": total_pages
+    })
+
+
+@app.route('/api/ocr/content/<copie_id>/<page_num>', methods=['GET', 'POST'])
+def handle_ocr_page_content(copie_id, page_num):
+    """Get or save markdown content for a specific page"""
+    copy_dir = get_ocr_copy_dir(copie_id)
+    
+    # Normalize page_num to 2-digit format (01, 02, etc.)
+    try:
+        page_int = int(page_num)
+        page_num_padded = f"{page_int:02d}"
+    except:
+        page_num_padded = page_num
+    
+    file_path = os.path.join(copy_dir, f"page{page_num_padded}.md")
+    
+    if request.method == 'POST':
+        content = request.json.get('content', '')
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({"success": True})
+    else:
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return jsonify({"content": f.read()})
+        return jsonify({"content": ""})
+
+
+@app.route('/api/ocr/rebuild_extraction/<copie_id>', methods=['POST'])
+def rebuild_extraction(copie_id):
+    """Rebuild extraction.md from all page markdown files"""
+    copy_dir = get_ocr_copy_dir(copie_id)
+    extraction_path = os.path.join(copy_dir, "extraction.md")
+    
+    try:
+        data = request.json
+        pages = data.get('pages', {})
+        
+        # Sort pages by number and concatenate with delimiters
+        sorted_pages = sorted(pages.items(), key=lambda x: int(x[0]))
+        parts = []
+        for page_num, content in sorted_pages:
+            if content:
+                # Add page delimiter comment
+                parts.append(f"<!-- ====== page {page_num} ====== -->")
+                parts.append(content)
+        
+        full_content = "\n\n".join(parts)
+        
+        with open(extraction_path, 'w', encoding='utf-8') as f:
+            f.write(full_content)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == '__main__':
     print("CorrectAI running on http://127.0.0.1:5000")

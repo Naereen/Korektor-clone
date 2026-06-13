@@ -1,0 +1,496 @@
+"""
+Module de correction incrémentale pour Korektor (Version 2).
+
+Ce module implémente l'approche incrémentale où chaque correction utilise
+les corrections des copies précédentes pour garantir l'uniformité des notes.
+
+Utilisation:
+    from correct_ai.batch_correction_v2 import correct_copy_incremental, correct_all_incremental
+    
+    # Corriger une seule copie
+    correct_copy_incremental(copy_id=3, provider="UNISTRA_QWEN", db=db, project_dir="exemple2")
+    
+    # Corriger toutes les copies de 1 à 10
+    correct_all_incremental(start=1, end=10, project_dir="exemple2", provider_name="UNISTRA_QWEN")
+"""
+import os
+import sys
+import json
+import sqlite3
+import logging
+import time
+import random
+from pathlib import Path
+from typing import Optional, Dict, Any, List
+
+# Ajouter le répertoire parent au path pour importer les autres modules
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# =============================================================================
+# Configuration du logging
+# =============================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # Affiche sur la console
+    ]
+)
+logger = logging.getLogger('korektor')
+
+from correct_ai.database import (
+    get_db, init_db, load_sujet, load_corrige, load_bareme,
+    load_all_extractions, save_correction, get_previous_corrections,
+    get_sujet, get_corrige, get_bareme, get_all_extractions,
+    has_corrections, get_random_previous_corrections
+)
+from correct_ai.prompt_builder import build_incremental_prompt
+
+
+def parse_llm_response(response: str) -> Dict[str, Any]:
+    """
+    Parse la réponse du LLM en JSON.
+    
+    Utilise json_repair pour corriger les réponses mal formatées.
+    
+    Args:
+        response: Réponse brute du LLM
+    
+    Returns:
+        Dict: Dictionnaire parsé avec {question: {note: ..., commentaire: ..., reponse_etudiant: ...}}
+    
+    Raises:
+        ValueError: Si la réponse ne peut pas être parsée
+    """
+    # Gérer les réponses vides
+    if not response or not response.strip():
+        return {}
+    
+    try:
+        import json_repair
+        result = json_repair.loads(response)
+        # json_repair peut retourner une string pour les réponses vides
+        if isinstance(result, str):
+            return {}
+        # Si le LLM retourne une liste [{"question": "Q1", ...}], la convertir en dict
+        if isinstance(result, list):
+            return {item.get('question', str(i)): item for i, item in enumerate(result)}
+        return result
+    except Exception:
+        pass
+    
+    # Essayer avec json standard
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError as e:
+        # Essayons de corriger manuellement
+        # Remplacer les simples quotes par des doubles
+        response_fixed = response.replace("'", '"')
+        try:
+            return json.loads(response_fixed)
+        except json.JSONDecodeError:
+            # Extraire le JSON du texte
+            import re
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
+            
+            # Dernier recours : retourner une réponse vide
+            return {}
+
+
+def ask_llm_with_pdf_and_text(
+    provider: Dict[str, Any],
+    pdf_path: str,
+    prompt_text: str,
+    system_prompt: Optional[str] = None
+) -> str:
+    """
+    Appelle le LLM avec un PDF et du texte.
+    
+    Args:
+        provider: Configuration du provider LLM (dict ou ProviderConfig)
+        pdf_path: Chemin vers le PDF à analyser
+        prompt_text: Texte du prompt
+        system_prompt: Prompt système (optionnel)
+    
+    Returns:
+        str: Réponse du LLM
+    """
+    from correct_ai.llm_providers import get_provider, ask_llm_with_pdf
+    
+    # Récupérer le provider config
+    p = get_provider(provider.get('name') if isinstance(provider, dict) else provider.name)
+    
+    # Appeler le LLM avec PDF + texte
+    # Note: thinking=False est géré côté API Qwen Unistra (gratuit par défaut)
+    response = ask_llm_with_pdf(
+        provider=p,
+        pdf_path=pdf_path,
+        prompt_text=prompt_text,
+        system_prompt=system_prompt or "Tu es un correcteur expert. Nota selon le barème et maintain uniformité."
+    )
+    
+    return response
+
+
+def correct_copy_incremental(
+    copy_id: int,
+    provider: Dict[str, Any],
+    db: sqlite3.Connection,
+    project_dir: str,
+    test_mode: bool = False
+) -> bool:
+    """
+    Corrige une copie en mode incrémental.
+    
+    Le prompt inclut :
+    - Sujet + Corrigé (contexte global)
+    - Toutes les extractions OCR (contexte complet)
+    - 10 corrections précédentes aléatoires pour uniformité
+    - La copie courante en PDF (pour vérification visuelle)
+    
+    Args:
+        copy_id: ID de la copie à corriger
+        provider: Configuration du provider LLM
+        db: Connexion à la base de données
+        project_dir: Dossier du projet
+    
+    Returns:
+        bool: True si succès, False si échec
+    """
+    # 0. Vérifier si la copie est déjà corrigée
+    if has_corrections(db, copy_id):
+        logger.info(f"⏭️  Copie {copy_id} déjà corrigée, passage à la suivante")
+        return True
+    
+    # Tentatives (max 2)
+    for attempt in range(2):
+        try:
+            # 1. Récupérer les données
+            sujet = get_sujet(db)
+            corrige = get_corrige(db)
+            bareme = get_bareme(db)
+            
+            # Corrections des copies précédentes pour uniformité (10 aléatoires)
+            previous_corrections = get_random_previous_corrections(db, copy_id, max_count=10)
+            
+            # Afficher les copies sélectionnées pour le contexte
+            if previous_corrections:
+                copy_ids = sorted(set(corr['copie_id'] for corr in previous_corrections))
+                logger.info(f"📚 Copies sélectionnées pour le contexte: {copy_ids}")
+            else:
+                logger.info("📚 Aucune correction précédente disponible")
+            
+            # Données de la copie courante
+            current_copy = db.execute("""
+                SELECT pdf_path, extraction_texte FROM copies WHERE id = ?
+            """, [copy_id]).fetchone()
+            
+            if not current_copy:
+                logger.error(f"❌ Copie {copy_id} non trouvée dans la base")
+                return False
+            
+            # 2. Construire le prompt
+            prompt = build_incremental_prompt(
+                sujet=sujet,
+                corrige=corrige,
+                bareme=bareme,
+                previous_corrections=previous_corrections,
+                current_pdf_path=current_copy['pdf_path'],
+                current_extraction=current_copy['extraction_texte']
+            )
+            
+            # Afficher infos sur le prompt
+            from correct_ai.prompt_builder import estimate_prompt_tokens
+            prompt_token_count = estimate_prompt_tokens(
+                sujet, corrige, bareme, previous_corrections, current_copy['extraction_texte']
+            )
+            logger.info(f"📄 Prompt: {len(prompt)} caractères, ~{prompt_token_count} tokens")
+            logger.info(f"📄 Extrait: {prompt[:500]}...")
+            
+            # 3. Appeler le LLM
+            # En mode test, utiliser une réponse mockée
+            if test_mode:
+                response = '{"Q0": {"note": 1.0, "commentaire": "Test - Mode mock", "raisonnement": "Raisonnement test pour validation du format", "reponse_etudiant": "Test"}}'
+            else:
+                # Pour l'instant, on utilise UNIQUEMENT le texte (sans PDF) pour éviter les limites de tokens
+                # Le PDF sera ajouté plus tard quand on optimisera
+                from correct_ai.llm_providers import get_provider, ask_llm, ask_llm_with_progress
+                
+                p = get_provider(provider.name if hasattr(provider, 'name') else provider.get('name'))
+                
+                # Callback pour afficher la progression
+                def progress_callback(msg):
+                    logger.info(msg)
+                
+                try:
+                    logger.info(f"Envoi du prompt à {p.url} (modèle: {p.model})...")
+                    response = ask_llm_with_progress(
+                        provider=p,
+                        prompt_text=prompt,
+                        system_prompt="Tu es un correcteur expert. Nota selon le barème et maintain uniformité.",
+                        progress_callback=progress_callback
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de l'appel LLM pour la copie {copy_id}: {e}")
+                    # Si le prompt est trop grand, essayer avec moins de contexte
+                    if "context length" in str(e).lower() or "tokens" in str(e).lower():
+                        logger.warning("⚠️  Prompt trop grand - réduction du contexte...")
+                        # Réduire : enlever les corrections précédentes
+                        prompt_simple = build_incremental_prompt(
+                            sujet=sujet,
+                            corrige=corrige,
+                            bareme=bareme,
+                            previous_corrections=[],  # Pas de corrections précédentes
+                            current_pdf_path=current_copy['pdf_path'],
+                            current_extraction=current_copy['extraction_texte']
+                        )
+                        try:
+                            response = ask_llm_with_progress(
+                                provider=p,
+                                prompt_text=prompt_simple,
+                                system_prompt="Tu es un correcteur expert.",
+                                progress_callback=progress_callback
+                            )
+                        except Exception as e2:
+                            logger.error(f"❌ Erreur même avec prompt réduit: {e2}")
+                            if attempt < 1:
+                                logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée, retry dans 2s...")
+                                time.sleep(2)
+                                continue
+                            else:
+                                return False
+                    else:
+                        if attempt < 1:
+                            logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée, retry dans 2s...")
+                            time.sleep(2)
+                            continue
+                        else:
+                            return False
+            
+            # 4. Parser et sauvegarder dans SQLite
+            try:
+                correction_data = parse_llm_response(response)
+            except Exception as e:
+                logger.error(f"❌ Erreur lors du parsing de la réponse LLM pour la copie {copy_id}: {e}")
+                logger.error(f"   Réponse brute: {response[:200]}...")
+                if attempt < 1:
+                    logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée, retry dans 2s...")
+                    time.sleep(2)
+                    continue
+                else:
+                    return False
+            
+            # 5. Sauvegarder dans la base
+            # Mapper les questions du JSON vers bareme_id
+            bareme_map = {b['question']: b['id'] for b in bareme}
+            
+            saved_count = 0
+            for question, data in correction_data.items():
+                bareme_id = bareme_map.get(question)
+                if bareme_id:
+                    save_correction(db, copy_id, bareme_id, data, is_prof=False)
+                    saved_count += 1
+            
+            logger.info(f"✅ Copie {copy_id} corrigée avec succès ({saved_count} corrections sauvegardées)")
+            return True
+        
+        except Exception as e:
+            if attempt < 1:
+                logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée: {e}, retry dans 2s...")
+                time.sleep(2)
+                continue
+            else:
+                logger.error(f"❌ Copie {copy_id} échouée après 2 tentatives: {e}")
+                return False
+
+
+def correct_all_incremental(
+    start: int,
+    end: int,
+    project_dir: str,
+    provider_name: str = "UNISTRA_QWEN",
+    test_mode: bool = False
+) -> None:
+    """
+    Corrige toutes les copies de start à end en mode incrémental.
+    
+    Args:
+        start: ID de la première copie à corriger
+        end: ID de la dernière copie à corriger
+        project_dir: Dossier du projet
+        provider_name: Nom du provider LLM
+        test_mode: Si True, utilise la configuration test (gratuit, sans thinking)
+    """
+    from correct_ai.llm_providers import get_provider
+    
+    db = get_db(project_dir)
+    init_db(db)
+    
+    # Charger sujet, corrige, bareme
+    sujet_path = os.path.join(project_dir, "sujet.md")
+    corrige_path = os.path.join(project_dir, "corrige.md")
+    bareme_path = os.path.join(project_dir, "bareme.csv")
+    
+    if os.path.exists(sujet_path):
+        with open(sujet_path, "r", encoding="utf-8") as f:
+            sujet_content = f.read()
+        load_sujet(db, sujet_path)
+    else:
+        logger.warning(f"⚠️  Fichier sujet.md non trouvé dans {project_dir}")
+        sujet_content = ""
+    
+    if os.path.exists(corrige_path):
+        load_corrige(db, corrige_path)
+    else:
+        logger.warning(f"⚠️  Fichier corrige.md non trouvé dans {project_dir}")
+    
+    if os.path.exists(bareme_path):
+        load_bareme(db, bareme_path, sujet_content)
+    else:
+        logger.warning(f"⚠️  Fichier bareme.csv non trouvé dans {project_dir}")
+    
+    # Charger les extractions OCR existantes
+    load_all_extractions(db, project_dir)
+    
+    # Corriger séquentiellement
+    provider = get_provider(provider_name)
+    
+    for copy_id in range(start, end + 1):
+        # Passer test_mode directement à correct_copy_incremental
+        logger.info(f"--- Début correction copie {copy_id}/{end} ---")
+        success = correct_copy_incremental(copy_id, provider, db, project_dir, test_mode=test_mode)
+        if not success:
+            logger.error(f"❌ Arrêt à la copie {copy_id}")
+            break
+    
+    db.close()
+
+
+def correct_copy_incremental_mock(
+    copy_id: int,
+    db: sqlite3.Connection,
+    mock_response: Dict[str, Any],
+    project_dir: str
+) -> bool:
+    """
+    Corrige une copie avec une réponse LLM mockée (pour les tests).
+    
+    Args:
+        copy_id: ID de la copie
+        db: Connexion à la base
+        mock_response: Réponse LLM mockée (JSON)
+        project_dir: Dossier du projet
+    
+    Returns:
+        bool: True si succès
+    """
+    try:
+        # 1. Récupérer les données
+        sujet = get_sujet(db)
+        corrige = get_corrige(db)
+        bareme = get_bareme(db)
+        previous_corrections = get_previous_corrections(db, copy_id)
+        
+        current_copy = db.execute("""
+            SELECT pdf_path, extraction_texte FROM copies WHERE id = ?
+        """, [copy_id]).fetchone()
+        
+        if not current_copy:
+            logger.error(f"❌ Copie {copy_id} non trouvée dans la base")
+            return False
+        
+        # 2. Construire le prompt (pour vérification)
+        prompt = build_incremental_prompt(
+            sujet=sujet,
+            corrige=corrige,
+            bareme=bareme,
+            previous_corrections=previous_corrections,
+            current_pdf_path=current_copy['pdf_path'],
+            current_extraction=current_copy['extraction_texte']
+        )
+        
+        # 3. Utiliser la réponse mockée
+        correction_data = mock_response
+        
+        # 4. Sauvegarder dans la base
+        bareme_map = {b['question']: b['id'] for b in bareme}
+        
+        saved_count = 0
+        for question, data in correction_data.items():
+            bareme_id = bareme_map.get(question)
+            if bareme_id:
+                save_correction(db, copy_id, bareme_id, data, is_prof=False)
+                saved_count += 1
+        
+        logger.info(f"✅ Copie {copy_id} corrigée avec succès (mock, {saved_count} corrections)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la correction mock de la copie {copy_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def get_stats_for_copy(db: sqlite3.Connection, copy_id: int) -> Dict[str, Any]:
+    """
+    Récupère les statistiques pour une copie.
+    
+    Args:
+        db: Connexion à la base
+        copy_id: ID de la copie
+    
+    Returns:
+        Dict avec les stats de la copie
+    """
+    result = db.execute("""
+        SELECT 
+            COUNT(*) as total_corrections,
+            AVG(note_llm) as avg_note_llm,
+            AVG(note_prof) as avg_note_prof
+        FROM corrections 
+        WHERE copie_id = ?
+    """, [copy_id]).fetchone()
+    
+    return dict(result) if result else {}
+
+
+# =============================================================================
+# CLI - Exécution en ligne de commande
+# =============================================================================
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Correction incrémentale de copies avec Korektor")
+    parser.add_argument("--project-dir", required=True, help="Dossier du projet (ex: exemple2)")
+    parser.add_argument("--start", type=int, required=True, help="Première copie à corriger")
+    parser.add_argument("--end", type=int, required=True, help="Dernière copie à corriger")
+    parser.add_argument("--test-mode", action="store_true", help="Mode test (gratuit, sans appel LLM réel)")
+    parser.add_argument("--provider", default="UNISTRA_QWEN", help="Nom du provider LLM")
+    
+    args = parser.parse_args()
+    
+    logger.info(f"Début de la correction incrémentale pour {args.project_dir}")
+    logger.info(f"Copies : {args.start} à {args.end}")
+    logger.info(f"Mode : {'TEST (mock)' if args.test_mode else 'REEL (Qwen)'}")
+    logger.info("-" * 60)
+    
+    correct_all_incremental(
+        start=args.start,
+        end=args.end,
+        project_dir=args.project_dir,
+        provider_name=args.provider,
+        test_mode=args.test_mode
+    )
+    
+    logger.info("-" * 60)
+    logger.info("Correction terminée !")
+
+
+if __name__ == "__main__":
+    main()

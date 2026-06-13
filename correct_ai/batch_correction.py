@@ -18,7 +18,7 @@ def load_bareme(project_dir="."):
         reader = csv.DictReader(f)
         return list(reader)
 
-def correct_copy(copy_number, provider_name="UNISTRA_QWEN", bareme_data=None, force=False, project_dir=".", stop_callback=None, thinking=True):
+def correct_copy(copy_number, provider_name="UNISTRA_QWEN", bareme_data=None, force=False, project_dir=".", stop_callback=None, thinking=False):
     """Correct a single copy using the bareme data and LLM."""
     if stop_callback and stop_callback():
         print("Opération annulée (Start).")
@@ -250,7 +250,7 @@ def main():
     print(f"Processing {len(copies_to_process)} copies (from {start_num} to {end_num}) using {args.provider}...")
     
     for i in copies_to_process:
-        correct_copy(i, args.provider, bareme_data, force=args.force, project_dir=args.project_dir, thinking=not args.no_thinking)
+        correct_copy(i, args.provider, bareme_data, force=args.force, project_dir=args.project_dir, thinking=False)
         
     print("Batch correction complete.")
 

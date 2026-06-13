@@ -111,7 +111,7 @@
             <iframe id="pdf-viewer" src="" width="100%" height="100%" style="border:none;"></iframe>
         </div>
 
-        <!-- Editors -->
+        <!-- Right Panel - Correction Data from DB -->
         <div class="editor-panel">
 
             <!-- Question Selector Row -->
@@ -126,62 +126,58 @@
                     disabled>▶</button>
             </div>
 
-            <!-- Extraction Editor -->
-            <div class="section-header d-flex justify-content-between align-items-center">
-                <span>Extraction OCR (Markdown)</span>
-                <button id="toggle-preview-btn" class="btn btn-sm btn-outline-secondary" title="Voir Aperçu / Editer">
-                    👁️ Aperçu
-                </button>
+            <!-- Correction Data from DB - 5 Clear Sections -->
+            
+            <!-- 1. Student Answer -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">Réponse Étudiant</label>
+                <textarea id="field-reponse" class="form-control form-control-sm" rows="3" spellcheck="false"></textarea>
             </div>
-            <textarea id="extraction-editor" class="form-control mb-3" spellcheck="false"></textarea>
-            <div id="extraction-preview" class="mb-3"></div>
 
-            <!-- Correction Fields -->
-            <div class="section-header">Correction (Données Structurées)</div>
-            <div class="card bg-light">
-                <div class="card-body">
-                    <form id="correction-form">
-                        <!-- 1. Réponse Étudiant -->
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Réponse Étudiant (CSV)</label>
-                            <textarea id="field-reponse" class="form-control form-control-sm" rows="2"></textarea>
-                        </div>
+            <!-- 2. Bareme/Expected Answer -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">Barème / Réponse Attendue</label>
+                <div class="p-2 bg-light border rounded" style="white-space: pre-wrap; font-size: 0.9em; min-height: 60px;">
+                    <small id="question-details">Consignes...</small>
+                </div>
+            </div>
 
-                        <!-- 2. Barème / Consignes -->
-                        <div class="mb-3 p-2 bg-white border rounded text-muted">
-                            <strong class="d-block mb-1">Barème / Correction :</strong>
-                            <small id="question-details" style="white-space: pre-wrap;">Consignes...</small>
-                        </div>
+            <!-- 3. Commentaire -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">Commentaire</label>
+                <textarea id="field-commentaire" class="form-control form-control-sm" rows="2"></textarea>
+            </div>
 
-                        <!-- 3. Commentaire -->
-                        <div class="mb-3">
-                            <label class="form-label">Commentaire du modèle</label>
-                            <textarea id="field-commentaire" class="form-control form-control-sm" rows="2"></textarea>
-                        </div>
+            <!-- 4. Raisonnement LLM (Read-only) -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">Raisonnement LLM</label>
+                <textarea id="field-raisonnement" class="form-control form-control-sm" rows="4" readonly style="background-color: #f8f9fa; font-size: 0.85em;"></textarea>
+            </div>
 
-                        <!-- 4. Notation -->
-                        <div class="row mb-2 pt-2 border-top">
-                            <div class="col-md-3">
-                                <label class="form-label fw-bold">Note</label>
-                                <input type="number" step="0.25" id="field-note"
-                                    class="form-control form-control-sm fw-bold">
-                            </div>
-                            <div class="col-md-2 qcm-field">
+            <!-- 5. Note and QCM Fields -->
+            <div class="mb-3 p-2 bg-light border rounded">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Note</label>
+                        <input type="number" step="0.25" id="field-note" 
+                            class="form-control form-control-sm fw-bold">
+                    </div>
+                    <div class="col-md-8 qcm-field">
+                        <div class="row">
+                            <div class="col-md-4">
                                 <label class="form-label">Bonnes</label>
                                 <input type="number" step="0.5" id="field-bonnes" class="form-control form-control-sm">
                             </div>
-                            <div class="col-md-2 qcm-field">
+                            <div class="col-md-4">
                                 <label class="form-label">Mauvaises</label>
-                                <input type="number" step="0.5" id="field-mauvaises"
-                                    class="form-control form-control-sm">
+                                <input type="number" step="0.5" id="field-mauvaises" class="form-control form-control-sm">
                             </div>
-                            <div class="col-md-3 qcm-field">
+                            <div class="col-md-4">
                                 <label class="form-label">Rédaction</label>
-                                <input type="number" step="0.5" id="field-redaction"
-                                    class="form-control form-control-sm">
+                                <input type="number" step="0.5" id="field-redaction" class="form-control form-control-sm">
                             </div>
                         </div>
-                    </form>
+                    </div>
                 </div>
             </div>
 
@@ -199,10 +195,6 @@
     const copySelect = document.getElementById('copy-select');
     const questionSelect = document.getElementById('question-select');
     const pdfViewer = document.getElementById('pdf-viewer');
-    const extractionEditor = document.getElementById('extraction-editor');
-    const extractionPreview = document.getElementById('extraction-preview');
-    const togglePreviewBtn = document.getElementById('toggle-preview-btn');
-    let isPreviewMode = false;
     const saveStatus = document.getElementById('save-status');
     const saveBtn = document.getElementById('save-btn');
     const prevQuestionBtn = document.getElementById('prev-question-btn');
@@ -214,9 +206,13 @@
     const fMauvaises = document.getElementById('field-mauvaises');
     const fRedaction = document.getElementById('field-redaction');
     const fCommentaire = document.getElementById('field-commentaire');
+    const fRaisonnement = document.getElementById('field-raisonnement');
     const fReponse = document.getElementById('field-reponse');
     const qDetails = document.getElementById('question-details');
     const qcmFields = document.querySelectorAll('.qcm-field');
+
+    // Configuration: utiliser la DB ou le CSV
+    const USE_DB = true; // Changer à false pour revenir au CSV
 
     // Init
     document.addEventListener('DOMContentLoaded', async () => {
@@ -232,7 +228,6 @@
         });
 
         saveBtn.addEventListener('click', saveAll);
-        togglePreviewBtn.addEventListener('click', togglePreview);
         prevQuestionBtn.addEventListener('click', () => navigateQuestion(-1));
         nextQuestionBtn.addEventListener('click', () => navigateQuestion(1));
     });
@@ -262,7 +257,8 @@
 
     async function loadBareme() {
         try {
-            const res = await fetch('/api/bareme');
+            const url = USE_DB ? '/api/db/bareme' : '/api/bareme';
+            const res = await fetch(url);
             currentBareme = await res.json();
         } catch (e) {
             console.error("Erreur chargement bareme", e);
@@ -270,26 +266,24 @@
     }
 
     async function loadCopies() {
-        const res = await fetch('/api/copies');
-        const copies = await res.json();
+        try {
+            const url = USE_DB ? '/api/db/copies' : '/api/copies';
+            const res = await fetch(url);
+            const copies = await res.json();
 
-        copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
-        copies.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c;
-            opt.innerText = c;
-            copySelect.appendChild(opt);
-        });
+            copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
+            copies.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.innerText = `Copie ${c}`;
+                copySelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error("Erreur chargement copies", e);
+        }
     }
 
-    // Global State for Segments (Moved from bottom)
-    let markdownSegments = {};   // Map<QId, Content>
-    let segmentOrder = [];       // Array<QId> to preserve order
-    let markdownPreamble = "";   // Header text before first Q
-
-    // ... existing vars ...
-
-    // Modified loadCopyData
+    // Modified loadCopyData - Simplified (no OCR extraction needed)
     async function loadCopyData() {
         const copyId = copySelect.value;
         if (!copyId) {
@@ -299,17 +293,13 @@
         }
         currentCopy = copyId;
 
-        // 1. PDF
-        pdfViewer.src = `/api/pdf/${copyId}`;
+        // 1. PDF - formater copyId avec zéro devant (Copie_01, Copie_02, etc.)
+        const copyIdFormatted = `Copie_${String(copyId).padStart(2, '0')}`;
+        pdfViewer.src = `/api/ocr/pdf/${copyIdFormatted}`;
 
-        // 2. Extraction (Load full text then parse)
-        const extRes = await fetch(`/api/extraction/${copyId}`);
-        const extData = await extRes.json();
-        fullMarkdownText = extData.content || "";
-        parseMarkdown(fullMarkdownText);
-
-        // 3. Correction
-        const corRes = await fetch(`/api/correction/${copyId}`);
+        // 2. Correction - utiliser la DB
+        const corUrl = `/api/db/corrections/${copyId}`;
+        const corRes = await fetch(corUrl);
         currentCorrectionData = await corRes.json();
 
         // Populate Questions
@@ -324,10 +314,16 @@
 
     function resetUI() {
         pdfViewer.src = "";
-        extractionEditor.value = "";
         questionSelect.innerHTML = '<option value="">Sélectionner une copie d\'abord</option>';
         questionSelect.disabled = true;
-        document.getElementById('correction-form').reset();
+        fReponse.value = "";
+        fCommentaire.value = "";
+        fRaisonnement.value = "";
+        fNote.value = "";
+        fBonnes.value = "";
+        fMauvaises.value = "";
+        fRedaction.value = "";
+        qDetails.innerText = "";
     }
 
     function populateQuestionsMap() {
@@ -366,11 +362,12 @@
         }
 
         row['note'] = fNote.value;
-        row['commentaires éventuels du correcteur'] = fCommentaire.value;
-        row['réponses étudiant'] = fReponse.value;
-        row['nbre de bonnes réponses si QCM'] = fBonnes.value;
-        row['nbre de mauvaises réponses si QCM'] = fMauvaises.value;
-        row['Rédaction si QCM'] = fRedaction.value;
+        row['commentaires eventuels du correcteur'] = fCommentaire.value;
+        row['reponses etudiant'] = fReponse.value;
+        row['nbre de bonnes reponses si QCM'] = fBonnes.value;
+        row['nbre de mauvaises reponses si QCM'] = fMauvaises.value;
+        row['Redaction si QCM'] = fRedaction.value;
+        row['raisonnement_llm'] = fRaisonnement.value;
 
         setSaveStatus("Modifié (non enregistré)", "warning");
     }
@@ -510,128 +507,48 @@
         const meta = currentBareme.find(r => r.question === qId);
         if (!row) row = {};
 
-        const isQCM = meta ? (meta['qcm (oui/non)'] === 'oui') : false;
+        const isQCM = meta ? meta['type_qcm'] : false;
         qcmFields.forEach(el => el.style.display = isQCM ? 'block' : 'none');
 
         fNote.value = row['note'] || "";
-        fCommentaire.value = row['commentaires éventuels du correcteur'] || "";
-        fReponse.value = row['réponses étudiant'] || "";
+        fCommentaire.value = row['commentaires eventuels du correcteur'] || "";
+        fReponse.value = row['reponses etudiant'] || "";
+        fRaisonnement.value = row['raisonnement_llm'] || "";
 
         if (isQCM) {
-            fBonnes.value = row['nbre de bonnes réponses si QCM'] || "";
-            fMauvaises.value = row['nbre de mauvaises réponses si QCM'] || "";
-            fRedaction.value = row['Rédaction si QCM'] || "";
+            fBonnes.value = row['nbre de bonnes reponses si QCM'] || "";
+            fMauvaises.value = row['nbre de mauvaises reponses si QCM'] || "";
+            fRedaction.value = row['Redaction si QCM'] || "";
         }
 
         if (meta) {
+            // Afficher le texte complet de la question + réponse attendue + points
+            const texte = meta['texte_question'] || '';
+            const answer = meta['reponse_attendue'] || '';
+            const pts = meta['points'] || '';
+            const isQCM = meta['type_qcm'] === 1 || meta['type_qcm'] === true;
+            
             if (isQCM) {
-                const correct = meta['réponse attendue'] || '';
-                qDetails.innerText = `Correctes: ${correct} | Barème QCM (+1/-0.5/+1)`;
+                qDetails.innerHTML = `<strong>Question:</strong><br>${texte.replace(/\n/g, '<br>')}<br><br>` +
+                    `<strong>Réponse correcte:</strong> ${answer}<br>` +
+                    `<strong>Points:</strong> ${pts} | Barème QCM (+1/-0.5/+1)`;
             } else {
-                const answer = meta['réponse attendue'] || '';
-                const pts = meta['points'] || '';
-                qDetails.innerText = `Réponse attendue: ${answer} (${pts} pts)`;
+                qDetails.innerHTML = `<strong>Question:</strong><br>${texte.replace(/\n/g, '<br>')}<br><br>` +
+                    `<strong>Réponse attendue:</strong> ${answer}<br>` +
+                    `<strong>Points:</strong> ${pts}`;
             }
         } else {
-            qDetails.innerText = "";
-        }
-
-        // --- Extraction Segment Display ---
-        // NEW: Display student answer from CSV instead of parsing markdown
-        // This is more reliable as it comes from the LLM correction
-        const corrRow = currentCorrectionData.find(r => r.question === qId);
-        if (corrRow && corrRow['réponses étudiant']) {
-            extractionEditor.value = corrRow['réponses étudiant'];
-            extractionEditor.dataset.activeKey = qId;
-        } else {
-            // Fallback: try to parse markdown if CSV doesn't have student answer
-            let segmentKey = qId;
-            if (!markdownSegments[segmentKey]) {
-                const qIdClean = qId.replace(/\s+/g, '');
-                let foundKey = segmentOrder.find(k => k.replace(/\s+/g, '') === qIdClean);
-                if (!foundKey) {
-                    const baseMatch = qId.match(/^(Q\d+(?:\s*(?:bis|ter|quater))?)/i);
-                    if (baseMatch) {
-                        const baseId = baseMatch[1];
-                        if (markdownSegments[baseId]) {
-                            foundKey = baseId;
-                        } else {
-                            foundKey = segmentOrder.find(k => k.startsWith(baseId));
-                        }
-                    }
-                }
-                if (foundKey) segmentKey = foundKey;
-            }
-            if (segmentKey && markdownSegments[segmentKey]) {
-                extractionEditor.value = markdownSegments[segmentKey];
-                extractionEditor.dataset.activeKey = segmentKey;
-            } else {
-                extractionEditor.value = "(Section introuvable dans le markdown)";
-                extractionEditor.dataset.activeKey = "";
-            }
-        }
-
-        // Refresh Preview if active
-        if (isPreviewMode) {
-            const markdownText = extractionEditor.value;
-            extractionPreview.innerHTML = marked.parse(markdownText);
-            if (window.MathJax) {
-                MathJax.typesetPromise([extractionPreview]).catch((err) => console.log(err));
-            }
+            qDetails.innerHTML = "";
         }
     }
 
-    // Hook for updating segments on input
-    extractionEditor.addEventListener('input', () => {
-        const key = extractionEditor.dataset.activeKey;
-        if (key) {
-            markdownSegments[key] = extractionEditor.value;
-            setSaveStatus("Modifié (non enregistré)", "warning");
-        }
-    });
-
-    // Toggle Preview Logic
-    function togglePreview() {
-        isPreviewMode = !isPreviewMode;
-        if (isPreviewMode) {
-            // Switch to Preview
-            const markdownText = extractionEditor.value;
-            // Use marked to parse
-            extractionPreview.innerHTML = marked.parse(markdownText);
-
-            // Trigger MathJax
-            if (window.MathJax) {
-                MathJax.typesetPromise([extractionPreview]).catch((err) => console.log(err));
-            }
-
-            extractionEditor.style.display = 'none';
-            extractionPreview.style.display = 'block';
-            togglePreviewBtn.innerHTML = "📝 Editer";
-            togglePreviewBtn.classList.replace('btn-outline-secondary', 'btn-secondary');
-        } else {
-            // Switch to Edit
-            extractionEditor.style.display = 'block';
-            extractionPreview.style.display = 'none';
-            togglePreviewBtn.innerHTML = "👁️ Aperçu";
-            togglePreviewBtn.classList.replace('btn-secondary', 'btn-outline-secondary');
-        }
-    }
-
-    // Update saveAll to use reconstruction
+    // saveAll - Save corrections to DB
     async function saveAll() {
         if (!currentCopy) return;
         setSaveStatus("Enregistrement...", "info");
 
         try {
-            // 1. Save Extraction (Reconstructed)
-            const fullText = getReconstructedMarkdown();
-            await fetch(`/api/extraction/${currentCopy}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: fullText })
-            });
-
-            // 2. Save Correction
+            // Save Correction to DB
             await fetch(`/api/correction/${currentCopy}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
