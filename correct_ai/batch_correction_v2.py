@@ -272,6 +272,14 @@ def correct_copy_incremental(
                             return False
             
             # 4. Parser et sauvegarder dans SQLite
+            # DEBUG: Sauvegarder la réponse brute pour diagnostic
+            import os
+            debug_dir = os.path.join(project_dir, "debug_responses")
+            os.makedirs(debug_dir, exist_ok=True)
+            with open(os.path.join(debug_dir, f"copie_{copy_id}_attempt_{attempt}.txt"), "w", encoding="utf-8") as f:
+                f.write(response)
+            logger.info(f"💾 Réponse brute sauvegardée dans {debug_dir}/copie_{copy_id}_attempt_{attempt}.txt")
+            
             try:
                 correction_data = parse_llm_response(response)
             except Exception as e:

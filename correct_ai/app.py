@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_providers import get_provider
 import batch_extraction 
 import batch_correction
+import batch_correction_v2
 from database import get_db, get_bareme as db_get_bareme, get_all_extractions
 
 # --- Configuration & Path Management ---
@@ -256,6 +257,11 @@ class BatchJob:
         self.current_action = f"Démarrage: {job_type} [{start}-{end}]"
         
         def run_wrapper():
+            # Sauvegarder le handler original du logger korektor
+            import logging
+            korektor_logger = logging.getLogger('korektor')
+            original_handler = korektor_logger.handlers[0] if korektor_logger.handlers else None
+            
             try:
                 # Capture standard output/error to self.logs
                 class LogCapture:
@@ -279,6 +285,25 @@ class BatchJob:
 
                 original_stdout = sys.stdout
                 sys.stdout = LogCapture(self)
+                
+                # Créer un handler personnalisé pour capturer les logs du logger
+                class LogCaptureHandler(logging.StreamHandler):
+                    def __init__(self, job):
+                        super().__init__(sys.stdout)  # sys.stdout est déjà LogCapture
+                        self.job = job
+                    
+                    def emit(self, record):
+                        msg = self.format(record)
+                        # Ajouter directement aux logs sans passer par sys.stdout
+                        if hasattr(self.job, 'logs'):
+                            self.job.logs.append(msg)
+                            # Mettre à jour l'action en cours
+                            if msg.strip() and not msg.startswith('[') and len(msg) < 50:
+                                self.job.current_action = msg.strip()
+                
+                # Remplacer le handler par le nôtre
+                korektor_logger.handlers = []
+                korektor_logger.addHandler(LogCaptureHandler(self))
                 
                 print(f"Starting {job_type}...")
                 
@@ -305,29 +330,100 @@ class BatchJob:
                              self.progress = int((count / total) * 100)
                              
                     elif job_type == 'correction':
-                         bareme = batch_correction.load_bareme(project_dir)
-                         if not bareme:
-                             print("Error: No bareme found.")
+                         # Obtenir la base de données (init_db est appelé uniquement si tables n'existent pas)
+                         db = get_db(project_dir)
+                         # Vérifier si les tables existent déjà pour éviter init inutile
+                         from database import init_db
+                         table_check = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='corrections'").fetchone()
+                         if not table_check:
+                             print(f"Initialisation de la base de données pour {project_dir}...")
+                             init_db(db)
                          else:
+                             print(f"Base de données déjà initialisée pour {project_dir}")
+                         
+                         # Vérifier et charger les données manquantes
+                         from database import load_all_extractions
+                         
+                         # Charger extractions (déjà protégé : ne charge pas si extraction_verified=1)
+                         load_all_extractions(db, project_dir)
+                         
+                         # Charger sujet/corrige/bareme UNIQUEMENT s'ils n'existent pas dans la base
+                         from database import load_sujet, load_corrige, load_bareme
+                         
+                         sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
+                         corrige_exists = db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0
+                         bareme_exists = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0] > 0
+                         
+                         sujet_path = os.path.join(project_dir, "sujet.md")
+                         corrige_path = os.path.join(project_dir, "corrige.md")
+                         bareme_path = os.path.join(project_dir, "bareme.csv")
+                         
+                         if os.path.exists(sujet_path) and not sujet_exists:
+                             print("Chargement de sujet.md...")
+                             load_sujet(db, sujet_path)
+                         
+                         if os.path.exists(corrige_path) and not corrige_exists:
+                             print("Chargement de corrige.md...")
+                             load_corrige(db, corrige_path)
+                         
+                         if os.path.exists(bareme_path) and not bareme_exists:
+                             print("Chargement de bareme.csv...")
+                             sujet_content = ""
+                             if os.path.exists(sujet_path):
+                                 with open(sujet_path, "r", encoding="utf-8") as f:
+                                     sujet_content = f.read()
+                             load_bareme(db, bareme_path, sujet_content)
+                         
+                         if sujet_exists and corrige_exists and bareme_exists:
+                             print("Sujet, corrigé et barème déjà chargés dans la base")
+                             
+                             # Obtenir le provider
+                             from llm_providers import get_provider
+                             provider = get_provider("UNISTRA_QWEN")
+                             
                              for i in range(start, end + 1):
                                  if self.stop_requested:
                                      print(">>> Interruption demandée par l'utilisateur.")
                                      break
 
+                                 # Vérifier si la copie a déjà DES corrections (même partielles)
+                                 existing_count = db.execute(
+                                     "SELECT COUNT(*) FROM corrections WHERE copie_id = ?", [i]
+                                 ).fetchone()[0]
+                                 
+                                 if existing_count > 0 and not force:
+                                     print(f"⏭️  Copie {i} a déjà {existing_count}/26 corrections, passage à la suivante (utilise force=True pour écraser)")
+                                     count += 1
+                                     self.progress = int((count / total) * 100)
+                                     continue
+                                 
                                  print(f"Correcting Copy {i}/{end}...")
                                  self.current_action = f"Correction Copie {i}"
                                  
-                                 batch_correction.correct_copy(i, bareme_data=bareme, force=force, project_dir=project_dir, stop_callback=check_stop, thinking=False)
+                                 # Si force=True, supprimer les corrections existantes de cette copie
+                                 if force and existing_count > 0:
+                                     db.execute("DELETE FROM corrections WHERE copie_id = ?", [i])
+                                     db.commit()
+                                     print(f"✏️  Suppression des {existing_count} corrections existantes pour la copie {i}")
+                                 
+                                 # Appeler la correction incrémentale v2
+                                 batch_correction_v2.correct_copy_incremental(
+                                     copy_id=i,
+                                     provider=provider,
+                                     db=db,
+                                     project_dir=project_dir,
+                                     test_mode=False
+                                 )
                                  
                                  count += 1
                                  self.progress = int((count / total) * 100)
+                             
+                             db.close()
                 except Exception as e:
                      print(f"Error in batch loop: {e}")
                      import traceback
                      traceback.print_exc(file=sys.stdout)
 
-                sys.stdout = original_stdout
-                
                 if self.stop_requested:
                      self.current_action = "Arrêté"
                      self.logs.append("=== Traitement interrompu ===\n")
@@ -340,6 +436,10 @@ class BatchJob:
                 self.logs.append(f"Erreur fatale wrapper: {e}\n")
                 self.current_action = "Erreur"
             finally:
+                # Restaurer le handler original du logger
+                sys.stdout = original_stdout
+                if korektor_logger and original_handler:
+                    korektor_logger.handlers = [original_handler]
                 self.running = False
 
         thread = threading.Thread(target=run_wrapper)
@@ -919,24 +1019,29 @@ def rebuild_extraction(copie_id):
     extraction_path = os.path.join(copy_dir, "extraction.md")
     
     try:
-        data = request.json
-        pages = data.get('pages', {})
+        # Lire TOUS les fichiers pageXX.md dans le dossier
+        page_files = sorted([f for f in os.listdir(copy_dir) if f.startswith('page') and f.endswith('.md')])
         
-        # Sort pages by number and concatenate with delimiters
-        sorted_pages = sorted(pages.items(), key=lambda x: int(x[0]))
         parts = []
-        for page_num, content in sorted_pages:
-            if content:
-                # Add page delimiter comment
+        for page_file in page_files:
+            page_num = page_file.replace('page', '').replace('.md', '')
+            file_path = os.path.join(copy_dir, page_file)
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            if content.strip():
                 parts.append(f"<!-- ====== page {page_num} ====== -->")
                 parts.append(content)
+            else:
+                parts.append(f"<!-- ====== page {page_num} (VIDE) ====== -->")
         
         full_content = "\n\n".join(parts)
         
         with open(extraction_path, 'w', encoding='utf-8') as f:
             f.write(full_content)
         
-        return jsonify({"success": True})
+        return jsonify({"success": True, "message": f"extraction.md regénérée avec {len(parts)} pages"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
