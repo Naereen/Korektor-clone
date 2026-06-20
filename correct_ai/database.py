@@ -174,7 +174,7 @@ def load_bareme(conn: sqlite3.Connection, bareme_path: str, sujet_content: Optio
     # Extraire le texte des questions depuis sujet.md si disponible
     question_texts = {}
     if sujet_content:
-        pattern = r'\(--(Q[\w.]+)\)'
+        pattern = r'\(--(Q[\w.\-]+)\)'
         parts = re.split(pattern, sujet_content)
         for i in range(0, len(parts)-1, 2):
             question_id = parts[i+1]
@@ -319,6 +319,8 @@ def load_all_extractions(conn: sqlite3.Connection, project_dir: str) -> None:
 def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str, str]]:
     """
     Trouve les infos de l'étudiant pour une copie donnée.
+    Utilise correspondance.csv pour mapper Copie_ID → Etudiant_ID,
+    puis liste-etudiants.csv pour obtenir Nom/Prénom.
     
     Args:
         copy_id: ID de la copie
@@ -327,6 +329,18 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
     Returns:
         Dict avec 'id', 'name', 'firstname' ou None
     """
+    # 1. Lire correspondance.csv pour trouver l'Etudiant_ID
+    corr_file = os.path.join(project_dir, "correspondance.csv")
+    etudiant_id = None
+    if os.path.exists(corr_file):
+        with open(corr_file, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if int(row.get('Copie_ID', -1)) == copy_id:
+                    etudiant_id = row.get('Etudiant_ID', '').strip()
+                    break
+    
+    # 2. Lire liste-etudiants.csv pour trouver le nom
     students_file = os.path.join(project_dir, "liste-etudiants.csv")
     if not os.path.exists(students_file):
         return None
@@ -335,12 +349,23 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
         reader = csv.DictReader(f)
         students = list(reader)
     
+    # Chercher par Etudiant_ID, ou fallback par position
+    for student in students:
+        sid = student.get('Num', '').strip() or student.get('N° étudiant', '').strip()
+        if etudiant_id and sid == etudiant_id:
+            return {
+                'id': sid,
+                'name': student.get('Nom', ''),
+                'firstname': student.get('Prénom', '')
+            }
+    
+    # Fallback: position dans la liste (moins fiable)
     if copy_id <= len(students):
         student = students[copy_id - 1]
         return {
-            'id': student.get('Num'),
-            'name': student.get('Nom'),
-            'firstname': student.get('Prénom')
+            'id': student.get('Num', ''),
+            'name': student.get('Nom', ''),
+            'firstname': student.get('Prénom', '')
         }
     return None
 

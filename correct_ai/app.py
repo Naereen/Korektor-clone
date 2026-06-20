@@ -881,12 +881,12 @@ def verify_ocr_page():
 
 
 def get_ocr_project_dir():
-    """Get the exemple2 directory path for OCR verification"""
-    return os.path.join(APP_ROOT, 'exemple2')
+    """Get the current project directory for OCR verification"""
+    return config.project_dir
 
 
 def get_ocr_copy_dir(copie_id):
-    """Get directory for a specific copy in exemple2"""
+    """Get directory for a specific copy in the current project"""
     base_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
     d = os.path.join(base_dir, copie_id)
     if not os.path.exists(d):
@@ -896,18 +896,22 @@ def get_ocr_copy_dir(copie_id):
 
 @app.route('/api/ocr/copies')
 def list_ocr_copies():
-    """List all copies in exemple2/copies_anonymes_validees"""
+    """List all copies in the current project's copies_anonymes_validees"""
     copies_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
     copies = []
     
     if os.path.exists(copies_dir):
         for item in os.listdir(copies_dir):
             item_path = os.path.join(copies_dir, item)
-            # Only add directories that start with Copie_
+            # Directories starting with Copie_ (post-extraction)
             if os.path.isdir(item_path) and item.startswith('Copie_'):
                 copies.append(item)
+            # PDF files directly in copies_anonymes_validees (pre-extraction)
+            elif item.startswith('Copie_') and item.endswith('.pdf'):
+                copies.append(item.replace('.pdf', ''))
     
-    copies.sort(key=lambda x: int(x.replace('Copie_', '')))
+    # Deduplicate and sort
+    copies = sorted(set(copies), key=lambda x: int(x.replace('Copie_', '')))
     return jsonify(copies)
 
 
@@ -969,8 +973,10 @@ def get_ocr_pages(copie_id):
                 except Exception as e:
                     print(f"Error reading page file {f}: {e}")
     
-    # Count total pages from PDF
+    # Count total pages from PDF (check both locations)
     pdf_path = os.path.join(copy_dir, f"{copie_id}.pdf")
+    if not os.path.exists(pdf_path):
+        pdf_path = os.path.join(os.path.dirname(copy_dir), f"{copie_id}.pdf")
     total_pages = 0
     if os.path.exists(pdf_path):
         try:

@@ -22,7 +22,7 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
 
     # Regex to find markers like (--Q1.1) or (--Q1) or (--Q_Intro)
     # Captures the marker content e.g. "Q1.1"
-    pattern = r'\(--(Q[\w\.]+)\)'
+    pattern = r'\(--(Q[\w\.\-]+)\)'
     
     # Split: this returns [TextBefore, Marker1, TextBetween, Marker2, ...]
     parts = re.split(pattern, original_content)
