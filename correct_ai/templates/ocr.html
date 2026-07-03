@@ -1,0 +1,142 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-eye"></i> OCR - Extraction</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Extraction OCR des copies manuscrites via LLM Vision.</p>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Plage de copies</label>
+                    <div class="row g-2">
+                        <div class="col">
+                            <input type="number" id="range-start" class="form-control form-control-sm" placeholder="Début" value="1">
+                        </div>
+                        <div class="col">
+                            <input type="number" id="range-end" class="form-control form-control-sm" placeholder="Fin">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-grid mb-2">
+                    <button id="btn-start" class="btn btn-warning" onclick="startJob()">
+                        <i class="bi bi-file-text"></i> Lancer l'extraction OCR
+                    </button>
+                </div>
+                <div class="d-grid">
+                    <button id="btn-stop" class="btn btn-danger" onclick="stopJob()" disabled>
+                        <i class="bi bi-stop-fill"></i> Annuler
+                    </button>
+                </div>
+                <div id="jobInfo" class="small text-muted mt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Console</h5>
+                <span id="status-badge" class="badge bg-secondary">Inactif</span>
+            </div>
+            <div class="card-body p-0 d-flex flex-column" style="height: 500px;">
+                <pre id="log-console" class="flex-grow-1 bg-dark text-light p-3 m-0"
+                    style="overflow-y: auto; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;"></pre>
+                <div class="p-2 border-top bg-light">
+                    <div class="progress" style="height: 8px;">
+                        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                            role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <small id="progress-text" class="text-muted">0%</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let pollInterval = null;
+
+// Reprendre le polling si un job tourne déjà
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/batch/status')
+        .then(r => r.json())
+        .then(data => {
+            if (data.running) {
+                document.getElementById('log-console').innerText = data.logs.join('');
+                document.getElementById('progress-bar').style.width = data.progress + '%';
+                document.getElementById('progress-text').innerText = data.progress + '%';
+                document.getElementById('status-badge').innerText = data.action;
+                document.getElementById('status-badge').className = 'badge bg-primary';
+                startPolling();
+            }
+        });
+});
+
+async function startJob() {
+    const startVal = document.getElementById('range-start').value;
+    const endVal = document.getElementById('range-end').value;
+    const msg = 'Lancer l\'extraction OCR' + (endVal ? ' (Copies ' + (startVal || '1') + '-' + endVal + ')' : ' sur toutes les copies') + ' ?';
+    if (!confirm(msg)) return;
+
+    try {
+        const res = await fetch('/api/batch/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                type: 'extraction',
+                start: startVal ? parseInt(startVal) : null,
+                end: endVal ? parseInt(endVal) : null,
+                force: false
+            })
+        });
+        const data = await res.json();
+        if (data.success) startPolling();
+        else alert('Erreur: ' + data.error);
+    } catch(e) { alert('Erreur réseau'); }
+}
+
+async function stopJob() {
+    if (!confirm('Arrêter l\'extraction en cours ?')) return;
+    await fetch('/api/batch/stop', {method: 'POST'});
+}
+
+function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-stop').disabled = false;
+    pollInterval = setInterval(updateStatus, 1000);
+    updateStatus();
+}
+
+async function updateStatus() {
+    try {
+        const res = await fetch('/api/batch/status');
+        const data = await res.json();
+        document.getElementById('log-console').innerText = data.logs.join('');
+        document.getElementById('log-console').scrollTop = document.getElementById('log-console').scrollHeight;
+        document.getElementById('progress-bar').style.width = data.progress + '%';
+        document.getElementById('progress-text').innerText = data.progress + '%';
+
+        const badge = document.getElementById('status-badge');
+        badge.innerText = data.action;
+        badge.className = data.running ? 'badge bg-primary' : (data.progress >= 100 ? 'badge bg-success' : 'badge bg-secondary');
+
+        if (!data.running) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-stop').disabled = true;
+            document.getElementById('jobInfo').innerHTML = data.progress >= 100 ?
+                '<span class="text-success"><i class="bi bi-check-circle"></i> Extraction terminée</span>' : '';
+        }
+    } catch(e) { console.error(e); }
+}
+</script>
+{% endblock %}

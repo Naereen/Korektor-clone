@@ -1,0 +1,152 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h3><i class="bi bi-bar-chart-fill"></i> Bilan - État de la correction</h3>
+        <hr>
+    </div>
+</div>
+
+<!-- Cartes statistiques -->
+<div class="row mb-4" id="stats-cards">
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <h1 class="display-4 text-primary" id="stat-copies">-</h1>
+                <p class="text-muted small">Copies</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <h1 class="display-4 text-success" id="stat-full">-</h1>
+                <p class="text-muted small">Entièrement corrigées</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <h1 class="display-4 text-warning" id="stat-partial">-</h1>
+                <p class="text-muted small">Partiellement corrigées</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <h1 class="display-4 text-info" id="stat-max">-</h1>
+                <p class="text-muted small">Points max (barème)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Tableau des notes -->
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-table"></i> Notes par copie</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Copie</th>
+                                <th>Note</th>
+                                <th>/<span id="stat-max-header">-</span></th>
+                                <th>Questions corrigées</th>
+                                <th>Statut</th>
+                            </tr>
+                        </thead>
+                        <tbody id="notes-table">
+                            <tr><td colspan="5" class="text-center text-muted">Chargement...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Copies problématiques -->
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Copies problématiques</h5>
+            </div>
+            <div class="card-body" id="problematic-list">
+                <p class="text-muted small">Copies où la correction est incomplète.</p>
+                <div class="text-center text-muted">Chargement...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', loadBilan);
+
+async function loadBilan() {
+    try {
+        const resp = await fetch('/api/bilan/stats');
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById('stats-cards').innerHTML =
+                '<div class="col-12"><div class="alert alert-danger">Erreur: ' + data.error + '</div></div>';
+            return;
+        }
+
+        // Mise à jour des cartes
+        document.getElementById('stat-copies').innerText = data.nb_copies;
+        document.getElementById('stat-full').innerText = data.nb_fully_corrected;
+        document.getElementById('stat-partial').innerText = data.nb_copies - data.nb_fully_corrected;
+        document.getElementById('stat-max').innerText = data.max_points;
+        document.getElementById('stat-max-header').innerText = data.max_points;
+
+        // Tableau des notes
+        let rows = '';
+        data.notes.forEach(n => {
+            const pct = data.max_points > 0 ? Math.round(n.total / data.max_points * 100) : 0;
+            const barColor = pct >= 50 ? 'bg-success' : (pct >= 25 ? 'bg-warning' : 'bg-danger');
+            const isFull = n.nb_corr >= data.nb_questions;
+            const statusBadge = isFull
+                ? '<span class="badge bg-success">Complete</span>'
+                : '<span class="badge bg-warning text-dark">' + n.nb_corr + '/' + data.nb_questions + '</span>';
+
+            rows += '<tr>';
+            rows += '<td><strong>Copie ' + n.copie_id + '</strong></td>';
+            rows += '<td>' + n.total + '</td>';
+            rows += '<td><div class="progress" style="height:6px;"><div class="progress-bar ' + barColor + '" style="width:' + pct + '%"></div></div></td>';
+            rows += '<td><small>' + n.nb_corr + '/' + data.nb_questions + '</small></td>';
+            rows += '<td>' + statusBadge + '</td>';
+            rows += '</tr>';
+        });
+        document.getElementById('notes-table').innerHTML = rows;
+
+        // Copies problématiques
+        if (data.problematic.length > 0) {
+            let probHtml = '<ul class="list-group list-group-flush small">';
+            data.problematic.forEach(p => {
+                probHtml += '<li class="list-group-item d-flex justify-content-between">' +
+                    '<span>Copie ' + p.copie_id + '</span>' +
+                    '<span class="text-danger">' + p.missing + ' questions manquantes</span></li>';
+            });
+            probHtml += '</ul>';
+            document.getElementById('problematic-list').innerHTML = probHtml;
+        } else {
+            document.getElementById('problematic-list').innerHTML =
+                '<div class="text-success"><i class="bi bi-check-circle"></i> Aucune copie problématique</div>';
+        }
+    } catch(e) {
+        console.error(e);
+        document.getElementById('stats-cards').innerHTML =
+            '<div class="col-12"><div class="alert alert-danger">Erreur de chargement</div></div>';
+    }
+}
+</script>
+{% endblock %}
