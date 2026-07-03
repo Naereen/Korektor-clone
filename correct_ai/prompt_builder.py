@@ -202,7 +202,7 @@ def estimate_prompt_tokens(
         # Fallback : estimation grossière (1 token ≈ 4 caractères)
         total_chars = len(sujet) + len(corrige) + len(current_extraction)
         for q in bareme:
-            total_chars += len(q.get('texte_question', q.get('question', '')))
+            total_chars += len(q['texte_question'] or q['question'] or '')
         for corr in previous_corrections:
             total_chars += len(str(corr))
         return total_chars // 4
