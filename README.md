@@ -7,9 +7,10 @@
       <p><strong>Fonctionnalités :</strong></p>
       <ol>
         <li><strong>Numérisation et Import</strong> : Découpage intelligent de scans (A3 -> A4) et regroupement par étudiant.</li>
+        <li><strong>Structuration du Sujet</strong> : Analyse du sujet et du corrigé pour générer un barème structuré (questions, réponses attendues, points).</li>
         <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration automatique (questions, réponses).</li>
-        <li><strong>Correction IA</strong> : Notation automatique basée sur un barème précis (<code>bareme.csv</code>), générant des notes et des commentaires.</li>
-        <li><strong>Vérification Professeur</strong> : Interface ergonomique pour relire les copies, ajuster les notes et annoter.</li>
+        <li><strong>Correction IA</strong> : Notation automatique générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
+        <li><strong>Vérification Professeur</strong> : Interface (relativement) ergonomique pour relire les copies, ajuster les notes et annoter.</li>
       </ol>
     </td>
     <td width="30%" valign="middle">
@@ -24,6 +25,10 @@
 2.  **Installer les dépendances** :
     ```bash
     uv sync
+    ```
+3. **Récupérer une clé d'API LLM** sur [https://conversation.ia.unistra.fr/](https://conversation.ia.unistra.fr/) et la définir dans vos variables d'environnement :
+    ```bash
+    export UNISTRA_API_KEY="votre_cle_ici"
     ```
 
 ## Utilisation
@@ -40,14 +45,14 @@
     *   Fichiers requis : `sujet.md`, `corrige.md`, `liste-etudiants.csv`.
     *   Le `bareme.csv` est **généré automatiquement** depuis l'onglet Import (via `subject_analysis.py`). Il sert de format intermédiaire : l'enseignant peut le vérifier et l'ajuster (Excel, tableur) avant qu'il soit chargé dans la base `korektor.db` pour la correction.
 
-3.  **Workflow** :
+3.  **Procédure** :
     *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné.
     *   **Découpage** : Validez le découpage A3→A4 et l'identification des étudiants.
     *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
     *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page, avec aperçu LaTeX.
     *   **Correction** : Lancez la correction automatique incrémentale sur un lot de copies.
     *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
-    *   **Bilan** : Dashboard avec l'état global : nombre de copies, notes, copies problématiques.
+    *   **Bilan** : Dashboard avec l'état global : nombre de copies, notes, copies problématiques (relancer le scan et/ou la correction des copies problématiques).
 
 ## Structure des Données
 
@@ -68,7 +73,7 @@ Pour compatibilité, le système conserve aussi :
 
 ## Configuration API
 
-Les clés API pour les LLM (Mistral, OpenAI, etc.) doivent être définies dans vos variables d'environnement ou configurées via la classe `ProviderConfig` dans `correct_ai/llm_providers.py`.
+Les clés API pour les LLM (Mistral, OpenAI, etc.) doivent être définies dans vos variables d'environnement ou configurées via la classe `ProviderConfig` dans `correct_ai/llm_providers.py`. Par défaut , le provider utilisé est `UNISTRA_QWEN` (Qwen3) avec `thinking=True`. Pour utiliser un autre LLM, comme Mistral, définissez la variable d'environnement suivante :
 
 ```bash
 export MISTRAL_API_KEY="votre_cle_ici"
@@ -80,7 +85,6 @@ export MISTRAL_API_KEY="votre_cle_ici"
 
 ### Provider par défaut
 - **UNISTRA_QWEN** (Qwen3) avec `thinking=True` : Le plus fiable pour la correction.
-- Alternative : **PALGANIA_QWEN3** (nécessite `json_repair` pour les erreurs LaTeX).
 
 ### Paramètres clés
 - **Timeout** : 600 secondes (toutes les requêtes)
@@ -165,15 +169,3 @@ L'onglet **Vérif OCR** permet de vérifier et corriger manuellement l'extractio
 - **Détection d'erreurs LaTeX** (dollars impairs, backslashs non échappés)
 - Confirmation avant de quitter une page modifiée
 - Reconstruction de `extraction.md` à partir de toutes les pages
-
-## Dépannage
-
-### Erreurs JSON fréquentes
-Si vous voyez `JSON Decode Error`, le module `json_repair` corrige automatiquement les erreurs d'échappement LaTeX (ex: `\frac`, `\sin`).
-
-### Limites de tokens
-Les limites sont gérées par le serveur. Pas de `max_tokens` imposé côté client.
-
-### Thinking mode
-- **UNISTRA** : Respecte le paramètre `enable_thinking` via `chat_template_kwargs`.
-- **PALGANIA** : Nécessite aussi `chat_template_kwargs`, mais peut avoir un comportement différent selon la version.
