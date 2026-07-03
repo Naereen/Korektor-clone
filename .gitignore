@@ -13,25 +13,10 @@ env/
 .idea/
 
 # Project specific
-.correctai_config.json
-temp_import.pdf
-
-# Example data (maybe keep example but ignore generated output inside it?)
-# For now, let's keep 'exemple/' in git as it seems like a template reference, 
-# but ignore potentially large generated PDF there if any.
-exemple/*.pdf
-!exemple/copiesA3.pdf
-!exemple/copiesA4_sorted.pdf
 
 # Artifacts
 .gemini/
 
-# Generated data directories
-example2/
-exemple2/
-exemple2_test/
-exemple3/
-test_ocr/
 
 # Logs
 *.log
@@ -40,19 +25,3 @@ test_ocr/
 .DS_Store
 
 # Temporary/throwaway scripts (plot iterations, one-off scripts)
-check_copie23.py
-import_corr_final.py
-import_correspondance_pandas.py
-plot_ecart4.py
-plot_final_1_70_bins1.py
-plot_final_method.py
-plot_final_v2.py
-plot_histogramme_bins2.py
-plot_notes_comparaison.py
-plot_notes_final.py
-relance_copies.py
-relance_copies_v2.py
-test_db_api.py
-test_streaming.py
-test_vllm_simple.py
-test_vllm_stream.py
