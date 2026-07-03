@@ -64,12 +64,13 @@ Le système utilise désormais une base SQLite pour stocker toutes les correctio
 *   Table `copies` : Métadonnées des copies
 *   Table `corrections` : **Toutes les corrections avec `raisonnement_llm`** (note, commentaire, raisonnement détaillé, champs QCM)
 
+Certaines rubriques ne sont pas encore utilisées, mais la base est un bon point de départ pour vérifier ou affiner les corrections en discutant avec des agents IA.
+
 ### Fichiers par copie (ex: `Copie_01`)
-Pour compatibilité, le système conserve aussi :
+Le système conserve aussi :
 *   `Copie_01.pdf` : Le scan individuel.
 *   `extraction.md` : Le contenu transcrit (vérifiable via l'onglet "Vérification OCR").
-*   `correction.csv` : Ancienne correction IA (compatibilité).
-*   `correction_prof.csv` : Ancienne correction validée (compatibilité).
+*   `page<xx>.md` : Chaque page du scan est sauvegardée séparément pour faciliter la vérification.
 
 ## Configuration API
 
