@@ -37,7 +37,8 @@
 2.  **Configurer le projet** :
     *   L'application travaille par défaut dans le dossier `./exemple`.
     *   Le dossier de travail se change depuis l'onglet **Import** (champ "Dossier du projet").
-    *   Fichiers attendus : `sujet.md`, `corrige.md`, `bareme.csv`, `liste-etudiants.csv`.
+    *   Fichiers requis : `sujet.md`, `corrige.md`, `liste-etudiants.csv`.
+    *   Le `bareme.csv` est **généré automatiquement** depuis l'onglet Import (via `subject_analysis.py`). Il sert de format intermédiaire : l'enseignant peut le vérifier et l'ajuster (Excel, tableur) avant qu'il soit chargé dans la base `korektor.db` pour la correction.
 
 3.  **Workflow** :
     *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné.
