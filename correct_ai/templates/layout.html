@@ -59,34 +59,38 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'import' %}active{% endif %}" href="/import">1. Import &
-                            Scan</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'split' %}active{% endif %}" href="/split">2.
-                            Découpage</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'process' %}active{% endif %}" href="/process">3.
-                            Traitement</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'verify' %}active fw-bold text-primary{% endif %}"
-                            href="/verify">
-                            <i class="bi bi-check2-all"></i> Vérification
+                        <a class="nav-link {% if active_page == 'import' %}active{% endif %}" href="/import">
+                            <i class="bi bi-upload"></i> Import
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'verify_ocr' %}active fw-bold text-primary{% endif %}"
-                            href="/verify_ocr">
-                            <i class="bi bi-file-earmark-text"></i> Vérification OCR
+                        <a class="nav-link {% if active_page == 'split' %}active{% endif %}" href="/split">
+                            <i class="bi bi-scissors"></i> Découpage
                         </a>
                     </li>
-                </ul>
-                <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="/settings" title="Configuration">
-                            <i class="bi bi-gear-fill"></i>
+                        <a class="nav-link {% if active_page == 'ocr' %}active{% endif %}" href="/ocr">
+                            <i class="bi bi-eye"></i> OCR
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if active_page == 'verify_ocr' %}active{% endif %}" href="/verify_ocr">
+                            <i class="bi bi-file-earmark-text"></i> Vérif OCR
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if active_page == 'correction' %}active{% endif %}" href="/correction">
+                            <i class="bi bi-robot"></i> Correction
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if active_page == 'verify' %}active{% endif %}" href="/verify">
+                            <i class="bi bi-check2-all"></i> Vérif Correction
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if active_page == 'bilan' %}active{% endif %}" href="/bilan">
+                            <i class="bi bi-bar-chart-fill"></i> Bilan
                         </a>
                     </li>
                 </ul>

@@ -102,7 +102,79 @@ def index():
 
 @app.route('/import')
 def import_page():
-    return render_template('import.html', active_page='import')
+    return render_template('import.html', active_page='import', current_dir=config.project_dir)
+
+# --- API ROUTES: Project Management ---
+
+@app.route('/api/project/set', methods=['POST'])
+def api_project_set():
+    """Définit le dossier du projet."""
+    data = request.json
+    new_dir = data.get('project_dir', '')
+    if new_dir and os.path.isdir(new_dir):
+        config.project_dir = new_dir
+        config.save()
+        global splitter_doc
+        if splitter_doc:
+            splitter_doc.close()
+        splitter_doc = None
+        return jsonify({"success": True, "project_dir": config.project_dir})
+    return jsonify({"success": False, "error": "Dossier invalide"}), 400
+
+@app.route('/api/project/check')
+def api_project_check():
+    """Vérifie la structure du dossier projet."""
+    project_dir = config.project_dir
+    files = {
+        'sujet.md': os.path.exists(os.path.join(project_dir, 'sujet.md')),
+        'corrige.md': os.path.exists(os.path.join(project_dir, 'corrige.md')),
+        'bareme.csv': os.path.exists(os.path.join(project_dir, 'bareme.csv')),
+        'liste-etudiants.csv': os.path.exists(os.path.join(project_dir, 'liste-etudiants.csv')),
+        'correspondance.csv': os.path.exists(os.path.join(project_dir, 'correspondance.csv')),
+        'copiesA3.pdf': os.path.exists(os.path.join(project_dir, 'copiesA3.pdf')),
+        'copiesA4_sorted.pdf': os.path.exists(os.path.join(project_dir, 'copiesA4_sorted.pdf')),
+    }
+    # Compter les copies
+    copies_dir = os.path.join(project_dir, 'copies_anonymes_validees')
+    nb_pdfs = 0
+    nb_extractions = 0
+    if os.path.isdir(copies_dir):
+        for f in os.listdir(copies_dir):
+            if f.startswith('Copie_') and f.endswith('.pdf'):
+                nb_pdfs += 1
+            if f.startswith('Copie_') and os.path.isdir(os.path.join(copies_dir, f)):
+                nb_extractions += 1
+    
+    return jsonify({
+        "project_dir": project_dir,
+        "files": files,
+        "nb_copies_pdf": nb_pdfs,
+        "nb_extractions": nb_extractions
+    })
+
+@app.route('/api/bareme/generate', methods=['POST'])
+def api_bareme_generate():
+    """Génère le barème via subject_analysis.py."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['python3', 'correct_ai/subject_analysis.py', '--project-dir', config.project_dir],
+            capture_output=True, text=True, timeout=120,
+            cwd=os.path.dirname(config.project_dir) if os.path.dirname(config.project_dir) else '.'
+        )
+        if result.returncode == 0:
+            # Lire le barème généré
+            bareme_path = os.path.join(config.project_dir, 'bareme.csv')
+            bareme_data = []
+            if os.path.exists(bareme_path):
+                with open(bareme_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    bareme_data = list(reader)
+            return jsonify({"success": True, "bareme": bareme_data, "output": result.stdout})
+        else:
+            return jsonify({"success": False, "error": result.stderr or result.stdout}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # --- UTILS: Student Loading ---
 def load_students():
@@ -1058,6 +1130,76 @@ def rebuild_extraction(copie_id):
         return jsonify({"success": True, "message": f"extraction.md regénérée avec {len(parts)} pages"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/ocr')
+def ocr_page():
+    return render_template('ocr.html', active_page='ocr')
+
+@app.route('/correction')
+def correction_page():
+    return render_template('correction.html', active_page='correction')
+
+@app.route('/bilan')
+def bilan_page():
+    return render_template('bilan.html', active_page='bilan')
+
+@app.route('/api/bilan/stats')
+def api_bilan_stats():
+    """Retourne les stats globales de la base pour le dashboard."""
+    try:
+        db = get_db(config.project_dir)
+        
+        # Nombre de copies
+        nb_copies = db.execute("SELECT COUNT(*) FROM copies").fetchone()[0]
+        
+        # Nombre de questions dans le barème
+        nb_questions = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0]
+        
+        # Nombre total de corrections
+        nb_corrections = db.execute("SELECT COUNT(*) FROM corrections").fetchone()[0]
+        
+        # Copies entièrement corrigées (ont toutes les questions)
+        nb_full = db.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT copie_id, COUNT(*) as cnt FROM corrections
+                GROUP BY copie_id HAVING cnt = ?
+            )
+        """, [nb_questions]).fetchone()[0]
+        
+        # Notes par copie
+        notes = db.execute("""
+            SELECT c.copie_id,
+                   ROUND(SUM(CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END), 1) as total,
+                   COUNT(*) as nb_corr
+            FROM corrections c
+            GROUP BY c.copie_id
+            ORDER BY c.copie_id
+        """).fetchall()
+        
+        # Total points du barème
+        max_points = db.execute("SELECT SUM(points) FROM bareme").fetchone()[0] or 0
+        
+        # Copies problématiques (moins de 100% des corrections)
+        problematic = db.execute("""
+            SELECT copie_id, COUNT(*) as cnt FROM corrections
+            GROUP BY copie_id HAVING cnt < ?
+            ORDER BY copie_id
+        """, [nb_questions]).fetchall()
+        
+        db.close()
+        
+        return jsonify({
+            "nb_copies": nb_copies,
+            "nb_questions": nb_questions,
+            "nb_corrections": nb_corrections,
+            "nb_fully_corrected": nb_full,
+            "max_points": max_points,
+            "notes": [{"copie_id": n['copie_id'], "total": n['total'], "nb_corr": n['nb_corr']} for n in notes],
+            "problematic": [{"copie_id": p['copie_id'], "missing": nb_questions - p['cnt']} for p in problematic]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

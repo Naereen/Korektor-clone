@@ -11,19 +11,16 @@
         border-radius: 4px;
         overflow: hidden;
     }
-
     .toolbar {
         padding: 10px;
         background-color: #f8f9fa;
         border-bottom: 1px solid #dee2e6;
     }
-
     .content-area {
         flex: 1;
         display: flex;
         overflow: hidden;
     }
-
     .pdf-panel {
         flex: 1;
         border-right: 1px solid #dee2e6;
@@ -31,7 +28,6 @@
         flex-direction: column;
         overflow: hidden;
     }
-
     .editor-panel {
         flex: 1;
         display: flex;
@@ -40,7 +36,6 @@
         padding: 15px;
         background-color: #fff;
     }
-
     .page-selector {
         display: flex;
         gap: 5px;
@@ -52,13 +47,11 @@
         min-height: 50px;
         max-height: 120px;
     }
-    
     .pdf-viewer-container {
         flex: 1;
         overflow: auto;
-        min-height: 0;  /* Important for flex children */
+        min-height: 0;
     }
-
     .page-btn {
         padding: 5px 10px;
         border: 1px solid #dee2e6;
@@ -67,21 +60,10 @@
         border-radius: 4px;
         transition: all 0.2s;
     }
-
-    .page-btn:hover {
-        background: #e9ecef;
-    }
-
-    .page-btn.active {
-        background: #4f46e5;
-        color: white;
-        border-color: #4f46e5;
-    }
-
-    .page-btn.has-content {
-        font-weight: bold;
-    }
-
+    .page-btn:hover { background: #e9ecef; }
+    .page-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; }
+    .page-btn.has-content { font-weight: bold; }
+    .page-btn.unsaved { border-color: #ffc107; background: #fff3cd; }
     #markdown-editor {
         flex: 1;
         width: 100%;
@@ -93,7 +75,6 @@
         resize: none;
         overflow-y: auto;
     }
-
     #markdown-preview {
         flex: 1;
         overflow-y: auto;
@@ -104,30 +85,48 @@
         background-color: #f8f9fa;
         font-family: system-ui, -apple-system, sans-serif;
     }
-
     .action-bar {
         display: flex;
         gap: 10px;
         padding: 10px 0;
         border-bottom: 1px solid #dee2e6;
     }
+    .latex-errors {
+        display: none;
+        padding: 5px 10px;
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        margin-top: 5px;
+    }
+    .latex-errors.has-errors { display: block; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     MathJax = {
-        tex: {
-            inlineMath: [['$', '$'], ['\\(', '\\)']],
-            displayMath: [['$$', '$$'], ['\\[', '\\]']],
-            processEscapes: true
-        }
+        tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']], processEscapes: true },
+        options: { ignoreHtmlClass: 'no-mathjax' }
     };
 </script>
 <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 {% endblock %}
 
 {% block content %}
+<div id="unsaved-modal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title">Modifications non sauvegardées</h6></div>
+            <div class="modal-body small">Voulez-vous sauvegarder les modifications avant de continuer ?</div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-danger btn-sm" data-action="discard">Jeter les modifications</button>
+                <button class="btn btn-primary btn-sm" data-action="save">Sauvegarder</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="main-container-ocr">
-    <!-- Toolbar -->
     <div class="toolbar d-flex align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-3">
             <h5 class="mb-0">Vérification OCR</h5>
@@ -135,32 +134,30 @@
                 <option value="">Chargement...</option>
             </select>
         </div>
-        <div>
+        <div class="d-flex align-items-center gap-2">
             <span id="save-status" class="badge bg-secondary">Prêt</span>
-            <button id="cancel-btn" class="btn btn-outline-secondary btn-sm ms-2">Annuler modifications</button>
-            <button id="save-all-btn" class="btn btn-success btn-sm ms-2">Reconstruire extraction.md</button>
+            <button id="cancel-btn" class="btn btn-outline-danger btn-sm">Annuler</button>
+            <button id="save-btn" class="btn btn-primary btn-sm">Sauvegarder</button>
+            <button id="rebuild-btn" class="btn btn-success btn-sm">Reconstruire extraction.md</button>
         </div>
     </div>
 
-    <!-- Main Content -->
     <div class="content-area">
-        <!-- PDF Viewer -->
         <div class="pdf-panel">
-            <!-- Page Selector -->
             <div class="page-selector" id="page-selector"></div>
             <div class="pdf-viewer-container">
                 <img id="pdf-viewer" src="" style="max-width:100%;height:auto;object-fit:scale-down;background:#f8f9fa;">
             </div>
         </div>
 
-        <!-- Markdown Editor -->
         <div class="editor-panel">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="fw-bold">Contenu Markdown (Page <span id="current-page-num">-</span>)</span>
-                <button id="toggle-preview-btn" class="btn btn-sm btn-outline-secondary">👁️ Aperçu</button>
+                <span class="fw-bold">Page <span id="current-page-num">-</span></span>
+                <button id="toggle-preview-btn" class="btn btn-sm btn-outline-secondary">Apercu</button>
             </div>
             <textarea id="markdown-editor" spellcheck="false"></textarea>
             <div id="markdown-preview"></div>
+            <div id="latex-errors" class="latex-errors"></div>
         </div>
     </div>
 </div>
@@ -168,293 +165,307 @@
 
 {% block extra_js %}
 <script>
-    let currentCopy = null;
-    let currentPage = null;
-    let pagesData = {}; // {page_num: content}
-    let originalPagesData = {}; // {page_num: original_content} for cancel
-    let totalPages = 0;
-    let isPreviewMode = false;
-    
-    const copySelect = document.getElementById('copy-select');
-    const pageSelector = document.getElementById('page-selector');
-    const pdfViewer = document.getElementById('pdf-viewer');
-    const markdownEditor = document.getElementById('markdown-editor');
-    const markdownPreview = document.getElementById('markdown-preview');
-    const togglePreviewBtn = document.getElementById('toggle-preview-btn');
-    const cancelBtn = document.getElementById('cancel-btn');
-    const saveAllBtn = document.getElementById('save-all-btn');
-    const currentPageNum = document.getElementById('current-page-num');
-    const saveStatus = document.getElementById('save-status');
+let currentCopy = null;
+let currentPage = null;
+let pagesData = {};
+let originalPagesData = {};
+let hasUnsavedChanges = false;
+let totalPages = 0;
+let isPreviewMode = false;
+let pendingAction = null;  // {type: 'copy'|'page'|'leave', target: ...}
+let afterSaveCallback = null;
 
-    document.addEventListener('DOMContentLoaded', async () => {
-        await loadCopies();
-        
-        copySelect.addEventListener('change', loadCopyData);
-        togglePreviewBtn.addEventListener('click', togglePreview);
-        cancelBtn.addEventListener('click', cancelModifications);
-        saveAllBtn.addEventListener('click', saveAllPages);
-        
-        // Track if current page has unsaved changes
-        markdownEditor.addEventListener('input', () => {
-            if (currentCopy && currentPage) {
-                pagesData[currentPage] = markdownEditor.value;
-                console.log("Updated pagesData[" + currentPage + "]");
-            } else {
-                console.log("No currentCopy or currentPage yet");
-            }
-            setSaveStatus("Modifié", "warning");
-        });
+const copySelect = document.getElementById('copy-select');
+const pageSelector = document.getElementById('page-selector');
+const pdfViewer = document.getElementById('pdf-viewer');
+const markdownEditor = document.getElementById('markdown-editor');
+const markdownPreview = document.getElementById('markdown-preview');
+const togglePreviewBtn = document.getElementById('toggle-preview-btn');
+const cancelBtn = document.getElementById('cancel-btn');
+const saveBtn = document.getElementById('save-btn');
+const rebuildBtn = document.getElementById('rebuild-btn');
+const currentPageNum = document.getElementById('current-page-num');
+const saveStatus = document.getElementById('save-status');
+const latexErrors = document.getElementById('latex-errors');
+const unsavedModal = new bootstrap.Modal(document.getElementById('unsaved-modal'));
+
+// === Init ===
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadCopies();
+    copySelect.addEventListener('change', () => switchCopy(copySelect.value));
+    togglePreviewBtn.addEventListener('click', togglePreview);
+    cancelBtn.addEventListener('click', confirmCancel);
+    saveBtn.addEventListener('click', saveCurrentPage);
+    rebuildBtn.addEventListener('click', rebuildExtraction);
+    markdownEditor.addEventListener('input', onEditorChange);
+
+    // Modal buttons
+    document.querySelector('[data-action="save"]').addEventListener('click', () => {
+        unsavedModal.hide();
+        saveCurrentPage().then(() => executePendingAction());
+    });
+    document.querySelector('[data-action="discard"]').addEventListener('click', () => {
+        unsavedModal.hide();
+        hasUnsavedChanges = false;
+        markDirty(false);
+        executePendingAction();
     });
 
-    async function loadCopies() {
-        try {
-            const res = await fetch('/api/ocr/copies');
-            const copies = await res.json();
-            
-            copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
-            copies.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c;
-                opt.innerText = c;
-                copySelect.appendChild(opt);
-            });
-        } catch (e) {
-            console.error("Erreur chargement copies:", e);
+    // Warning on tab close
+    window.addEventListener('beforeunload', (e) => {
+        if (hasUnsavedChanges) {
+            e.preventDefault();
+            e.returnValue = '';
         }
-    }
+    });
+});
 
-    async function loadCopyData() {
-        const copyId = copySelect.value;
-        if (!copyId) {
-            currentCopy = null;
-            resetUI();
-            return;
-        }
-        
-        // Save current page if it has unsaved changes before switching copies
-        if (currentCopy && currentPage && pagesData[currentPage] !== originalPagesData[currentPage]) {
-            setSaveStatus("Enregistrement de la page en cours...", "info");
-            try {
-                await saveCurrentPage();
-                // Also update original after save
-                originalPagesData[currentPage] = pagesData[currentPage];
-            } catch (e) {
-                console.error("Erreur sauvegarde avant changement de copie:", e);
-            }
-        }
-        
-        // Always rebuild extraction.md when switching copies to ensure it's up to date
-        await saveAllPages();
-        
-        currentCopy = copyId;
-        setSaveStatus("Chargement...", "info");
-        
-        try {
-            // 1. PDF will be loaded when page is selected
-            // Start with empty
-            pdfViewer.src = "";
-            
-            // 2. Get pages list
-            const res = await fetch(`/api/ocr/pages/${copyId}`);
-            const data = await res.json();
-            pagesData = {...data.pages};
-            originalPagesData = {...data.pages};  // Store originals for cancel
-            totalPages = data.total_pages || Object.keys(pagesData).length;
-            
-            // 3. Populate page selector
-            populatePageSelector();
-            
-            // 4. Select first page with content or first page
-            const firstPage = Object.keys(pagesData).sort((a, b) => a - b)[0] || "1";
-            if (firstPage) {
-                await loadPage(firstPage);
-            }
-            
-            setSaveStatus("Prêt", "secondary");
-        } catch (e) {
-            console.error("Erreur chargement données copie:", e);
-            setSaveStatus("Erreur", "danger");
-        }
-    }
+// === Copies ===
+async function loadCopies() {
+    try {
+        const res = await fetch('/api/ocr/copies');
+        const copies = await res.json();
+        copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
+        copies.forEach(c => { const opt = document.createElement('option'); opt.value = c; opt.innerText = c; copySelect.appendChild(opt); });
+    } catch(e) { console.error(e); }
+}
 
-    function populatePageSelector() {
-        pageSelector.innerHTML = '';
-        
-        // Create buttons for all pages
-        for (let i = 1; i <= totalPages; i++) {
-            const pageNum = i.toString();
-            const hasContent = pagesData[pageNum] !== undefined;
-            
-            const btn = document.createElement('button');
-            btn.className = `page-btn ${hasContent ? 'has-content' : ''}`;
-            btn.innerText = `Page ${i}`;
-            btn.dataset.page = pageNum;
-            
-            btn.addEventListener('click', () => loadPage(pageNum));
-            
-            pageSelector.appendChild(btn);
-        }
+// === Navigation avec confirmation ===
+async function switchCopy(copyId) {
+    if (!copyId) { currentCopy = null; resetUI(); return; }
+    if (hasUnsavedChanges && currentCopy !== copyId) {
+        pendingAction = { type: 'copy', target: copyId };
+        unsavedModal.show();
+        return;
     }
+    await doSwitchCopy(copyId);
+}
 
-    async function loadPage(pageNum) {
-        if (!currentCopy || !pageNum) return;
-        
-        // Save previous page if it has unsaved changes
-        if (currentPage && pagesData[currentPage] !== originalPagesData[currentPage]) {
-            console.log("Saving page", currentPage, "before switching to", pageNum);
-            await saveCurrentPage();
-            // Also update original after save
-            originalPagesData[currentPage] = pagesData[currentPage];
-        }
-        
-        // Always rebuild extraction.md when switching pages to ensure it's up to date
-        await saveAllPages();
-        
-        currentPage = pageNum;
-        currentPageNum.innerText = pageNum;
-        
-        // Update active button
-        document.querySelectorAll('.page-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.page === pageNum);
-        });
-        
-        // Update PDF viewer to show the specific page as an image
-        const pdfUrl = `/api/ocr/pdf/${currentCopy}?page=${pageNum}&t=` + Date.now();
-        pdfViewer.src = pdfUrl;
-        
-        // Load markdown content
-        try {
-            const res = await fetch(`/api/ocr/content/${currentCopy}/${pageNum}`);
-            const data = await res.json();
-            markdownEditor.value = data.content || "";
-            
-            // Update pagesData and originalPagesData
-            const content = data.content || "";
-            pagesData[pageNum] = content;
-            originalPagesData[pageNum] = content;
-            
-            // Update button state
-            const btn = document.querySelector(`.page-btn[data-page="${pageNum}"]`);
-            if (btn) {
-                btn.classList.toggle('has-content', !!content);
-            }
-            
-            // Reset preview mode
-            if (isPreviewMode) {
-                togglePreview();
-            }
-            
-            setSaveStatus("Prêt", "secondary");
-        } catch (e) {
-            console.error("Erreur chargement page:", e);
-            markdownEditor.value = "";
-            setSaveStatus("Erreur", "danger");
-        }
-    }
-
-    async function saveCurrentPage() {
-        if (!currentCopy || !currentPage) return;
-        
-        const content = markdownEditor.value;
-        pagesData[currentPage] = content;
-        
-        setSaveStatus("Enregistrement...", "info");
-        
-        try {
-            await fetch(`/api/ocr/content/${currentCopy}/${currentPage}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: content })
-            });
-            
-            // Update button state
-            const btn = document.querySelector(`.page-btn[data-page="${currentPage}"]`);
-            if (btn) {
-                btn.classList.add('has-content');
-            }
-            
-            // Update original data after save
-            originalPagesData[currentPage] = content;
-            pagesData[currentPage] = content;
-            
-            setSaveStatus("Page enregistrée !", "success");
-            setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
-        } catch (e) {
-            console.error("Erreur sauvegarde page:", e);
-            setSaveStatus("Erreur sauvegarde", "danger");
-        }
-    }
-
-    async function saveAllPages() {
-        if (!currentCopy) return;
-        
-        setSaveStatus("Reconstruction extraction.md...", "info");
-        
-        try {
-            const res = await fetch(`/api/ocr/rebuild_extraction/${currentCopy}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pages: pagesData })
-            });
-            
-            const data = await res.json();
-            if (data.success) {
-                setSaveStatus("extraction.md reconstruit !", "success");
-                setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
-            } else {
-                throw new Error(data.error || "Erreur");
-            }
-        } catch (e) {
-            console.error("Erreur reconstruction:", e);
-            setSaveStatus("Erreur reconstruction", "danger");
-        }
-    }
-
-    function cancelModifications() {
-        if (!currentCopy || !currentPage) return;
-        
-        // Restore original content for current page
-        const originalContent = originalPagesData[currentPage] || "";
-        markdownEditor.value = originalContent;
-        pagesData[currentPage] = originalContent;
-        
-        setSaveStatus("Modifications annulées", "success");
-        setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
-    }
-
-    function togglePreview() {
-        isPreviewMode = !isPreviewMode;
-        if (isPreviewMode) {
-            const markdownText = markdownEditor.value;
-            markdownPreview.innerHTML = marked.parse(markdownText);
-            
-            if (window.MathJax) {
-                MathJax.typesetPromise([markdownPreview]).catch((err) => console.log(err));
-            }
-            
-            markdownEditor.style.display = 'none';
-            markdownPreview.style.display = 'block';
-            togglePreviewBtn.innerHTML = "📝 Editer";
-            togglePreviewBtn.classList.replace('btn-outline-secondary', 'btn-secondary');
-        } else {
-            markdownEditor.style.display = 'block';
-            markdownPreview.style.display = 'none';
-            togglePreviewBtn.innerHTML = "👁️ Aperçu";
-            togglePreviewBtn.classList.replace('btn-secondary', 'btn-outline-secondary');
-        }
-    }
-
-    function resetUI() {
+async function doSwitchCopy(copyId) {
+    currentCopy = copyId;
+    hasUnsavedChanges = false;
+    setSaveStatus("Chargement...", "info");
+    try {
         pdfViewer.src = "";
-        markdownEditor.value = "";
-        markdownPreview.innerHTML = "";
-        pageSelector.innerHTML = "";
-        currentPageNum.innerText = "-";
-    }
+        const res = await fetch(`/api/ocr/pages/${copyId}`);
+        const data = await res.json();
+        pagesData = {...data.pages};
+        originalPagesData = {...data.pages};
+        totalPages = data.total_pages || Object.keys(pagesData).length;
+        populatePageSelector();
+        const firstPage = Object.keys(pagesData).sort((a, b) => a - b)[0] || "1";
+        if (firstPage) await loadPage(firstPage);
+        setSaveStatus("Pret", "secondary");
+    } catch(e) { console.error(e); setSaveStatus("Erreur", "danger"); }
+}
 
-    function setSaveStatus(text, colorClass) {
-        saveStatus.innerText = text;
-        saveStatus.className = `badge bg-${colorClass}`;
+async function switchPage(pageNum) {
+    if (!currentCopy || !pageNum) return;
+    if (hasUnsavedChanges && pageNum !== currentPage) {
+        pendingAction = { type: 'page', target: pageNum };
+        unsavedModal.show();
+        return;
     }
+    await doSwitchPage(pageNum);
+}
+
+async function doSwitchPage(pageNum) {
+    currentPage = pageNum;
+    hasUnsavedChanges = false;
+    markDirty(false);
+    currentPageNum.innerText = pageNum;
+    document.querySelectorAll('.page-btn').forEach(b => b.classList.toggle('active', b.dataset.page === pageNum));
+    pdfViewer.src = `/api/ocr/pdf/${currentCopy}?page=${pageNum}&t=` + Date.now();
+    try {
+        const res = await fetch(`/api/ocr/content/${currentCopy}/${pageNum}`);
+        const data = await res.json();
+        const content = data.content || "";
+        markdownEditor.value = content;
+        pagesData[pageNum] = content;
+        originalPagesData[pageNum] = content;
+        updatePageButton(pageNum, !!content, false);
+        if (isPreviewMode) togglePreview();
+        setSaveStatus("Pret", "secondary");
+    } catch(e) { console.error(e); setSaveStatus("Erreur", "danger"); }
+}
+
+function executePendingAction() {
+    if (!pendingAction) return;
+    const action = pendingAction;
+    pendingAction = null;
+    afterSaveCallback = null;
+    if (action.type === 'copy') doSwitchCopy(action.target);
+    else if (action.type === 'page') doSwitchPage(action.target);
+}
+
+// === Page Selector ===
+function populatePageSelector() {
+    pageSelector.innerHTML = '';
+    for (let i = 1; i <= totalPages; i++) {
+        const pageNum = i.toString();
+        const hasContent = pagesData[pageNum] !== undefined && pagesData[pageNum].length > 0;
+        const btn = document.createElement('button');
+        btn.className = `page-btn ${hasContent ? 'has-content' : ''}`;
+        btn.innerText = `Page ${i}`;
+        btn.dataset.page = pageNum;
+        btn.addEventListener('click', () => switchPage(pageNum));
+        pageSelector.appendChild(btn);
+    }
+}
+
+function updatePageButton(pageNum, hasContent, isDirty) {
+    const btn = document.querySelector(`.page-btn[data-page="${pageNum}"]`);
+    if (!btn) return;
+    btn.classList.toggle('has-content', hasContent);
+    btn.classList.toggle('unsaved', isDirty);
+}
+
+// === Save ===
+async function saveCurrentPage() {
+    if (!currentCopy || !currentPage) return;
+    const content = markdownEditor.value;
+    pagesData[currentPage] = content;
+    setSaveStatus("Enregistrement...", "info");
+    try {
+        await fetch(`/api/ocr/content/${currentCopy}/${currentPage}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content})
+        });
+        originalPagesData[currentPage] = content;
+        hasUnsavedChanges = false;
+        markDirty(false);
+        updatePageButton(currentPage, !!content, false);
+        setSaveStatus("Sauvegarde !", "success");
+        setTimeout(() => setSaveStatus("Pret", "secondary"), 2000);
+    } catch(e) {
+        console.error(e);
+        setSaveStatus("Erreur sauvegarde", "danger");
+    }
+}
+
+async function rebuildExtraction() {
+    if (!currentCopy) return;
+    if (hasUnsavedChanges) {
+        pendingAction = { type: 'rebuild', target: null };
+        afterSaveCallback = () => doRebuild();
+        unsavedModal.show();
+        return;
+    }
+    await doRebuild();
+}
+
+async function doRebuild() {
+    setSaveStatus("Reconstruction...", "info");
+    try {
+        const res = await fetch(`/api/ocr/rebuild_extraction/${currentCopy}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pages: pagesData})
+        });
+        const data = await res.json();
+        if (data.success) {
+            setSaveStatus("extraction.md reconstruit !", "success");
+            setTimeout(() => setSaveStatus("Pret", "secondary"), 2000);
+        } else {
+            throw new Error(data.error || "Erreur");
+        }
+    } catch(e) { console.error(e); setSaveStatus("Erreur", "danger"); }
+}
+
+// === Cancel (Annuler) ===
+function confirmCancel() {
+    if (!currentCopy || !currentPage) return;
+    if (!hasUnsavedChanges) { setSaveStatus("Aucune modification", "secondary"); return; }
+    if (!confirm("Annuler les modifications de cette page ? Le contenu reviendra a l'etat de la derniere sauvegarde.")) return;
+    cancelCurrentPage();
+}
+
+function cancelCurrentPage() {
+    const originalContent = originalPagesData[currentPage] || "";
+    markdownEditor.value = originalContent;
+    pagesData[currentPage] = originalContent;
+    hasUnsavedChanges = false;
+    markDirty(false);
+    updatePageButton(currentPage, !!originalContent, false);
+    setSaveStatus("Modifications annulees", "success");
+    setTimeout(() => setSaveStatus("Pret", "secondary"), 2000);
+}
+
+// === Editor Change ===
+function onEditorChange() {
+    if (!currentCopy || !currentPage) return;
+    hasUnsavedChanges = true;
+    markDirty(true);
+    updatePageButton(currentPage, true, true);
+    setSaveStatus("Modifie", "warning");
+}
+
+function markDirty(dirty) {
+    document.querySelectorAll('.page-btn').forEach(b => b.classList.toggle('unsaved', false));
+    if (dirty && currentPage) {
+        const btn = document.querySelector(`.page-btn[data-page="${currentPage}"]`);
+        if (btn) btn.classList.add('unsaved');
+    }
+}
+
+// === Preview + LaTeX check ===
+function togglePreview() {
+    isPreviewMode = !isPreviewMode;
+    if (isPreviewMode) {
+        const md = markdownEditor.value;
+        markdownPreview.innerHTML = marked.parse(md);
+        if (window.MathJax) {
+            MathJax.typesetPromise([markdownPreview]).then(() => {
+                checkLatexErrors();
+            }).catch(() => checkLatexErrors());
+        }
+        markdownEditor.style.display = 'none';
+        markdownPreview.style.display = 'block';
+        togglePreviewBtn.innerHTML = "Editer";
+        togglePreviewBtn.classList.replace('btn-outline-secondary', 'btn-secondary');
+    } else {
+        markdownEditor.style.display = 'block';
+        markdownPreview.style.display = 'none';
+        latexErrors.style.display = 'none';
+        togglePreviewBtn.innerHTML = "Apercu";
+        togglePreviewBtn.classList.replace('btn-secondary', 'btn-outline-secondary');
+    }
+}
+
+function checkLatexErrors() {
+    // Detect common LaTeX issues in the preview
+    const html = markdownPreview.innerHTML;
+    const issues = [];
+    // Check for [Math Processing Error] which MathJax inserts on failure
+    if (html.includes('Math Processing Error')) issues.push('Erreur de rendu LaTeX detectee');
+    // Check for unbalanced $ signs (simple heuristic)
+    const text = markdownEditor.value;
+    const dollars = (text.match(/\$/g) || []).length;
+    if (dollars % 2 !== 0) issues.push('Nombre impair de $ - verifier les formules LaTeX');
+    // Check for unescaped backslashes that might cause issues
+    const singleBackslash = (text.match(/(?<!\\)\\(?!["\\{}()[\]])/g) || []).length;
+    if (singleBackslash > 0) issues.push('Backslashs non echappes detectes');
+
+    latexErrors.innerHTML = issues.map(i => '<div>' + i + '</div>').join('');
+    latexErrors.classList.toggle('has-errors', issues.length > 0);
+}
+
+// === UI Helpers ===
+function resetUI() {
+    pdfViewer.src = "";
+    markdownEditor.value = "";
+    markdownPreview.innerHTML = "";
+    pageSelector.innerHTML = "";
+    currentPageNum.innerText = "-";
+    hasUnsavedChanges = false;
+}
+
+function loadPage(pageNum) { switchPage(pageNum); }
+
+function setSaveStatus(text, colorClass) {
+    saveStatus.innerText = text;
+    saveStatus.className = `badge bg-${colorClass}`;
+}
 </script>
 {% endblock %}

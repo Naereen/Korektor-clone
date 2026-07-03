@@ -1,62 +1,95 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-8">
-        <div class="card shadow">
+<div class="row">
+    <div class="col-12">
+        <h3><i class="bi bi-upload"></i> Import - Configuration du projet</h3>
+        <hr>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Colonne gauche: Dossier + Structure -->
+    <div class="col-md-6">
+        <!-- Section 1: Dossier du projet -->
+        <div class="card shadow-sm mb-3">
             <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">1. Importation & Scan</h4>
+                <h5 class="mb-0"><i class="bi bi-folder2-open"></i> Dossier du projet</h5>
             </div>
             <div class="card-body">
-                <p class="lead">Importez votre fichier PDF scanné (format A3 ou A4).</p>
-                <div class="alert alert-info">
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control font-monospace" id="projectDir"
+                           value="{{ current_dir }}" placeholder="/chemin/vers/projet">
+                    <button class="btn btn-outline-secondary" type="button" id="btnBrowse"
+                            title="Parcourir...">
+                        <i class="bi bi-folder-symlink"></i>
+                    </button>
+                    <button class="btn btn-primary" type="button" id="btnSetDir">
+                        <i class="bi bi-check-lg"></i> Valider
+                    </button>
+                </div>
+                <div id="dirFeedback" class="small"></div>
+            </div>
+        </div>
+
+        <!-- Section 2: Structure du dossier -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-list-check"></i> Vérification de la structure</h5>
+            </div>
+            <div class="card-body" id="structureCheck">
+                <div class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    Chargement...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Colonne droite: Barème + Import PDF -->
+    <div class="col-md-6">
+        <!-- Section 3: Barème -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-table"></i> Barème</h5>
+            </div>
+            <div class="card-body" id="baremeSection">
+                <p class="text-muted small">Générez le barème à partir du sujet, puis validez-le.</p>
+                <button class="btn btn-warning" id="btnGenerateBareme" onclick="generateBareme()">
+                    <i class="bi bi-magic"></i> Générer le barème
+                </button>
+                <div id="baremeResult" class="mt-2"></div>
+            </div>
+        </div>
+
+        <!-- Section 4: Import PDF -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-file-pdf"></i> Import du PDF scanné</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info small">
                     <i class="bi bi-info-circle"></i>
-                    Si vous avez scanné en A3 (2 pages par feuille), l'outil va automatiquement les découper en pages A4
-                    individuelles.
+                    Si vous avez scanné en A3 (2 pages par feuille), l'outil va découper en A4.
                 </div>
-
-                <div class="card bg-light mb-4">
-                    <div class="card-body">
-                        <h6 class="card-title fw-bold"><i class="bi bi-folder2-open me-2"></i>Fichiers requis dans le
-                            dossier du projet :</h6>
-                        <ul class="list-unstyled mb-0 small">
-                            <li><i class="bi bi-file-earmark-markdown-fill text-primary"></i> <code>sujet.md</code> : Le
-                                sujet de l'examen.</li>
-                            <li><i class="bi bi-file-earmark-markdown-fill text-success"></i> <code>corrige.md</code> :
-                                Le corrigé type (contexte pour l'IA).</li>
-                            <li><i class="bi bi-table text-warning"></i> <code>bareme.csv</code> : Le barème de notation
-                                précis.</li>
-                            <li><i class="bi bi-people-fill text-info"></i> <code>liste-etudiants.csv</code> : Liste
-                                pour identification (Num, Nom, Prénom).</li>
-                        </ul>
+                <form id="uploadForm">
+                    <div class="mb-2">
+                        <input class="form-control" type="file" id="pdfFile" accept=".pdf" required>
                     </div>
-                </div>
-
-                <form id="uploadForm" class="mt-4">
-                    <div class="mb-3">
-                        <label for="pdfFile" class="form-label fw-bold">Fichier PDF (A3 Paysage)</label>
-                        <input class="form-control form-control-lg" type="file" id="pdfFile" accept=".pdf" required>
-                    </div>
-
-                    <div class="form-check mb-3">
+                    <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="sortBooklet" checked>
-                        <label class="form-check-label" for="sortBooklet">
-                            Réorganiser les pages (Mode Livret: 4,1,2,3 → 1,2,3,4)
+                        <label class="form-check-label small" for="sortBooklet">
+                            Réorganiser mode livret (4,1,2,3 → 1,2,3,4)
                         </label>
                     </div>
-
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg" id="btnUpload">
-                            Lancer le Traitement
-                        </button>
-                    </div>
+                    <button type="submit" class="btn btn-success w-100" id="btnUpload">
+                        <i class="bi bi-upload"></i> Importer et découper
+                    </button>
                 </form>
-
-                <div id="progressArea" class="mt-4" style="display:none;">
-                    <h5>Traitement en cours...</h5>
+                <div id="uploadProgress" class="mt-2" style="display:none;">
                     <div class="progress">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                            style="width: 100%"></div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width: 100%"></div>
                     </div>
                 </div>
             </div>
@@ -67,45 +100,152 @@
 
 {% block extra_js %}
 <script>
-    document.getElementById('uploadForm').addEventListener('submit', async function (e) {
-        e.preventDefault();
+// === Initialisation au chargement ===
+document.addEventListener('DOMContentLoaded', function() {
+    checkStructure();
+});
 
-        const fileInput = document.getElementById('pdfFile');
-        const sortBooklet = document.getElementById('sortBooklet').checked;
-
-        if (!fileInput.files[0]) {
-            alert("Veuillez sélectionner un fichier.");
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-        formData.append('sort_booklet', sortBooklet);
-
-        document.getElementById('btnUpload').disabled = true;
-        document.getElementById('progressArea').style.display = 'block';
-
-        try {
-            const response = await fetch('/api/import', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                alert("Traitement réussi ! Redirection vers le découpage...");
-                window.location.href = "/split";
-            } else {
-                alert("Erreur: " + result.error);
-                document.getElementById('btnUpload').disabled = false;
-                document.getElementById('progressArea').style.display = 'none';
-            }
-        } catch (error) {
-            alert("Erreur réseau: " + error);
-            document.getElementById('btnUpload').disabled = false;
-            document.getElementById('progressArea').style.display = 'none';
+// === Section 1: Dossier projet ===
+document.getElementById('btnSetDir').addEventListener('click', function() {
+    const dir = document.getElementById('projectDir').value.trim();
+    if (!dir) return;
+    fetch('/api/project/set', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_dir: dir})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const fb = document.getElementById('dirFeedback');
+        if (data.success) {
+            fb.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Dossier défini: ' + data.project_dir + '</span>';
+            checkStructure();
+        } else {
+            fb.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> ' + data.error + '</span>';
         }
     });
+});
+
+document.getElementById('btnBrowse').addEventListener('click', function() {
+    const current = document.getElementById('projectDir').value;
+    const newPath = prompt('Chemin du dossier projet :', current);
+    if (newPath) {
+        document.getElementById('projectDir').value = newPath;
+        document.getElementById('btnSetDir').click();
+    }
+});
+
+// === Section 2: Vérification structure ===
+function checkStructure() {
+    fetch('/api/project/check')
+        .then(r => r.json())
+        .then(data => {
+            let html = '<p class="small mb-1"><code>' + data.project_dir + '</code></p>';
+            html += '<ul class="list-group list-group-flush small">';
+            const labels = {
+                'sujet.md': 'Sujet',
+                'corrige.md': 'Corrigé',
+                'bareme.csv': 'Barème',
+                'liste-etudiants.csv': 'Liste étudiants',
+                'correspondance.csv': 'Correspondance copies',
+                'copiesA3.pdf': 'PDF A3 original',
+                'copiesA4_sorted.pdf': 'PDF A4 découpé'
+            };
+            for (const [fname, exists] of Object.entries(data.files)) {
+                const icon = exists ? '<i class="bi bi-check-circle-fill text-success"></i>' :
+                                      '<i class="bi bi-x-circle-fill text-danger"></i>';
+                html += '<li class="list-group-item d-flex justify-content-between py-1">' +
+                        '<span>' + icon + ' ' + (labels[fname] || fname) + '</span>' +
+                        '<code class="text-muted">' + fname + '</code></li>';
+            }
+            html += '</ul>';
+            html += '<div class="mt-2 small">';
+            html += '<span class="badge bg-primary me-1">' + data.nb_copies_pdf + ' PDFs copie</span>';
+            html += '<span class="badge bg-info">' + data.nb_extractions + ' extractions OCR</span>';
+            html += '</div>';
+            document.getElementById('structureCheck').innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById('structureCheck').innerHTML =
+                '<div class="alert alert-danger small">Erreur: ' + err + '</div>';
+        });
+}
+
+// === Section 3: Barème ===
+function generateBareme() {
+    const btn = document.getElementById('btnGenerateBareme');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération...';
+    
+    fetch('/api/bareme/generate', {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-magic"></i> Générer le barème';
+            
+            if (data.success) {
+                let html = '<div class="table-responsive" style="max-height:400px;overflow-y:auto;">';
+                html += '<table class="table table-sm table-striped small">';
+                html += '<thead class="table-dark"><tr>';
+                if (data.bareme.length > 0) {
+                    Object.keys(data.bareme[0]).forEach(k => {
+                        html += '<th>' + k + '</th>';
+                    });
+                }
+                html += '</tr></thead><tbody>';
+                data.bareme.forEach(row => {
+                    html += '<tr>';
+                    Object.values(row).forEach(v => {
+                        html += '<td>' + (v || '') + '</td>';
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+                html += '<p class="text-success small mt-1"><i class="bi bi-check-circle"></i> Barème généré (' + data.bareme.length + ' questions)</p>';
+                document.getElementById('baremeResult').innerHTML = html;
+            } else {
+                document.getElementById('baremeResult').innerHTML =
+                    '<div class="alert alert-danger small">' + data.error + '</div>';
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-magic"></i> Générer le barème';
+            document.getElementById('baremeResult').innerHTML =
+                '<div class="alert alert-danger small">Erreur: ' + err + '</div>';
+        });
+}
+
+// === Section 4: Import PDF ===
+document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('pdfFile');
+    if (!fileInput.files[0]) {
+        alert('Veuillez sélectionner un fichier PDF.');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('sort_booklet', document.getElementById('sortBooklet').checked);
+
+    document.getElementById('btnUpload').disabled = true;
+    document.getElementById('uploadProgress').style.display = 'block';
+
+    try {
+        const resp = await fetch('/api/import', {method: 'POST', body: formData});
+        const result = await resp.json();
+        if (result.success) {
+            alert('Import réussi ! Redirection vers le découpage...');
+            window.location.href = '/split';
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch(err) {
+        alert('Erreur réseau: ' + err);
+    } finally {
+        document.getElementById('btnUpload').disabled = false;
+        document.getElementById('uploadProgress').style.display = 'none';
+    }
+});
 </script>
 {% endblock %}
