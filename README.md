@@ -22,11 +22,13 @@
 ## Installation
 
 1.  **Prérequis** : Python 3.12+, [uv](https://docs.astral.sh/uv/)
-2.  **Installer les dépendances** :
+2.  **Créer l'environnement virtuel et installer les dépendances** :
     ```bash
-    uv sync
+    uv venv
+    source .venv/bin/activate
+    uv pip install -r requirements.txt
     ```
-3. **Récupérer une clé d'API LLM** sur [https://conversation.ia.unistra.fr/](https://conversation.ia.unistra.fr/) et la définir dans vos variables d'environnement :
+3.  **Récupérer une clé d'API LLM** sur [https://conversation.ia.unistra.fr/](https://conversation.ia.unistra.fr/) et la définir dans vos variables d'environnement :
     ```bash
     export UNISTRA_API_KEY="votre_cle_ici"
     ```
