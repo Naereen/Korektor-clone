@@ -558,7 +558,7 @@ définit pas de destructeur explicitement ?
 -   [ ] E. On peut changer la priorité des opérateurs (faire que `+`
     soit prioritaire sur `*`).
 
-**Q22.** Écriture d'un destructeur pour la classe `BinTree` :
+**Q22a.** Écriture d'un destructeur pour la classe `BinTree` :
 
 **Réponse :**
 
@@ -633,7 +633,7 @@ private:
 };
 ```
 
-**Q22.** Voici une proposition d'implémentation de la méthode `insert`
+**Q22b.** Voici une proposition d'implémentation de la méthode `insert`
 qui insère une valeur dans l'arbre, mais toujours dans le sous-arbre
 gauche.
 
