@@ -20,46 +20,33 @@
 
 ## Installation
 
-1.  **Prérequis** : Python 3.8+
-2.  **Créer un environnement virtuel** :
+1.  **Prérequis** : Python 3.12+, [uv](https://docs.astral.sh/uv/)
+2.  **Installer les dépendances** :
     ```bash
-    uv venv  # ou python -m venv .venv
-    source .venv/bin/activate  # Sur Linux/Mac
-    # .venv\Scripts\activate   # Sur Windows
-    ```
-3.  **Installer les dépendances** :
-    ```bash
-    uv pip install -r requirements.txt # ou pip install -r requirements.txt
-    pip install json_repair  # Pour réparer les erreurs JSON LaTeX
+    uv sync
     ```
 
 ## Utilisation
 
 1.  **Lancer l'application** :
     ```bash
-    python correct_ai/app.py
+    uv run python correct_ai/app.py
     ```
     L'interface est accessible sur [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
 2.  **Configurer le projet** :
     *   L'application travaille par défaut dans le dossier `./exemple`.
-    *   Vous pouvez changer de dossier via l'interface "Paramètres".
-    *   Assurez-vous d'avoir vos fichiers de contexte (`sujet.md`, `corrige.md`, `bareme.csv`, `liste-etudiants.csv`).
+    *   Le dossier de travail se change depuis l'onglet **Import** (champ "Dossier du projet").
+    *   Fichiers attendus : `sujet.md`, `corrige.md`, `bareme.csv`, `liste-etudiants.csv`.
 
 3.  **Workflow** :
-    *   **Découpage** : Importez vos PDF (A3 ou A4) et validez le découpage et l'identification des étudiants.
-    *   **Extraction OCR** : Transcrivez le contenu manuscrit en Markdown via l'onglet "Vérification OCR".
-    *   **Traitement** (Batch) : Lancez la correction IA pour tout ou partie des copies.
-    *   **Vérification** : Passez en revue chaque copie via l'onglet "Vérification". L'interface affiche :
-        *   Le PDF à gauche
-        *   **5 champs clairs** à droite :
-            - Réponse Étudiant (les réponses transcrites)
-            - Barème / Réponse Attendue (le corrigé)
-            - Commentaire (retour du LLM)
-            - **Raisonnement LLM** (explication détaillée du processus de correction)
-            - Note + champs QCM (si applicable)
-        *   Modifiez les notes ou commentaires si nécessaire.
-        *   Cliquez sur "Enregistrer Tout". Vos modifications sont sauvées dans la **base SQLite** (`korektor.db`).
+    *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné.
+    *   **Découpage** : Validez le découpage A3→A4 et l'identification des étudiants.
+    *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
+    *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page, avec aperçu LaTeX.
+    *   **Correction** : Lancez la correction automatique incrémentale sur un lot de copies.
+    *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
+    *   **Bilan** : Dashboard avec l'état global : nombre de copies, notes, copies problématiques.
 
 ## Structure des Données
 
@@ -121,7 +108,7 @@ GET /api/db/copies
 GET /api/db/corrections/<copie_id>
 
 # Statistiques de correction
-GET /api/db/stats
+GET /api/bilan/stats
 ```
 
 ## Commandes CLI
@@ -131,23 +118,19 @@ GET /api/db/stats
 python correct_ai/subject_analysis.py --project-dir mon_projet
 ```
 
-### Corriger des copies
+### Corriger des copies (v2, incrémentale)
 ```bash
-# Une copie spécifique
-python correct_ai/batch_correction.py --project-dir mon_projet --start 1 --end 1 --force
-
 # Toutes les copies
-python correct_ai/batch_correction.py --project-dir mon_projet --start 1 --end 99
+uv run python correct_ai/batch_correction_v2.py --project-dir mon_projet --start 1 --end 31
 
-# Avec un provider spécifique
-python correct_ai/batch_correction.py --project-dir mon_projet --provider UNISTRA_QWEN --start 1 --end 5
+# Mode test (sans appel LLM)
+uv run python correct_ai/batch_correction_v2.py --project-dir mon_projet --start 1 --end 5 --test-mode
 ```
 
 ### Options disponibles
 - `--start` / `--end` : Plage de copies (inclusif)
 - `--provider` : Provider LLM (`UNISTRA_QWEN` par défaut)
-- `--no-thinking` : Désactive le mode reasoning (pour les modèles Qwen)
-- `--force` : Réécrase les corrections existantes
+- `--test-mode` : Mode test sans appel LLM réel
 
 ### Correction Incrémentale (v2)
 Le module `batch_correction_v2.py` implémente une approche avancée :
@@ -169,17 +152,18 @@ python correct_ai/batch_correction_v2.py --random-context 10
 
 ---
 
-## Nouvelle Interface : Vérification OCR
+## Interface : Vérification OCR
 
-Un nouvel onglet dédié permet de vérifier et corriger manuellement l'extraction OCR :
+L'onglet **Vérif OCR** permet de vérifier et corriger manuellement l'extraction :
 
-**Fonctionnalités** :
 - Visualisation page par page des PDF
 - Édition du contenu Markdown extrait
-- Prévisualisation en temps réel
-- Aperçu LaTeX via MathJax
-
-**Accès** : `http://127.0.0.1:5000/verify_ocr`
+- Prévisualisation en temps réel avec rendu LaTeX (MathJax)
+- **Bouton Sauvegarder** pour enregistrer la page courante
+- **Bouton Annuler** pour revenir à la dernière version sauvegardée
+- **Détection d'erreurs LaTeX** (dollars impairs, backslashs non échappés)
+- Confirmation avant de quitter une page modifiée
+- Reconstruction de `extraction.md` à partir de toutes les pages
 
 ## Dépannage
 
