@@ -361,10 +361,12 @@ class BatchJob:
                          if os.path.exists(sujet_path) and not sujet_exists:
                              print("Chargement de sujet.md...")
                              load_sujet(db, sujet_path)
+                             sujet_exists = True
                          
                          if os.path.exists(corrige_path) and not corrige_exists:
                              print("Chargement de corrige.md...")
                              load_corrige(db, corrige_path)
+                             corrige_exists = True
                          
                          if os.path.exists(bareme_path) and not bareme_exists:
                              print("Chargement de bareme.csv...")
@@ -373,7 +375,13 @@ class BatchJob:
                                  with open(sujet_path, "r", encoding="utf-8") as f:
                                      sujet_content = f.read()
                              load_bareme(db, bareme_path, sujet_content)
+                             bareme_exists = True
                          
+                         # Recalculer les flags apres chargement conditionnel
+                         sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
+                         corrige_exists = db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0
+                         bareme_exists = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0] > 0
+
                          if sujet_exists and corrige_exists and bareme_exists:
                              print("Sujet, corrigé et barème déjà chargés dans la base")
                              

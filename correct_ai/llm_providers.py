@@ -93,7 +93,7 @@ PROVIDERS: Dict[str, ProviderConfig] = {
     ),
     "UNISTRA_QWEN": ProviderConfig(
         name="UNISTRA_QWEN",
-        url="https://conversation-test.ia.unistra.fr/api/v1/chat/completions",
+        url="https://conversation.ia.unistra.fr/api/v1/chat/completions",
         model="chat-qwen",
         api_key_env="UNISTRA_API_KEY",
     ),

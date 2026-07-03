@@ -106,6 +106,8 @@ avec JUSTICE et UNIFORMITÉ.
 3. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
 4. Le commentaire doit être concis (pour l'étudiant), le raisonnement doit être plus détaillé que le commentaire et expliquer le processus qui a conduit à la note et au commentaire. Par exemple en s'appuyant sur le corrigé et des comparaisons avec certaines copies déjà corrigées.
 5. Format de sortie: JSON avec {{question: {{note: ..., commentaire: ..., raisonnement: ..., reponse_etudiant: ...}}}}
+6. CRITIQUE: Le nom de la question dans le JSON doit STRICTEMENT correspondre à celui du barème (ex: "Q4b-inversibilite" et non "Q4b", "Q5-maxnonlin" et non "Q5"). Ne jamais raccourcir ou simplifier les identifiants.
+7. OBLIGATOIRE: Inclure TOUTES les questions du barème dans le JSON, même si l'étudiant n'a pas répondu. Pour les questions sans réponse, indiquer note=0.0, reponse_etudiant="", commentaire="Non répondu." et expliquer brièvement dans le raisonnement ce qui était attendu.
 """
     
     return prompt
@@ -164,7 +166,10 @@ def build_simple_prompt(
 
 ---
 # INSTRUCTIONS:
-Corrige chaque question avec note, commentaire concis et raisonnement détaillé. Format de sortie: JSON avec {{question: {{note: ..., commentaire: ..., raisonnement: ...}}}}
+Corrige chaque question avec note, commentaire concis et raisonnement détaillé.
+Le nom de la question dans le JSON doit STRICTEMENT correspondre à celui du barème (ex: "Q4b-inversibilite", pas "Q4b").
+Inclure TOUTES les questions, même sans réponse (note=0.0, reponse_etudiant="", commentaire="Non répondu.").
+Format de sortie: JSON avec {{question: {{note: ..., commentaire: ..., raisonnement: ..., reponse_etudiant: ...}}}}
 """
     
     return prompt
