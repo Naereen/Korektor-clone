@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Chemin du répertoire du projet
 PROJECT_DIR = Path(__file__).parent.parent
-EXEMPLE2_DIR = PROJECT_DIR / "exemple2"
+EXEMPLE_DIR = PROJECT_DIR / "exemple"
 
 
 @pytest.fixture
@@ -28,13 +28,13 @@ def db_conn():
 def temp_test_dir(tmp_path):
     """
     Dossier temporaire pour simuler un projet de test.
-    Contient une copie des fichiers nécessaires depuis exemple2/.
+    Contient une copie des fichiers depuis exemple/ s'il existe.
     """
-    # Copier les fichiers de base depuis exemple2/
+    # Copier les fichiers de base depuis exemple/ (si disponible)
     files_to_copy = ["sujet.md", "corrige.md", "bareme.csv", "liste-etudiants.csv"]
     
     for file_name in files_to_copy:
-        src = EXEMPLE2_DIR / file_name
+        src = EXEMPLE_DIR / file_name
         if src.exists():
             shutil.copy(src, tmp_path / file_name)
     

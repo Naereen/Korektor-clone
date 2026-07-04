@@ -97,17 +97,41 @@ avec JUSTICE et UNIFORMITÉ.
 ## Texte OCR:
 {current_extraction}
 
-## PDF: [image de {current_pdf_path}]
+## PDF: les pages de la copie sont fournies en images ci-dessous.
 
 ---
+# FORMAT DE SORTIE — TEMPLATE JSON OBLIGATOIRE
+---
+
+Complète EXACTEMENT le template JSON ci-dessous. Tu ne dois NI supprimer NI ajouter de clés.
+Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudiant.
+
+```json
+{{
+"""
+    # Générer le template avec toutes les questions du barème
+    template_entries = []
+    for q in bareme:
+        template_entries.append(
+            f'    "{q["question"]}": {{'
+            f'"note": 0.0, '
+            f'"commentaire": "Non répondu.", '
+            f'"raisonnement": "", '
+            f'"reponse_etudiant": ""'
+            f'}}'
+        )
+    prompt += ",\n".join(template_entries)
+    prompt += "\n}}\n```\n"
+
+    prompt += """
+---
 # INSTRUCTIONS STRICTES:
-1. Pour chaque question du barème, attribue une note, un commentaire, et une explication détaillée (raisonnement).
+1. Pour CHAQUE question du template, remplace les valeurs par défaut par ta correction réelle.
 2. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
 3. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
-4. Le commentaire doit être concis (pour l'étudiant), le raisonnement doit être plus détaillé que le commentaire et expliquer le processus qui a conduit à la note et au commentaire. Par exemple en s'appuyant sur le corrigé et des comparaisons avec certaines copies déjà corrigées.
-5. Format de sortie: JSON avec {{question: {{note: ..., commentaire: ..., raisonnement: ..., reponse_etudiant: ...}}}}
-6. CRITIQUE: Le nom de la question dans le JSON doit STRICTEMENT correspondre à celui du barème (ex: "Q4b-inversibilite" et non "Q4b", "Q5-maxnonlin" et non "Q5"). Ne jamais raccourcir ou simplifier les identifiants.
-7. OBLIGATOIRE: Inclure TOUTES les questions du barème dans le JSON, même si l'étudiant n'a pas répondu. Pour les questions sans réponse, indiquer note=0.0, reponse_etudiant="", commentaire="Non répondu." et expliquer brièvement dans le raisonnement ce qui était attendu.
+4. Le commentaire doit être concis (pour l'étudiant), le raisonnement doit être plus détaillé que le commentaire.
+5. Si l'étudiant n'a pas répondu à une question, laisse les valeurs par défaut (note=0.0, commentaire="Non répondu.") et explique dans le raisonnement ce qui était attendu.
+6. NE SUPPRIME AUCUNE CLÉ du template. Ne modifie pas les noms des questions.
 """
     
     return prompt
@@ -162,14 +186,36 @@ def build_simple_prompt(
 ## Texte OCR:
 {extraction}
 
-## PDF: [image de {pdf_path}]
+## PDF: les pages de la copie sont fournies en images ci-dessous.
 
 ---
+# FORMAT DE SORTIE — TEMPLATE JSON OBLIGATOIRE
+---
+
+Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de clés.
+
+```json
+{{
+"""
+    template_entries = []
+    for q in bareme:
+        template_entries.append(
+            f'    "{q["question"]}": {{'
+            f'"note": 0.0, '
+            f'"commentaire": "Non répondu.", '
+            f'"raisonnement": "", '
+            f'"reponse_etudiant": ""'
+            f'}}'
+        )
+    prompt += ",\n".join(template_entries)
+    prompt += "\n}}\n```\n"
+
+    prompt += """
+---
 # INSTRUCTIONS:
-Corrige chaque question avec note, commentaire concis et raisonnement détaillé.
-Le nom de la question dans le JSON doit STRICTEMENT correspondre à celui du barème (ex: "Q4b-inversibilite", pas "Q4b").
-Inclure TOUTES les questions, même sans réponse (note=0.0, reponse_etudiant="", commentaire="Non répondu.").
-Format de sortie: JSON avec {{question: {{note: ..., commentaire: ..., raisonnement: ..., reponse_etudiant: ...}}}}
+1. Pour chaque question du template, remplace les valeurs par défaut.
+2. Si l'étudiant n'a pas répondu, laisse les valeurs par défaut et explique dans le raisonnement ce qui était attendu.
+3. NE SUPPRIME AUCUNE CLÉ du template.
 """
     
     return prompt

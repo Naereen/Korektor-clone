@@ -15,11 +15,6 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 
-# Fichiers de référence depuis exemple2
-EXEMPLE2_DIR = os.path.join(PROJECT_ROOT, "exemple2")
-SUJET_PATH = os.path.join(EXEMPLE2_DIR, "sujet.md")
-CORRIGE_PATH = os.path.join(EXEMPLE2_DIR, "corrige.md")
-BAREME_PATH = os.path.join(EXEMPLE2_DIR, "bareme.csv")
 
 
 def get_db_path(test_dir):
@@ -119,38 +114,37 @@ def test_db_with_schema(tmp_path):
 
 @pytest.fixture
 def test_db_with_data(test_db_with_schema, tmp_path):
-    """Base avec le schéma + données de base chargées depuis exemple2/."""
+    """Base avec le schéma + données synthétiques chargées."""
     conn = test_db_with_schema
-    
-    # Charger sujet et corrige
-    if os.path.exists(SUJET_PATH):
-        with open(SUJET_PATH, "r", encoding="utf-8") as f:
-            sujet_content = f.read()
-        conn.execute("INSERT OR REPLACE INTO sujet (id, contenu) VALUES (1, ?)", [sujet_content])
-    
-    if os.path.exists(CORRIGE_PATH):
-        with open(CORRIGE_PATH, "r", encoding="utf-8") as f:
-            corrige_content = f.read()
-        conn.execute("INSERT OR REPLACE INTO corrige (id, contenu) VALUES (1, ?)", [corrige_content])
-    
-    # Charger bareme
-    if os.path.exists(BAREME_PATH):
-        import csv
-        with open(BAREME_PATH, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conn.execute("""
-                    INSERT OR IGNORE INTO bareme 
-                    (question, texte_question, type_qcm, reponse_attendue, points)
-                    VALUES (?, ?, ?, ?, ?)
-                """, [
-                    row['question'],
-                    '',  # texte_question sera vide pour les tests
-                    row['qcm (oui/non)'] == 'oui',
-                    row['réponse attendue'],
-                    row['points']
-                ])
-    
+
+    # Créer des données synthétiques (ne dépend pas de exemple/)
+    sujet_content = "# Sujet Test\n\n(--Q1)\nQuestion 1: ...\n\n(--Q2)\nQuestion 2: ...\n"
+    corrige_content = "# Corrigé Test\n\nRéponse Q1: A\nRéponse Q2: B\n"
+
+    conn.execute("INSERT OR REPLACE INTO sujet (id, contenu) VALUES (1, ?)", [sujet_content])
+    conn.execute("INSERT OR REPLACE INTO corrige (id, contenu) VALUES (1, ?)", [corrige_content])
+
+    # Insérer des questions de barème synthétiques
+    import csv, io
+    bareme_csv = io.StringIO(
+        "question,qcm (oui/non),réponse attendue,points\n"
+        "Q1,oui,A,1.0\n"
+        "Q2,non,réponse libre,2.0\n"
+    )
+    reader = csv.DictReader(bareme_csv)
+    for row in reader:
+        conn.execute("""
+            INSERT OR IGNORE INTO bareme
+            (question, texte_question, type_qcm, reponse_attendue, points)
+            VALUES (?, ?, ?, ?, ?)
+        """, [
+            row['question'],
+            '',
+            row['qcm (oui/non)'] == 'oui',
+            row['réponse attendue'],
+            row['points']
+        ])
+
     conn.commit()
     return conn
 
@@ -194,58 +188,58 @@ class TestLoadSujetCorrige:
         db_path = os.path.join(tmp_path, "test.db")
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        
+
+        # Créer un fichier sujet.md synthétique
+        sujet_path = os.path.join(tmp_path, "sujet.md")
+        expected_content = "# Sujet Test\n\nQuestion 1\n"
+        with open(sujet_path, "w", encoding="utf-8") as f:
+            f.write(expected_content)
+
         # Initialiser
         conn.executescript("""
             CREATE TABLE sujet (id INTEGER PRIMARY KEY, contenu TEXT NOT NULL);
         """)
-        
+
         # Charger le sujet
-        with open(SUJET_PATH, "r", encoding="utf-8") as f:
+        with open(sujet_path, "r", encoding="utf-8") as f:
             content = f.read()
         conn.execute("INSERT OR REPLACE INTO sujet (id, contenu) VALUES (1, ?)", [content])
         conn.commit()
-        
+
         # Vérifier
         result = conn.execute("SELECT contenu FROM sujet WHERE id = 1").fetchone()
         assert result is not None, "Sujet non chargé"
-        
-        # Vérifier l'intégrité (hash)
-        stored_content = result['contenu']
-        with open(SUJET_PATH, "r", encoding="utf-8") as f:
-            expected_content = f.read()
-        
-        assert stored_content == expected_content, "Contenu du sujet ne correspond pas"
+        assert result['contenu'] == expected_content, "Contenu du sujet ne correspond pas"
         conn.close()
-    
+
     def test_load_corrige(self, tmp_path):
         """1.1.2 : Vérifier que corrige.md est bien chargé."""
         import sqlite3
         db_path = os.path.join(tmp_path, "test.db")
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        
+
+        # Créer un fichier corrige.md synthétique
+        corrige_path = os.path.join(tmp_path, "corrige.md")
+        expected_content = "# Corrigé Test\n\nRéponse: A\n"
+        with open(corrige_path, "w", encoding="utf-8") as f:
+            f.write(expected_content)
+
         # Initialiser
         conn.executescript("""
             CREATE TABLE corrige (id INTEGER PRIMARY KEY, contenu TEXT NOT NULL);
         """)
-        
+
         # Charger le corrige
-        with open(CORRIGE_PATH, "r", encoding="utf-8") as f:
+        with open(corrige_path, "r", encoding="utf-8") as f:
             content = f.read()
         conn.execute("INSERT OR REPLACE INTO corrige (id, contenu) VALUES (1, ?)", [content])
         conn.commit()
-        
+
         # Vérifier
         result = conn.execute("SELECT contenu FROM corrige WHERE id = 1").fetchone()
         assert result is not None, "Corrigé non chargé"
-        
-        # Vérifier l'intégrité
-        stored_content = result['contenu']
-        with open(CORRIGE_PATH, "r", encoding="utf-8") as f:
-            expected_content = f.read()
-        
-        assert stored_content == expected_content, "Contenu du corrigé ne correspond pas"
+        assert result['contenu'] == expected_content, "Contenu du corrigé ne correspond pas"
         conn.close()
 
 
@@ -255,107 +249,84 @@ class TestLoadSujetCorrige:
 
 class TestLoadBareme:
     """Tests du chargement du barème."""
-    
+
+    # CSV synthétique utilisé par plusieurs tests
+    SYNTHETIC_CSV = (
+        "question,qcm (oui/non),réponse attendue,points\n"
+        "Q1,oui,A,1.0\n"
+        "Q2,non,réponse libre,2.0\n"
+        "Q3,oui,B,0.5\n"
+    )
+
+    def _insert_bareme_csv(self, conn, csv_str, question_texts=None):
+        """Helper: insère un CSV de barème dans la base."""
+        import csv, io
+        reader = csv.DictReader(io.StringIO(csv_str))
+        for row in reader:
+            texte = question_texts.get(row['question'], '') if question_texts else ''
+            conn.execute("""
+                INSERT OR IGNORE INTO bareme
+                (question, texte_question, type_qcm, reponse_attendue, points)
+                VALUES (?, ?, ?, ?, ?)
+            """, [
+                row['question'],
+                texte,
+                row['qcm (oui/non)'] == 'oui',
+                row['réponse attendue'],
+                row['points']
+            ])
+        conn.commit()
+
     def test_load_bareme_all_questions(self, test_db_with_schema):
         """1.1.3 : Vérifier que toutes les questions du CSV sont chargées."""
-        import csv
-        
-        # Compter les lignes dans bareme.csv (sans l'en-tête)
-        with open(BAREME_PATH, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            expected_count = len(list(reader))
-        
-        # Charger le bareme
-        with open(BAREME_PATH, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                test_db_with_schema.execute("""
-                    INSERT OR IGNORE INTO bareme 
-                    (question, texte_question, type_qcm, reponse_attendue, points)
-                    VALUES (?, ?, ?, ?, ?)
-                """, [
-                    row['question'],
-                    '',
-                    row['qcm (oui/non)'] == 'oui',
-                    row['réponse attendue'],
-                    row['points']
-                ])
-        test_db_with_schema.commit()
-        
-        # Vérifier le nombre de questions
+        expected_count = 3  # Q1, Q2, Q3
+        self._insert_bareme_csv(test_db_with_schema, self.SYNTHETIC_CSV)
+
         result = test_db_with_schema.execute("SELECT COUNT(*) as count FROM bareme").fetchone()
-        assert result['count'] == expected_count, f"Nombre de questions incorrect : {result['count']} vs {expected_count}"
-    
+        assert result['count'] == expected_count, (
+            f"Nombre de questions incorrect : {result['count']} vs {expected_count}"
+        )
+
     def test_load_bareme_unique_questions(self, test_db_with_schema):
-        """1.1.3 : Vérifier que chaque question est unique."""
-        import csv
-        
-        # Charger le bareme
-        with open(BAREME_PATH, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                test_db_with_schema.execute("""
-                    INSERT OR IGNORE INTO bareme 
-                    (question, texte_question, type_qcm, reponse_attendue, points)
-                    VALUES (?, ?, ?, ?, ?)
-                """, [
-                    row['question'],
-                    '',
-                    row['qcm (oui/non)'] == 'oui',
-                    row['réponse attendue'],
-                    row['points']
-                ])
-        test_db_with_schema.commit()
-        
+        """1.1.3 : Vérifier que chaque question est unique (pas de doublons)."""
+        # Charger deux fois le même CSV
+        self._insert_bareme_csv(test_db_with_schema, self.SYNTHETIC_CSV)
+        self._insert_bareme_csv(test_db_with_schema, self.SYNTHETIC_CSV)
+
         # Vérifier qu'il n'y a pas de doublons
         result = test_db_with_schema.execute("""
-            SELECT question, COUNT(*) as count 
-            FROM bareme 
-            GROUP BY question 
+            SELECT question, COUNT(*) as count
+            FROM bareme
+            GROUP BY question
             HAVING count > 1
         """).fetchall()
         assert len(result) == 0, f"Questions en doublon trouvées : {result}"
-    
+
     def test_load_bareme_with_texte_question(self, test_db_with_schema):
         """1.1.3 : Vérifier que texte_question est extrait du sujet."""
-        import csv
         import re
-        
-        # Lire le sujet
-        with open(SUJET_PATH, "r", encoding="utf-8") as f:
-            sujet_content = f.read()
-        
-        # Extraire les textes des questions
+
+        # Sujet avec marqueurs (--Q1), (--Q2)
+        sujet_content = "Texte de la question 1.\n\n(--Q1)\n\nTexte de la question 2.\n\n(--Q2)\n\nTexte Q3.\n\n(--Q3)\n"
+
+        # Extraire les textes (même logique que load_bareme dans database.py)
         question_texts = {}
         pattern = r'\(--(Q[\w.]+)\)'
         parts = re.split(pattern, sujet_content)
-        for i in range(0, len(parts)-1, 2):
-            question_id = parts[i+1]
-            question_text = parts[i].strip()
-            question_texts[question_id] = question_text
-        
-        # Charger le bareme avec texte_question
-        with open(BAREME_PATH, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                test_db_with_schema.execute("""
-                    INSERT OR IGNORE INTO bareme 
-                    (question, texte_question, type_qcm, reponse_attendue, points)
-                    VALUES (?, ?, ?, ?, ?)
-                """, [
-                    row['question'],
-                    question_texts.get(row['question'], ''),
-                    row['qcm (oui/non)'] == 'oui',
-                    row['réponse attendue'],
-                    row['points']
-                ])
-        test_db_with_schema.commit()
-        
-        # Vérifier qu'au moins une question a un texte_question non vide
+        for i in range(0, len(parts) - 1, 2):
+            question_id = parts[i + 1]
+            question_texts[question_id] = parts[i].strip()
+
+        # Charger avec texte_question
+        self._insert_bareme_csv(test_db_with_schema, self.SYNTHETIC_CSV, question_texts)
+
+        # Q1 et Q2 devraient avoir un texte_question non vide
         result = test_db_with_schema.execute("""
             SELECT COUNT(*) as count FROM bareme WHERE texte_question != ''
         """).fetchone()
-        assert result['count'] > 0, "Aucun texte_question chargé depuis sujet.md"
+        assert result['count'] >= 2, (
+            f"Au moins 2 questions devraient avoir un texte_question, trouvé {result['count']}"
+        )
 
 
 # =============================================================================

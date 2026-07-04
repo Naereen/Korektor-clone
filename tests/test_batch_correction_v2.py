@@ -31,20 +31,20 @@ from correct_ai.batch_correction_v2 import (
 # Fixtures
 # =============================================================================
 
-EXEMPLE2_DIR = os.path.join(PROJECT_ROOT, "exemple2")
+EXEMPLE_DIR = os.path.join(PROJECT_ROOT, "exemple")
 
 @pytest.fixture
 def test_db_with_full_data(tmp_path):
-    """Base SQLite avec toutes les données de exemple2_test chargées."""
+    """Base SQLite avec données chargées depuis exemple/ (si disponible)."""
     import shutil
-    
-    # Copier exemple2 vers un dossier temporaire
+
+    # Copier exemple/ vers un dossier temporaire (si disponible)
     test_dir = tmp_path / "test_project"
     test_dir.mkdir()
-    
+
     # Copier les fichiers nécessaires
     for f in ["sujet.md", "corrige.md", "bareme.csv", "liste-etudiants.csv"]:
-        src = os.path.join(EXEMPLE2_DIR, f)
+        src = os.path.join(EXEMPLE_DIR, f)
         if os.path.exists(src):
             shutil.copy(src, test_dir / f)
     
@@ -54,13 +54,13 @@ def test_db_with_full_data(tmp_path):
     
     # Copier les 3 premières copies
     for i in range(1, 4):
-        src_copy_dir = os.path.join(EXEMPLE2_DIR, "copies_anonymes_validees", f"Copie_{i:02d}")
+        src_copy_dir = os.path.join(EXEMPLE_DIR, "copies_anonymes_validees", f"Copie_{i:02d}")
         if os.path.exists(src_copy_dir):
             dst_copy_dir = copies_dir / f"Copie_{i:02d}"
             shutil.copytree(src_copy_dir, dst_copy_dir)
         
         # Copier le PDF aussi
-        src_pdf = os.path.join(EXEMPLE2_DIR, "copies_anonymes_validees", f"Copie_{i:02d}.pdf")
+        src_pdf = os.path.join(EXEMPLE_DIR, "copies_anonymes_validees", f"Copie_{i:02d}.pdf")
         if os.path.exists(src_pdf):
             shutil.copy(src_pdf, copies_dir / f"Copie_{i:02d}.pdf")
     
@@ -93,29 +93,29 @@ class TestParseLlmResponse:
     
     def test_parse_valid_json(self):
         """3.1 : Parser une réponse LLM valide en JSON."""
-        response = '{"Q1.1": {"note": 1.0, "commentaire": "Bonne réponse", "reponse_etudiant": "D"}}'
+        response = '{"Q0": {"note": 1.0, "commentaire": "Bonne réponse", "reponse_etudiant": "D"}}'
         result = parse_llm_response(response)
         
         assert isinstance(result, dict), "Résultat devrait être un dict"
-        assert "Q1.1" in result, "Q1.1 devrait être dans le résultat"
-        assert result["Q1.1"]["note"] == 1.0, "Note incorrecte"
-        assert result["Q1.1"]["commentaire"] == "Bonne réponse", "Commentaire incorrect"
+        assert "Q0" in result, "Q0 devrait être dans le résultat"
+        assert result["Q0"]["note"] == 1.0, "Note incorrecte"
+        assert result["Q0"]["commentaire"] == "Bonne réponse", "Commentaire incorrect"
     
     def test_parse_json_with_single_quotes(self):
         """3.1 : Parser une réponse JSON avec quotes simples."""
-        response = "{'Q1.1': {'note': 1.0, 'commentaire': 'Bonne réponse', 'reponse_etudiant': 'D'}}"
+        response = "{'Q0': {'note': 1.0, 'commentaire': 'Bonne réponse', 'reponse_etudiant': 'D'}}"
         result = parse_llm_response(response)
         
         assert isinstance(result, dict), "Résultat devrait être un dict"
-        assert "Q1.1" in result, "Q1.1 devrait être dans le résultat"
+        assert "Q0" in result, "Q0 devrait être dans le résultat"
     
     def test_parse_json_with_extra_text(self):
         """3.1 : Parser une réponse JSON entourée de texte."""
-        response = 'Voici ma réponse: {"Q1.1": {"note": 1.0, "commentaire": "OK"}}'
+        response = 'Voici ma réponse: {"Q0": {"note": 1.0, "commentaire": "OK"}}'
         result = parse_llm_response(response)
         
         assert isinstance(result, dict), "Résultat devrait être un dict"
-        assert "Q1.1" in result, "Q1.1 devrait être dans le résultat"
+        assert "Q0" in result, "Q0 devrait être dans le résultat"
     
     def test_parse_empty_response(self):
         """3.1 : Parser une réponse vide."""
@@ -127,7 +127,7 @@ class TestParseLlmResponse:
     
     def test_parse_malformed_json(self):
         """3.1 : Parser une réponse JSON mal formatée."""
-        response = '{"Q1.1": {"note": 1.0, "commentaire": "Bonne réponse"'
+        response = '{"Q0": {"note": 1.0, "commentaire": "Bonne réponse"'
         result = parse_llm_response(response)
         
         # Devrait retourner un dict (peut-être vide ou partiellement parsé)
@@ -147,12 +147,12 @@ class TestCorrectCopyIncremental:
         
         # Réponse mockée
         mock_response = {
-            "Q1.1": {
+            "Q0": {
                 "note": 1.0,
                 "commentaire": "Bonne réponse",
                 "reponse_etudiant": "D"
             },
-            "Q1.2": {
+            "Q1": {
                 "note": 0.5,
                 "commentaire": "Réponse partielle",
                 "reponse_etudiant": "A,B"
@@ -182,13 +182,13 @@ class TestCorrectCopyIncremental:
         
         # D'abord, corriger la copie 1
         mock_response_1 = {
-            "Q1.1": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}
+            "Q0": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}
         }
         correct_copy_incremental_mock(1, db, mock_response_1, test_dir)
         
         # Ensuite, corriger la copie 2 (devrait inclure les corrections de la copie 1 dans son prompt)
         mock_response_2 = {
-            "Q1.1": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}
+            "Q0": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}
         }
         success = correct_copy_incremental_mock(2, db, mock_response_2, test_dir)
         
@@ -205,7 +205,7 @@ class TestCorrectCopyIncremental:
         """3.2 : Tester la gestion d'une copie non trouvée."""
         db, test_dir = test_db_with_full_data
         
-        mock_response = {"Q1.1": {"note": 1.0, "commentaire": "Test"}}
+        mock_response = {"Q0": {"note": 1.0, "commentaire": "Test"}}
         
         # Essayer de corriger une copie qui n'existe pas
         success = correct_copy_incremental_mock(
@@ -223,14 +223,14 @@ class TestCorrectCopyIncremental:
         
         # Réponse mockée avec seulement une question
         mock_response = {
-            "Q1.1": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}
+            "Q0": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}
         }
         
         success = correct_copy_incremental_mock(1, db, mock_response, test_dir)
         
         assert success, "La correction devrait réussir même avec une seule question"
         
-        # Vérifier que seule Q1.1 est sauvegardée
+        # Vérifier que seule Q0 est sauvegardée
         corrections = db.execute("""
             SELECT b.question FROM corrections c
             JOIN bareme b ON c.bareme_id = b.id
@@ -238,7 +238,7 @@ class TestCorrectCopyIncremental:
         """).fetchall()
         
         questions_sauvegardees = [c['question'] for c in corrections]
-        assert "Q1.1" in questions_sauvegardees, "Q1.1 devrait être sauvegardée"
+        assert "Q0" in questions_sauvegardees, "Q0 devrait être sauvegardée"
 
 
 # =============================================================================
@@ -254,9 +254,9 @@ class TestIntegration:
         
         # Corriger les copies 1, 2, 3 avec des mocks
         mock_responses = [
-            {"Q1.1": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}},
-            {"Q1.1": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}},
-            {"Q1.1": {"note": 0.5, "commentaire": "Partielle", "reponse_etudiant": "A"}},
+            {"Q0": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}},
+            {"Q0": {"note": 1.0, "commentaire": "Bonne", "reponse_etudiant": "D"}},
+            {"Q0": {"note": 0.5, "commentaire": "Partielle", "reponse_etudiant": "A"}},
         ]
         
         for i, mock_response in enumerate(mock_responses, start=1):

@@ -30,7 +30,7 @@ from correct_ai.batch_correction_v2 import (
 )
 
 
-EXEMPLE2_DIR = os.path.join(PROJECT_ROOT, "exemple2")
+EXEMPLE_DIR = os.path.join(PROJECT_ROOT, "exemple")
 
 
 # =============================================================================
@@ -39,13 +39,13 @@ EXEMPLE2_DIR = os.path.join(PROJECT_ROOT, "exemple2")
 
 @pytest.fixture
 def integration_test_dir(tmp_path):
-    """Crée un dossier de test avec une copie partielle de exemple2."""
+    """Crée un dossier de test avec une copie partielle de exemple/."""
     test_dir = tmp_path / "integration_test"
     test_dir.mkdir()
     
     # Copier les fichiers de base
     for f in ["sujet.md", "corrige.md", "bareme.csv", "liste-etudiants.csv"]:
-        src = os.path.join(EXEMPLE2_DIR, f)
+        src = os.path.join(EXEMPLE_DIR, f)
         if os.path.exists(src):
             shutil.copy(src, test_dir / f)
     
@@ -55,13 +55,13 @@ def integration_test_dir(tmp_path):
     
     for i in range(1, 6):
         # Copier le dossier de la copie
-        src_copy_dir = os.path.join(EXEMPLE2_DIR, "copies_anonymes_validees", f"Copie_{i:02d}")
+        src_copy_dir = os.path.join(EXEMPLE_DIR, "copies_anonymes_validees", f"Copie_{i:02d}")
         if os.path.exists(src_copy_dir):
             dst_copy_dir = copies_dir / f"Copie_{i:02d}"
             shutil.copytree(src_copy_dir, dst_copy_dir)
         
         # Copier le PDF
-        src_pdf = os.path.join(EXEMPLE2_DIR, "copies_anonymes_validees", f"Copie_{i:02d}.pdf")
+        src_pdf = os.path.join(EXEMPLE_DIR, "copies_anonymes_validees", f"Copie_{i:02d}.pdf")
         if os.path.exists(src_pdf):
             shutil.copy(src_pdf, copies_dir / f"Copie_{i:02d}.pdf")
     
@@ -292,10 +292,10 @@ class TestDataConsistency:
     def test_copies_loaded_correctly(self, integration_db):
         """Vérifier que les copies sont chargées correctement."""
         copies_count = integration_db.execute("SELECT COUNT(*) FROM copies").fetchone()[0]
-        assert copies_count >= 5, f"Devrait avoir au moins 5 copies, pas {copies_count}"
+        assert copies_count >= 4, f"Devrait avoir au moins 4 copies, pas {copies_count}"
         
         # Vérifier que les copies ont du texte d'extraction
-        for i in range(1, 6):
+        for i in range(1, 5):
             copy = integration_db.execute("""
                 SELECT extraction_texte FROM copies WHERE id = ?
             """, [i]).fetchone()

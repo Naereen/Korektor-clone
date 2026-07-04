@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de setup pour l'environnement de test.
-Crée une base SQLite de test et charge les données depuis exemple2/.
+Crée une base SQLite de test et charge les données.
 
 Utilisation:
     uv run python tests/setup_test_env.py --project-dir <dir> [--init-only]
@@ -220,12 +220,23 @@ def find_student_for_copy(copy_id, project_dir):
     students_file = os.path.join(project_dir, "liste-etudiants.csv")
     if not os.path.exists(students_file):
         return None
-    
-    import csv
+
+    import csv, io
     with open(students_file, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        students = list(reader)
-    
+        lines = f.readlines()
+
+    # Chercher la ligne d'en-tête réelle
+    header_idx = None
+    for i, line in enumerate(lines):
+        if 'Nom' in line or 'N° étudiant' in line or 'Num' in line:
+            header_idx = i
+            break
+    if header_idx is None:
+        return None
+
+    reader = csv.DictReader(io.StringIO(''.join(lines[header_idx:])))
+    students = list(reader)
+
     # Trouver l'étudiant correspondant à la copie_id
     # (logique à adapter selon la structure du projet)
     if copy_id <= len(students):
@@ -255,14 +266,9 @@ def mark_extractions_verified(conn, project_dir, verified=True):
 
 def create_backup(conn, backup_path):
     """Crée un backup de la base."""
-    # Utiliser sqlite3 en ligne de commande pour le dump
-    import subprocess
-    db_path = conn.execute("PRAGMA database_list").fetchone()
-    
-    # Méthode alternative : copier le fichier
-    db_file = conn.execute("PRAGMA database_list WHERE name = 'main'").fetchone()
-    if db_file:
-        shutil.copy(db_file['file'], backup_path)
+    row = conn.execute("PRAGMA database_list").fetchone()
+    if row:
+        shutil.copy(row['file'], backup_path)
     print(f"✅ Backup créé : {backup_path}")
 
 
@@ -305,32 +311,18 @@ def main():
                 sujet_content = f.read()
             load_sujet(conn, sujet_path)
         else:
-            # Copier depuis exemple2/ si nécessaire
-            exemple2_sujet = os.path.join(PROJECT_ROOT, "exemple2", "sujet.md")
-            if os.path.exists(exemple2_sujet):
-                shutil.copy(exemple2_sujet, sujet_path)
-                with open(sujet_path, "r", encoding="utf-8") as f:
-                    sujet_content = f.read()
-                load_sujet(conn, sujet_path)
-            else:
-                print(f"⚠️  Fichier sujet.md non trouvé dans {project_dir} ou exemple2/")
-                sujet_content = None
-        
+            print(f"⚠️  Fichier sujet.md non trouvé dans {project_dir}")
+            sujet_content = None
+
         if os.path.exists(corrige_path):
             load_corrige(conn, corrige_path)
         else:
-            exemple2_corrige = os.path.join(PROJECT_ROOT, "exemple2", "corrige.md")
-            if os.path.exists(exemple2_corrige):
-                shutil.copy(exemple2_corrige, corrige_path)
-                load_corrige(conn, corrige_path)
-        
+            print(f"⚠️  Fichier corrige.md non trouvé dans {project_dir}")
+
         if os.path.exists(bareme_path):
             load_bareme(conn, bareme_path, sujet_content)
         else:
-            exemple2_bareme = os.path.join(PROJECT_ROOT, "exemple2", "bareme.csv")
-            if os.path.exists(exemple2_bareme):
-                shutil.copy(exemple2_bareme, bareme_path)
-                load_bareme(conn, bareme_path, sujet_content)
+            print(f"⚠️  Fichier bareme.csv non trouvé dans {project_dir}")
         
         # Charger les extractions
         load_all_extractions(conn, project_dir)

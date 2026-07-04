@@ -122,14 +122,15 @@ class TestBuildIncrementalPrompt:
         assert "## BAREME:" in prompt, "Section BAREME manquante"
         assert "# COPIE COURANTE À CORRIGER" in prompt, "Section COPIE COURANTE manquante"
         assert "Extraction OCR de la copie 3" in prompt, "Extraction manquante"
-        assert "[image de Copie_03.pdf]" in prompt, "PDF manquant"
+        assert "les pages de la copie sont fournies en images" in prompt, "PDF manquant"
         
         # Vérifier que la section CORRECTIONS PRÉCÉDENTES n'est PAS présente
         assert "CORRECTIONS PRÉCÉDENTES" not in prompt, "Section CORRECTIONS PRÉCÉDENTES ne devrait pas être présente"
         
         # Vérifier les instructions
         assert "INSTRUCTIONS STRICTES" in prompt, "Instructions manquantes"
-        assert "Format de sortie: JSON" in prompt, "Format de sortie manquant"
+        assert "TEMPLATE JSON" in prompt, "Template JSON manquant"
+        assert '"Q1.1": {"note": 0.0' in prompt, "Template Q1.1 manquant"
         assert "raisonnement" in prompt.lower(), "Le prompt doit demander un raisonnement"
     
     def test_prompt_with_previous_corrections(self, bareme_data, previous_corrections_data):

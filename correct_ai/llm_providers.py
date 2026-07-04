@@ -72,7 +72,7 @@ PROVIDERS: Dict[str, ProviderConfig] = {
         verify_ssl=False,
     ),
     "ILAAS_OSS": ProviderConfig(
-        name="ILASS_OSS",
+        name="ILAAS_OSS",
         url="https://llm.ilaas.fr/v1/chat/completions",
         model="gpt-oss-120b",
         # model="qwen-3-30b",

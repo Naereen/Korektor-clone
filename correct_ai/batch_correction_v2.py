@@ -101,41 +101,6 @@ def parse_llm_response(response: str) -> Dict[str, Any]:
             return {}
 
 
-def ask_llm_with_pdf_and_text(
-    provider: Dict[str, Any],
-    pdf_path: str,
-    prompt_text: str,
-    system_prompt: Optional[str] = None
-) -> str:
-    """
-    Appelle le LLM avec un PDF et du texte.
-    
-    Args:
-        provider: Configuration du provider LLM (dict ou ProviderConfig)
-        pdf_path: Chemin vers le PDF à analyser
-        prompt_text: Texte du prompt
-        system_prompt: Prompt système (optionnel)
-    
-    Returns:
-        str: Réponse du LLM
-    """
-    from correct_ai.llm_providers import get_provider, ask_llm_with_pdf
-    
-    # Récupérer le provider config
-    p = get_provider(provider.get('name') if isinstance(provider, dict) else provider.name)
-    
-    # Appeler le LLM avec PDF + texte
-    # Note: thinking=False est géré côté API Qwen Unistra (gratuit par défaut)
-    response = ask_llm_with_pdf(
-        provider=p,
-        pdf_path=pdf_path,
-        prompt_text=prompt_text,
-        system_prompt=system_prompt or "Tu es un correcteur expert. Nota selon le barème et maintain uniformité."
-    )
-    
-    return response
-
-
 def correct_copy_incremental(
     copy_id: int,
     provider: Dict[str, Any],
@@ -216,53 +181,63 @@ def correct_copy_incremental(
             if test_mode:
                 response = '{"Q0": {"note": 1.0, "commentaire": "Test - Mode mock", "raisonnement": "Raisonnement test pour validation du format", "reponse_etudiant": "Test"}}'
             else:
-                # Pour l'instant, on utilise UNIQUEMENT le texte (sans PDF) pour éviter les limites de tokens
-                # Le PDF sera ajouté plus tard quand on optimisera
-                from correct_ai.llm_providers import get_provider, ask_llm, ask_llm_with_progress
+                from correct_ai.llm_providers import get_provider, ask_llm_with_pdf, ask_llm_with_progress
                 
                 p = get_provider(provider.name if hasattr(provider, 'name') else provider.get('name'))
-                
+
+                # Chemin absolu du PDF
+                pdf_abs_path = os.path.join(project_dir, current_copy['pdf_path'])
+
                 # Callback pour afficher la progression
                 def progress_callback(msg):
                     logger.info(msg)
-                
+
                 try:
-                    logger.info(f"Envoi du prompt à {p.url} (modèle: {p.model})...")
-                    response = ask_llm_with_progress(
+                    logger.info(f"Envoi du prompt + PDF à {p.url} (modèle: {p.model})...")
+                    response = ask_llm_with_pdf(
                         provider=p,
+                        pdf_path=pdf_abs_path,
                         prompt_text=prompt,
-                        system_prompt="Tu es un correcteur expert. Nota selon le barème et maintain uniformité.",
-                        progress_callback=progress_callback
+                        system_prompt="Tu es un correcteur expert. Nota selon le barème et maintain uniformité."
                     )
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'appel LLM pour la copie {copy_id}: {e}")
-                    # Si le prompt est trop grand, essayer avec moins de contexte
+                    # Si le prompt est trop grand, réessayer sans images (texte seul)
                     if "context length" in str(e).lower() or "tokens" in str(e).lower():
-                        logger.warning("⚠️  Prompt trop grand - réduction du contexte...")
-                        # Réduire : enlever les corrections précédentes
-                        prompt_simple = build_incremental_prompt(
-                            sujet=sujet,
-                            corrige=corrige,
-                            bareme=bareme,
-                            previous_corrections=[],  # Pas de corrections précédentes
-                            current_pdf_path=current_copy['pdf_path'],
-                            current_extraction=current_copy['extraction_texte']
-                        )
+                        logger.warning("⚠️  Prompt trop grand - passage en mode texte seul...")
                         try:
                             response = ask_llm_with_progress(
                                 provider=p,
-                                prompt_text=prompt_simple,
-                                system_prompt="Tu es un correcteur expert.",
+                                prompt_text=prompt,
+                                system_prompt="Tu es un correcteur expert. Nota selon le barème et maintain uniformité.",
                                 progress_callback=progress_callback
                             )
                         except Exception as e2:
-                            logger.error(f"❌ Erreur même avec prompt réduit: {e2}")
-                            if attempt < 1:
-                                logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée, retry dans 2s...")
-                                time.sleep(2)
-                                continue
-                            else:
-                                return False
+                            # Dernier recours : retirer les corrections précédentes
+                            logger.warning("⚠️  Toujours trop grand - réduction du contexte...")
+                            prompt_simple = build_incremental_prompt(
+                                sujet=sujet,
+                                corrige=corrige,
+                                bareme=bareme,
+                                previous_corrections=[],
+                                current_pdf_path=current_copy['pdf_path'],
+                                current_extraction=current_copy['extraction_texte']
+                            )
+                            try:
+                                response = ask_llm_with_progress(
+                                    provider=p,
+                                    prompt_text=prompt_simple,
+                                    system_prompt="Tu es un correcteur expert.",
+                                    progress_callback=progress_callback
+                                )
+                            except Exception as e3:
+                                logger.error(f"❌ Erreur même avec prompt réduit: {e3}")
+                                if attempt < 1:
+                                    logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée, retry dans 2s...")
+                                    time.sleep(2)
+                                    continue
+                                else:
+                                    return False
                     else:
                         if attempt < 1:
                             logger.warning(f"⚠️  Tentative {attempt + 1}/2 échouée, retry dans 2s...")
@@ -273,7 +248,6 @@ def correct_copy_incremental(
             
             # 4. Parser et sauvegarder dans SQLite
             # DEBUG: Sauvegarder la réponse brute pour diagnostic
-            import os
             debug_dir = os.path.join(project_dir, "debug_responses")
             os.makedirs(debug_dir, exist_ok=True)
             with open(os.path.join(debug_dir, f"copie_{copy_id}_attempt_{attempt}.txt"), "w", encoding="utf-8") as f:

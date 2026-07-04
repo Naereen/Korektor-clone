@@ -9,9 +9,9 @@ Ce module gère :
 Utilisation:
     from correct_ai.database import get_db, init_db, load_sujet, load_corrige, load_bareme
     
-    db = get_db("exemple2")
+    db = get_db("exemple")
     init_db(db)
-    load_sujet(db, "exemple2/sujet.md")
+    load_sujet(db, "exemple/sujet.md")
     ...
 """
 import os
@@ -185,9 +185,14 @@ def load_bareme(conn: sqlite3.Connection, bareme_path: str, sujet_content: Optio
         reader = csv.DictReader(f)
         for row in reader:
             conn.execute("""
-                INSERT OR IGNORE INTO bareme 
+                INSERT INTO bareme 
                 (question, texte_question, type_qcm, reponse_attendue, points)
                 VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(question) DO UPDATE SET
+                    texte_question = excluded.texte_question,
+                    type_qcm = excluded.type_qcm,
+                    reponse_attendue = excluded.reponse_attendue,
+                    points = excluded.points
             """, [
                 row['question'],
                 question_texts.get(row['question'], ''),
@@ -344,10 +349,23 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
     students_file = os.path.join(project_dir, "liste-etudiants.csv")
     if not os.path.exists(students_file):
         return None
-    
+
     with open(students_file, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        students = list(reader)
+        lines = f.readlines()
+
+    # Chercher la ligne d'en-tête réelle (contient "Nom" ou "N° étudiant")
+    header_idx = None
+    for i, line in enumerate(lines):
+        if 'Nom' in line or 'N° étudiant' in line or 'Num' in line:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        return None
+
+    import io
+    reader = csv.DictReader(io.StringIO(''.join(lines[header_idx:])))
+    students = list(reader)
     
     # Chercher par Etudiant_ID, ou fallback par position
     for student in students:
@@ -509,17 +527,19 @@ def get_random_previous_corrections(
     max_count: int = 10
 ) -> List[Dict[str, Any]]:
     """
-    Récupère aléatoirement jusqu'à max_count corrections des copies < current_copy_id.
-    
+    Récupère TOUTES les corrections de max_count copies précédentes
+    (choisies aléatoirement si > max_count, pour limiter la taille du prompt).
+
+    Chaque copie incluse a l'intégralité de ses corrections (toutes les questions).
+
     Args:
         conn: Connexion à la base de données
         current_copy_id: ID de la copie courante
-        max_count: Nombre maximum de corrections à retourner
-    
+        max_count: Nombre maximum de copies précédentes à inclure
+
     Returns:
-        Liste de dicts avec les corrections aléatoires
+        Liste de dicts avec toutes les corrections des copies sélectionnées
     """
-    # Récupérer toutes les copies corrigées avant current_copy_id
     return conn.execute("""
         SELECT c.copie_id, c.bareme_id, b.question, b.texte_question,
                c.reponse_etudiant,
@@ -528,10 +548,15 @@ def get_random_previous_corrections(
                c.raisonnement_llm as raisonnement
         FROM corrections c
         JOIN bareme b ON c.bareme_id = b.id
-        WHERE c.copie_id < ?
-        GROUP BY c.copie_id  -- Une ligne par copie
-        ORDER BY RANDOM()
-        LIMIT ?
+        WHERE c.copie_id IN (
+            SELECT copie_id FROM corrections
+            WHERE copie_id < ?
+            GROUP BY copie_id
+            HAVING COUNT(*) >= (SELECT COUNT(*) FROM bareme)
+            ORDER BY RANDOM()
+            LIMIT ?
+        )
+        ORDER BY c.copie_id, c.bareme_id
     """, [current_copy_id, max_count]).fetchall()
 
 
@@ -602,8 +627,9 @@ def backup_db(conn: sqlite3.Connection, backup_path: str) -> None:
         conn: Connexion à la base de données
         backup_path: Chemin vers le fichier de backup
     """
-    # Méthode simple : copier le fichier
-    db_file = conn.execute("PRAGMA database_list WHERE name = 'main'").fetchone()
-    if db_file:
+    # Récupérer le chemin du fichier de la base principale
+    # PRAGMA database_list renvoie (seq, name, file) — la 1ère ligne est toujours 'main'
+    row = conn.execute("PRAGMA database_list").fetchone()
+    if row:
         import shutil
-        shutil.copy(db_file['file'], backup_path)
+        shutil.copy(row['file'], backup_path)

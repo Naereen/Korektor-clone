@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Dossiers à protéger (NE JAMAIS SUPPRIMER)
 PROTECTED_DIRS = [
-    "exemple2",
+    "exemple",
     "exemple3",
     "correct_ai",
     "templates",

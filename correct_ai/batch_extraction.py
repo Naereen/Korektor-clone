@@ -96,13 +96,29 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
         print(f"Skipping {copy_pdf_name}: File not found in {base_dir}")
         return False
 
-    if os.path.exists(output_file):
-        print(f"Skipping {copy_dir_name}: {output_file} already exists.")
-        return True
-
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load context
+    # Verrou atomique pour éviter que deux processus traitent la même copie
+    lock_file = os.path.join(output_dir, ".lock")
+    try:
+        fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        if os.path.exists(output_file):
+            print(f"Skipping {copy_dir_name}: {output_file} already exists.")
+        else:
+            print(f"Skipping {copy_dir_name}: locked by another process.")
+        return True
+
+    # Si extraction.md existe déjà, libérer le lock et skip
+    if os.path.exists(output_file):
+        print(f"Skipping {copy_dir_name}: {output_file} already exists.")
+        os.remove(lock_file)
+        return True
+
+    provider = get_provider(provider_name)
+
+    # Charger sujet et corrigé comme référence pour l'OCR (vocabulaire technique, notations)
     sujet_path = os.path.join(project_dir, "sujet.md")
     corrige_path = os.path.join(project_dir, "corrige.md")
     with open(sujet_path, "r", encoding="utf-8") as f:
@@ -110,20 +126,18 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
     with open(corrige_path, "r", encoding="utf-8") as f:
         corrige_content = f.read()
 
-    provider = get_provider(provider_name)
-
     # Count pages
+    # Ouvrir le PDF une seule fois
     doc = fitz.open(pdf_path)
     num_pages = len(doc)
-    
-    # Charger la page 1 comme référence si demandé (pour aider au déchiffrement)
+
+    # Extraire la page 1 comme référence si demandé (aide au déchiffrement de l'écriture)
     ref_page1_b64 = None
     if use_ref_page1 and num_pages > 0:
-        ref_doc = fitz.open(pdf_path)
-        ref_page1_b64 = page_to_base64(pdf_path, 0)
-        ref_doc.close()
+        pix = doc[0].get_pixmap(dpi=150)
+        ref_page1_b64 = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
         logger.info(f"Reference page 1 loaded as visual context")
-    
+
     doc.close()
 
     logger.info(f"Processing {copy_pdf_name} ({num_pages} pages)...")
@@ -179,6 +193,14 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
 
             image_b64 = page_to_base64(pdf_path, page_idx)
             
+            # Contexte global (sujet + corrigé) pour aider à reconnaître le vocabulaire
+            global_context = (
+                f"RÉFÉRENCE — SUJET DE L'EXAMEN (vocabulaire, notations) :\n"
+                f"<SUJET>\n{sujet_content}\n</SUJET>\n"
+                f"\nRÉFÉRENCE — CORRIGÉ OFFICIEL :\n"
+                f"<CORRIGE>\n{corrige_content}\n</CORRIGE>\n"
+            )
+
             # Build prompt with accumulated context from previous pages
             # Utiliser des balises uniques en majuscules pour éviter les conflits
             context_block = ""
@@ -192,6 +214,7 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
                 "Transcris le texte de cette page de copie d'examen manuscrite en Markdown.\n"
                 "La page PEUT être vide (pas de texte manuscrit).\n"
                 "Ne change RIEN au texte. Ne corrige PAS. Ne génère PAS de code supplémentaire.\n"
+                f"{global_context}"
                 f"{context_block}\n"
                 "Retourne UNIQUEMENT le texte transcrit entre les balises <markdown> et </markdown>.\n"
                 "Si la page est vide, retourne <markdown></markdown>.\n"
@@ -328,6 +351,7 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
             f.write("\n\n".join(parts))
 
         print(f"Success! Saved to {output_file}")
+        os.remove(lock_file)
         return True
 
     except Exception as e:
@@ -335,6 +359,8 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
         log_path = os.path.join(output_dir, "error.log")
         with open(log_path, "w") as f:
             f.write(str(e))
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
         return False
 
 def main():

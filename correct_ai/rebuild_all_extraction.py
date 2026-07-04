@@ -4,13 +4,14 @@ Reconstruit TOUS les extraction.md à partir des pageXX.md
 - Lit UNIQUEMENT les fichiers pageXX.md (pas d'écriture)
 - Écrit extraction.md dans chaque dossier Copie_XX/
 - Gère les pages vides correctement
+
+Utilisation:
+    python correct_ai/rebuild_all_extraction.py --project-dir exemple
 """
 
+import argparse
 import os
 from pathlib import Path
-
-PROJECT_DIR = Path("exemple2")
-COPIES_DIR = PROJECT_DIR / "copies_anonymes_validees"
 
 
 def rebuild_extraction_for_copy(copy_dir: Path) -> None:
@@ -37,16 +38,22 @@ def rebuild_extraction_for_copy(copy_dir: Path) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Reconstruit les extraction.md à partir des pageXX.md")
+    parser.add_argument("--project-dir", required=True, help="Dossier du projet (ex: exemple)")
+    args = parser.parse_args()
+
+    copies_dir = Path(args.project_dir) / "copies_anonymes_validees"
+
     print("=" * 60)
     print("Reconstruction des extraction.md à partir des pageXX.md")
     print("=" * 60)
     print()
 
-    if not COPIES_DIR.exists():
-        print(f"❌ Dossier non trouvé: {COPIES_DIR}")
+    if not copies_dir.exists():
+        print(f"❌ Dossier non trouvé: {copies_dir}")
         return
 
-    for copy_dir in sorted(COPIES_DIR.iterdir()):
+    for copy_dir in sorted(copies_dir.iterdir()):
         if copy_dir.is_dir() and copy_dir.name.startswith("Copie_"):
             rebuild_extraction_for_copy(copy_dir)
 
