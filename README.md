@@ -1,15 +1,15 @@
-# Korektor - Correction Automatisée de Copies Manuscrites
+# Korektor - Assistant IA de Correction de Copies Manuscrites
 
 <table>
   <tr>
     <td width="60%" valign="middle">
-      <p>Korektor est une application Web (Flask) conçue pour automatiser le flux de correction de copies d'examen manuscrites en utilisant des modèles de langage (LLM).</p>
+      <p>Korektor est une application Web (Flask) conçue pour aider à la correction de copies d'examen manuscrites en utilisant des modèles de langage (LLM).</p>
       <p><strong>Fonctionnalités :</strong></p>
       <ol>
         <li><strong>Numérisation et Import</strong> : Découpage intelligent de scans (A3 -> A4) et regroupement par étudiant.</li>
         <li><strong>Structuration du Sujet</strong> : Analyse du sujet et du corrigé pour générer un barème structuré (questions, réponses attendues, points).</li>
-        <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration automatique (questions, réponses).</li>
-        <li><strong>Correction IA</strong> : Notation automatique générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
+        <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration assistée (questions, réponses).</li>
+        <li><strong>Correction IA</strong> : Notation assistée générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
         <li><strong>Vérification Professeur</strong> : Interface (relativement) ergonomique pour relire les copies, ajuster les notes et annoter.</li>
       </ol>
     </td>
@@ -52,7 +52,7 @@
     *   **Découpage** : Validez le découpage A3→A4 et l'identification des étudiants.
     *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
     *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page, avec aperçu LaTeX.
-    *   **Correction** : Lancez la correction automatique incrémentale sur un lot de copies.
+    *   **Correction** : Lancez la correction assistée incrémentale sur un lot de copies.
     *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
     *   **Bilan** : Dashboard avec l'état global : nombre de copies, notes, copies problématiques (relancer le scan et/ou la correction des copies problématiques).
 
