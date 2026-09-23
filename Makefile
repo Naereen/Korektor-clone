@@ -1,28 +1,31 @@
 # Makefile de Korektor
 # ====================
 #
-# Korektor est une application Flask d'aide a la correction de copies
-# manuscrites avec des modeles de langage (LLM).
+# Korektor est une application Flask d'aide à la correction de copies
+# manuscrites avec des modèles de langage (LLM).
 #
 # Prerequis :
-#   - Python 3.12 ou plus recent
-#   - uv installe et disponible dans le PATH
+#   - Python 3.12 ou plus récent
+#   - uv, installé et disponible dans le PATH
 #
 # Utilisation :
 #   make help       Afficher les commandes disponibles
 #   make run        Lancer l'application sur http://127.0.0.1:5000
-#   make test       Executer la suite de tests
-#   make compile    Verifier la syntaxe Python
-#   make check      Compiler puis executer les tests
+#   make test       Exécuter la suite de tests
+#   make compile    Vérifier la syntaxe Python
+#   make check      Compiler puis exécuter les tests
+#   make coverage   Lancer les tests et afficher la couverture de code
+#   make format     Formater le code Python
+#   make format-check  Vérifier le formatage sans modifier les fichiers
 #
-# Les dependances sont declarees dans pyproject.toml et gerees par uv.
+# Les dépendances sont déclarées dans pyproject.toml et gérées par uv.
 
 .DEFAULT_GOAL := help
 
 PYTHON := uv run python
 PYTEST := uv run pytest
 
-.PHONY: help run test compile check format format-check
+.PHONY: help run test coverage compile check format format-check
 
 help: ## Affiche les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -33,6 +36,10 @@ run: ## Lance l'application Flask
 
 test: ## Lance tous les tests
 	$(PYTEST) tests
+
+coverage: ## Lance les tests et affiche la couverture de code
+	uv run --with coverage coverage run -m pytest tests -q
+	uv run --with coverage coverage report -m
 
 compile: ## Compile les sources et les tests pour vérifier leur syntaxe
 	$(PYTHON) -m compileall -q correct_ai tests

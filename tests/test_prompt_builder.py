@@ -330,3 +330,31 @@ class TestPromptConsistency:
         )
 
         assert prompt1 == prompt2, "Prompt non déterministe"
+
+        def test_simple_prompt_contains_copy_and_template(self, bareme_data):
+            """The fallback prompt should include OCR, PDF, rubric, and JSON template."""
+            prompt = build_simple_prompt(
+                sujet="Sujet",
+                corrige="Corrigé",
+                bareme=bareme_data,
+                extraction="Réponse OCR",
+                pdf_path="Copie_01.pdf",
+            )
+            assert "Réponse OCR" in prompt
+            assert "les pages de la copie sont fournies en images" in prompt
+            assert '"Q1.1"' in prompt
+
+        def test_prompt_token_fallback_without_tiktoken(self, bareme_data, monkeypatch):
+            """Token estimation should use its character fallback when tiktoken is absent."""
+            import builtins
+
+            original_import = builtins.__import__
+
+            def import_without_tiktoken(name, *args, **kwargs):
+                """Reject only the optional tiktoken import."""
+                if name == "tiktoken":
+                    raise ImportError
+                return original_import(name, *args, **kwargs)
+
+            monkeypatch.setattr(builtins, "__import__", import_without_tiktoken)
+            assert estimate_prompt_tokens("Sujet", "Corrigé", bareme_data, [], "OCR") > 0

@@ -17,8 +17,9 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 @pytest.fixture
 def client():
     """Return a Flask test client for the application."""
-    from app import app
+    from app import app, config
 
+    config.project_dir = os.path.join(PROJECT_ROOT, "exemple")
     return app.test_client()
 
 

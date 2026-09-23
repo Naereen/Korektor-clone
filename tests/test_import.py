@@ -25,13 +25,11 @@ def client():
 @pytest.fixture
 def original_dir():
     """Preserve and restore the application's configured project directory."""
-    """Sauvegarde et restaure le project_dir."""
     from app import config
 
     old = config.project_dir
     yield old
     config.project_dir = old
-    config.save()
 
 
 class TestImportPage:
@@ -133,3 +131,9 @@ class TestBaremeGenerate:
             assert resp.status_code == 500
             data = json.loads(resp.data)
             assert data["success"] is False
+
+    def test_page_checks_existing_bareme_before_generation(self, client):
+        """Verify the UI checks for an existing rubric before generating one."""
+        content = client.get("/import").data.decode("utf-8")
+        assert "bareme.csv existe déjà" in content
+        assert "window.confirm" in content
