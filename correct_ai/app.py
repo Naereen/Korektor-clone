@@ -221,17 +221,15 @@ def api_bareme_generate():
     try:
         result = subprocess.run(
             [
-                "python3",
-                "correct_ai/subject_analysis.py",
+                sys.executable,
+                os.path.join(APP_ROOT, "correct_ai", "subject_analysis.py"),
                 "--project-dir",
                 config.project_dir,
             ],
             capture_output=True,
             text=True,
             timeout=120,
-            cwd=(
-                os.path.dirname(config.project_dir) if os.path.dirname(config.project_dir) else "."
-            ),
+            cwd=APP_ROOT,
         )
         print(result.stdout)
         if result.returncode == 0:
@@ -675,7 +673,9 @@ def process_page():
 @app.route("/api/batch/start", methods=["POST"])
 def batch_start():
     """Validate and start a requested extraction or correction batch."""
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "error": "Payload JSON invalide."}), 400
     job_type = data.get("type")  # 'extraction' or 'correction'
     req_start = data.get("start")
     req_end = data.get("end")

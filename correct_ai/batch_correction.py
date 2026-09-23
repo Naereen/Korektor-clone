@@ -18,7 +18,10 @@ import csv
 import json
 import os
 
-from llm_providers import ask_llm, get_provider
+try:
+    from .llm_providers import ask_llm, get_provider
+except ImportError:  # Support direct execution as a script.
+    from llm_providers import ask_llm, get_provider
 
 BASE_DIR = "copies_anonymes_validees"
 BAREME_FILE = "bareme.csv"

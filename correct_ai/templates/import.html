@@ -172,7 +172,23 @@ function checkStructure() {
 }
 
 // === Section 3: Barème ===
-function generateBareme() {
+async function generateBareme() {
+    try {
+        const structureResponse = await fetch('/api/project/check');
+        const structure = await structureResponse.json();
+        if (structure.files && structure.files['bareme.csv']) {
+            const confirmed = window.confirm(
+                'Un fichier bareme.csv existe déjà dans ce projet. ' +
+                'Le générer à nouveau remplacera son contenu. Continuer ?'
+            );
+            if (!confirmed) return;
+        }
+    } catch (error) {
+        document.getElementById('baremeResult').innerHTML =
+            '<div class="alert alert-danger small">Impossible de vérifier le barème existant.</div>';
+        return;
+    }
+
     const btn = document.getElementById('btnGenerateBareme');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération...';

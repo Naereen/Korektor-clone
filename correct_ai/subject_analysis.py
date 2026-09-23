@@ -20,7 +20,11 @@ import re
 import sys
 
 import json_repair
-from llm_providers import ask_llm, get_provider
+
+try:
+    from .llm_providers import ask_llm, get_provider
+except ImportError:  # Support direct execution as a script.
+    from llm_providers import ask_llm, get_provider
 
 
 def analyze_subject(project_dir=".", output_file="structure.json"):
@@ -251,4 +255,4 @@ if __name__ == "__main__":
     parser.add_argument("--project-dir", default=".", help="Project directory containing sujet.md")
     args = parser.parse_args()
 
-    analyze_subject(args.project_dir)
+    sys.exit(0 if analyze_subject(args.project_dir) else 1)

@@ -22,7 +22,11 @@ from typing import Any, Dict, List
 
 import fitz
 import requests
-from llm_providers import get_provider
+
+try:
+    from .llm_providers import get_provider
+except ImportError:  # Support direct execution as a script.
+    from llm_providers import get_provider
 
 BASE_DIR = "copies_anonymes_validees"
 
