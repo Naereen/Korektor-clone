@@ -1,13 +1,8 @@
-"""
-Tests d'Intégration pour Korektor (Phase 4).
+"""End-to-end tests for Korektor's protected correction workflow.
 
-Ces tests valident :
-- Le workflow complet de correction incrémentale
-- La protection des fichiers vérifiés (Copie_XX.pdf et Copie_XX/extraction.md)
-- La cohérence des données dans SQLite
-
-Exécution:
-    uv run pytest tests/test_integration.py -v
+The suite copies representative project inputs into temporary directories,
+checks that verified OCR cannot be overwritten, runs mocked incremental
+corrections, and validates database consistency across the workflow.
 """
 
 import os

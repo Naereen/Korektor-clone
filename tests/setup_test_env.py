@@ -1,3 +1,10 @@
+"""Helpers for constructing a file-backed SQLite test environment.
+
+This legacy setup module mirrors the application's persistence helpers so
+integration tests can build controlled project directories.  It creates the
+schema, loads source files and OCR data, and resolves student metadata from
+the project CSV files.
+"""
 #!/usr/bin/env python3
 """
 Script de setup pour l'environnement de test.
@@ -292,6 +299,7 @@ def create_backup(conn, backup_path):
 
 
 def main():
+    """Create the configured temporary database test environment."""
     parser = argparse.ArgumentParser(description="Setup environnement de test pour Korektor")
     parser.add_argument(
         "--project-dir", required=True, help="Dossier du projet (ex: exemple2_test)"

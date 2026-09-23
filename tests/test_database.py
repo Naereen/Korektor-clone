@@ -1,10 +1,9 @@
-"""
-Tests unitaires pour la couche Database (Phase 1).
+"""Tests for Korektor's SQLite schema, loaders, and correction persistence.
 
-Exécution:
-    uv run pytest tests/test_database.py -v
+The module validates schema creation, subject/rubric imports, OCR protection,
+LLM and teacher correction priority, and query helpers using temporary
+databases.
 """
-
 import hashlib
 import os
 import sqlite3

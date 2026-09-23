@@ -1,5 +1,7 @@
-"""
-Tests pour les nouvelles routes de l'onglet Import (UI refactor).
+"""Tests for project setup, import-page rendering, and rubric generation.
+
+The Flask client is used to verify JSON API contracts for project discovery,
+directory selection, and generated rubric output without starting a server.
 """
 
 import json
@@ -14,6 +16,7 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 
 @pytest.fixture
 def client():
+    """Return a Flask test client for import routes."""
     from app import app
 
     return app.test_client()
@@ -21,6 +24,7 @@ def client():
 
 @pytest.fixture
 def original_dir():
+    """Preserve and restore the application's configured project directory."""
     """Sauvegarde et restaure le project_dir."""
     from app import config
 
@@ -32,11 +36,13 @@ def original_dir():
 
 class TestImportPage:
     def test_page_loads(self, client):
+        """Ensure the import page renders successfully."""
         resp = client.get("/import")
         assert resp.status_code == 200
         assert resp.data
 
     def test_page_has_sections(self, client):
+        """Check that the import page exposes its main sections."""
         resp = client.get("/import")
         content = resp.data.decode("utf-8")
         assert "Dossier du projet" in content
@@ -46,6 +52,7 @@ class TestImportPage:
 
 class TestProjectCheck:
     def test_check_returns_structure(self, client, original_dir):
+        """Verify project inspection returns files and copy counters."""
         from app import config
 
         config.project_dir = os.path.join(PROJECT_ROOT, "exemple")
@@ -61,6 +68,7 @@ class TestProjectCheck:
         assert data["files"]["corrige.md"] is True
 
     def test_check_missing_files(self, client, original_dir):
+        """Verify project inspection reports absent required files."""
         import tempfile
 
         from app import config
@@ -76,6 +84,7 @@ class TestProjectCheck:
 
 class TestProjectSet:
     def test_set_valid_dir(self, client, original_dir):
+        """Verify a valid project directory can be selected."""
         import tempfile
 
         with tempfile.TemporaryDirectory() as td:
@@ -85,6 +94,7 @@ class TestProjectSet:
             assert data["success"] is True
 
     def test_set_invalid_dir(self, client, original_dir):
+        """Verify invalid project directories are rejected."""
         resp = client.post("/api/project/set", json={"project_dir": "/nonexistent/path/xyz"})
         assert resp.status_code == 400
         data = json.loads(resp.data)
@@ -93,6 +103,7 @@ class TestProjectSet:
 
 class TestBaremeGenerate:
     def test_generate_bareme(self, client, original_dir):
+        """Verify rubric generation returns the expected CSV fields."""
         from app import config
 
         config.project_dir = os.path.join(PROJECT_ROOT, "exemple")
@@ -110,6 +121,7 @@ class TestBaremeGenerate:
         assert "points" in row
 
     def test_generate_bareme_no_subject(self, client, original_dir):
+        """Verify rubric generation reports a missing subject as an error."""
         import tempfile
 
         from app import config

@@ -1,6 +1,9 @@
-"""
-Fixtures pytest pour les tests Korektor.
-Utilise uv run pytest pour exécuter.
+"""Shared pytest fixtures for isolated Korektor test environments.
+
+The fixtures create temporary project directories, SQLite connections, copied
+example inputs, and representative mock LLM responses.  Tests use these
+fixtures to avoid changing the repository's real ``exemple`` project while
+still exercising the same database and file layout as the application.
 """
 
 import os

@@ -1,8 +1,8 @@
-"""
-Tests unitaires pour la couche Correction (Phase 3).
+"""Unit and integration tests for the incremental correction workflow.
 
-Exécution:
-    uv run pytest tests/test_batch_correction_v2.py -v
+The suite exercises JSON response parsing, mocked correction persistence,
+previous-copy context, teacher/LLM score priority, and aggregate statistics.
+All fixtures use temporary projects so tests never depend on live providers.
 """
 
 import json

@@ -1,8 +1,8 @@
-"""
-Tests unitaires pour la couche Prompt Builder (Phase 2).
+"""Tests for deterministic incremental and simple prompt construction.
 
-Exécution:
-    uv run pytest tests/test_prompt_builder.py -v
+The fixtures model rubrics and prior corrections, while assertions verify
+required sections, question coverage, QCM formatting, token-size behavior,
+and deterministic output.
 """
 
 import os

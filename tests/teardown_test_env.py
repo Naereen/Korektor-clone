@@ -1,3 +1,9 @@
+"""Safety helpers for cleaning temporary Korektor test environments.
+
+The functions in this module deliberately protect repository-like directories
+from accidental deletion.  They are used by setup/teardown scripts rather
+than by the production application.
+"""
 #!/usr/bin/env python3
 """
 Script de nettoyage de l'environnement de test.
@@ -125,6 +131,7 @@ def teardown_project(project_dir, force=False):
 
 
 def main():
+    """Remove the configured temporary test environment safely."""
     parser = argparse.ArgumentParser(description="Nettoyage environnement de test pour Korektor")
     parser.add_argument(
         "--project-dir",
