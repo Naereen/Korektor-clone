@@ -118,7 +118,7 @@ document.getElementById('btnSetDir').addEventListener('click', function() {
     .then(data => {
         const fb = document.getElementById('dirFeedback');
         if (data.success) {
-            fb.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Dossier défini: ' + data.project_dir + '</span>';
+            fb.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Dossier défini : ' + data.project_dir + '</span>';
             checkStructure();
         } else {
             fb.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> ' + data.error + '</span>';

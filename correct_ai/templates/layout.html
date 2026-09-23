@@ -49,6 +49,32 @@
             justify-content: center;
             align-items: center;
         }
+
+        .project-dir-indicator {
+            max-width: min(42vw, 520px);
+            color: #4b5563;
+            font-size: 0.82rem;
+        }
+
+        .project-dir-indicator .project-dir-path {
+            display: inline-block;
+            max-width: min(34vw, 420px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: bottom;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 991.98px) {
+            .project-dir-indicator {
+                max-width: 100%;
+                padding: 8px 0;
+            }
+
+            .project-dir-indicator .project-dir-path {
+                max-width: calc(100vw - 70px);
+            }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -112,6 +138,11 @@
                         </a>
                     </li>
                 </ul>
+                <div class="project-dir-indicator ms-lg-auto" title="Dossier de travail courant">
+                    <i class="bi bi-folder2-open me-1" aria-hidden="true"></i>
+                    <span class="visually-hidden">Dossier de travail courant : </span>
+                    <span class="project-dir-path">{{ current_project_dir }}</span>
+                </div>
             </div>
         </div>
     </nav>

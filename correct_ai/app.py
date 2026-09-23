@@ -94,6 +94,12 @@ config = ProjectConfig()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
+
+@app.context_processor
+def inject_project_context():
+    """Expose the active project directory to every rendered template."""
+    return {"current_project_dir": config.project_dir}
+
 APP_ICON_PATH = os.path.join(APP_ROOT, "favicon-512x512.png")
 
 

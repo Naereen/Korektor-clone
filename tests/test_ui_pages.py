@@ -100,3 +100,9 @@ class TestDocumentationPage:
         """Ensure Documentation appears after Bilan in the shared navigation."""
         content = client.get("/documentation").data.decode("utf-8")
         assert content.index("Bilan") < content.index("Documentation")
+
+    def test_navigation_displays_current_project_directory(self, client):
+        """Ensure every page exposes the active project directory in the navbar."""
+        content = client.get("/documentation").data.decode("utf-8")
+        assert "Dossier de travail courant" in content
+        assert "project-dir-path" in content
