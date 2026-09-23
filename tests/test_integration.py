@@ -231,7 +231,7 @@ class TestWorkflow:
             start=1,
             end=3,
             project_dir=integration_test_dir,
-            provider_name="UNISTRA_QWEN",
+            provider_name="ILAAS_OSS",
             test_mode=True
         )
         
