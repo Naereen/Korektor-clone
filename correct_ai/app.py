@@ -821,14 +821,12 @@ def split_thumbnail(page_num):
                 header_ratio = 0.15
             header_ratio = max(0.0, min(0.5, header_ratio))
 
-            if header_ratio > 0:
-                line_y = rect.height * header_ratio
-                shape = page.new_shape()
-                shape.draw_line(pymupdf.Point(0, line_y), pymupdf.Point(rect.width, line_y))
-                shape.finish(color=(1, 0, 0), width=2)
-                shape.commit()
-
             pix = page.get_pixmap(dpi=72)
+            if header_ratio > 0:
+                line_y = round(pix.height * header_ratio)
+                for y in range(max(0, line_y - 1), min(pix.height, line_y + 2)):
+                    for x in range(pix.width):
+                        pix.set_pixel(x, y, (255, 0, 0))
             img_data = pix.tobytes("png")
             return send_file(io.BytesIO(img_data), mimetype="image/png")
         return "Page not found", 404
