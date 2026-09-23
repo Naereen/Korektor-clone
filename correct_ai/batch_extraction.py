@@ -1,4 +1,3 @@
-
 import argparse
 import base64
 import logging
@@ -14,12 +13,12 @@ BASE_DIR = "copies_anonymes_validees"
 
 # Configure logging to file for debugging
 logging.basicConfig(
-    filename='ocr.log',
+    filename="ocr.log",
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%H:%M:%S'
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
 )
-logger = logging.getLogger('batch_extraction')
+logger = logging.getLogger("batch_extraction")
 
 
 def extract_markdown(response):
@@ -32,7 +31,7 @@ def extract_markdown(response):
     end = response.find("</markdown>")
 
     if start >= 0 and end > start:
-        text = response[start + len("<markdown>"):end].strip()
+        text = response[start + len("<markdown>") : end].strip()
         logger.info(f"✓ Markdown extracted, text length: {len(text)}")
         return text
 
@@ -57,7 +56,10 @@ def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=
     """
     user_content: List[Dict[str, Any]] = [
         {"type": "text", "text": prompt_text},
-        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+        },
     ]
 
     payload = {
@@ -65,7 +67,7 @@ def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
-        ]
+        ],
     }
 
     headers = {
@@ -75,7 +77,11 @@ def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=
 
     print(f"  Envoi à {provider.url} ({provider.model})...")
     resp = requests.post(
-        provider.url, json=payload, headers=headers, timeout=timeout, verify=provider.verify_ssl
+        provider.url,
+        json=payload,
+        headers=headers,
+        timeout=timeout,
+        verify=provider.verify_ssl,
     )
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
@@ -121,7 +127,9 @@ def extract_copy(
 
     if force:
         for filename in os.listdir(output_dir):
-            if filename == "extraction.md" or (filename.startswith("page") and filename.endswith(".md")):
+            if filename == "extraction.md" or (
+                filename.startswith("page") and filename.endswith(".md")
+            ):
                 os.remove(os.path.join(output_dir, filename))
         print(f"Forcing OCR recalculation for {copy_dir_name}.")
 
@@ -167,13 +175,9 @@ def extract_copy(
     for i in range(1, num_pages + 1):
         page_file = os.path.join(output_dir, f"page{i:02d}.md")
         if os.path.exists(page_file):
-            with open(page_file, 'r', encoding='utf-8') as f:
+            with open(page_file, "r", encoding="utf-8") as f:
                 text = f.read().strip()
-            page_transcriptions.append({
-                "page": i,
-                "text": text,
-                "status": "success"
-            })
+            page_transcriptions.append({"page": i, "text": text, "status": "success"})
             accumulated_text += "\n" + text
             start_page_idx = i  # Dernière page extraite
             logger.info(f"Page {i} déjà extraite, ajoutée au contexte")
@@ -193,13 +197,11 @@ def extract_copy(
             if os.path.exists(page_file):
                 logger.info(f"  Page {page_num}: Already extracted, skipping")
                 print(f"    Page {page_num}/{num_pages}: déjà extraite, skip.")
-                with open(page_file, 'r', encoding='utf-8') as f:
+                with open(page_file, "r", encoding="utf-8") as f:
                     transcription = f.read().strip()
-                page_transcriptions.append({
-                    "page": page_num,
-                    "text": transcription,
-                    "status": "success"
-                })
+                page_transcriptions.append(
+                    {"page": page_num, "text": transcription, "status": "success"}
+                )
                 accumulated_text += "\n" + transcription
                 continue
 
@@ -253,25 +255,29 @@ def extract_copy(
                     logger.info(f"  Page {page_num}: Attempt {attempt+1}/{max_retries}")
 
                     # Construire user_content avec éventuellement la page 1 comme référence
-                    user_content: List[Dict[str, Any]] = [
-                        {"type": "text", "text": prompt_text}
-                    ]
+                    user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt_text}]
 
                     # Ajouter la page 1 comme référence pour les pages 2+ si demandé
                     if use_ref_page1 and page_idx >= 1 and ref_page1_b64:
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{ref_page1_b64}"}
-                        })
-                        user_content.append({
-                            "type": "text",
-                            "text": "La première image ci-dessus est la PAGE 1 (Exercice 0) - utilisez-la comme référence pour déchiffrer l'écriture de cet étudiant. La page à transcrire est ci-dessous."
-                        })
+                        user_content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{ref_page1_b64}"},
+                            }
+                        )
+                        user_content.append(
+                            {
+                                "type": "text",
+                                "text": "La première image ci-dessus est la PAGE 1 (Exercice 0) - utilisez-la comme référence pour déchiffrer l'écriture de cet étudiant. La page à transcrire est ci-dessous.",
+                            }
+                        )
 
-                    user_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
-                    })
+                    user_content.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                        }
+                    )
 
                     # Appeler le LLM avec le user_content construit
                     payload = {
@@ -279,7 +285,7 @@ def extract_copy(
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_content},
-                        ]
+                        ],
                     }
                     headers = {
                         "Content-Type": "application/json",
@@ -287,7 +293,11 @@ def extract_copy(
                     }
                     print(f"  Envoi à {provider.url} ({provider.model})...")
                     resp = requests.post(
-                        provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl
+                        provider.url,
+                        json=payload,
+                        headers=headers,
+                        timeout=600,
+                        verify=provider.verify_ssl,
                     )
                     resp.raise_for_status()
                     response = resp.json()["choices"][0]["message"]["content"]
@@ -319,7 +329,9 @@ def extract_copy(
                 page_status = "failed"
                 transcription = ""
 
-            logger.info(f"  Page {page_num}: Final status = {page_status}, text length = {len(transcription) if transcription else 0}")
+            logger.info(
+                f"  Page {page_num}: Final status = {page_status}, text length = {len(transcription) if transcription else 0}"
+            )
 
             # Sauvegarder page par page avec statut
             page_file = os.path.join(output_dir, f"page{page_num:02d}.md")
@@ -337,11 +349,9 @@ def extract_copy(
             else:  # failed
                 print(f"    ✗ Page {page_num} ÉCHOUÉE après {elapsed:.1f}s")
 
-            page_transcriptions.append({
-                "page": page_num,
-                "text": transcription,
-                "status": page_status
-            })
+            page_transcriptions.append(
+                {"page": page_num, "text": transcription, "status": page_status}
+            )
             accumulated_text += "\n" + transcription
 
         # Construire extraction.md AVEC TOUTES les pages + statuts - UNE SEULE FOIS à la fin
@@ -378,24 +388,37 @@ def extract_copy(
             os.remove(lock_file)
         return False
 
+
 def main():
     parser = argparse.ArgumentParser(description="Batch extract text from exam copies.")
     parser.add_argument("--start", type=int, default=1, help="Start copy number (inclusive)")
     parser.add_argument("--end", type=int, default=5, help="End copy number (inclusive)")
     parser.add_argument("--project-dir", type=str, default=".", help="Project directory")
     parser.add_argument("--provider", type=str, default="ILAAS_OSS", help="LLM provider name")
-    parser.add_argument("--ref-page1", action="store_true", help="Use page 1 as visual reference for pages 2+")
+    parser.add_argument(
+        "--ref-page1",
+        action="store_true",
+        help="Use page 1 as visual reference for pages 2+",
+    )
 
     args = parser.parse_args()
 
-    print(f"Starting batch extraction from Copie {args.start} to {args.end} in {args.project_dir}...")
+    print(
+        f"Starting batch extraction from Copie {args.start} to {args.end} in {args.project_dir}..."
+    )
     if args.ref_page1:
         print("  Using page 1 as visual reference for handwriting style")
 
     for i in range(args.start, args.end + 1):
-        extract_copy(i, args.project_dir, provider_name=args.provider, use_ref_page1=args.ref_page1)
+        extract_copy(
+            i,
+            args.project_dir,
+            provider_name=args.provider,
+            use_ref_page1=args.ref_page1,
+        )
 
     print("Batch processing complete.")
+
 
 if __name__ == "__main__":
     main()

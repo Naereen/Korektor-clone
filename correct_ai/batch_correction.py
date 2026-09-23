@@ -1,4 +1,3 @@
-
 import argparse
 import csv
 import json
@@ -8,6 +7,7 @@ from llm_providers import ask_llm, get_provider
 
 BASE_DIR = "copies_anonymes_validees"
 BAREME_FILE = "bareme.csv"
+
 
 def load_bareme(project_dir="."):
     """Load the bareme CSV file."""
@@ -19,7 +19,16 @@ def load_bareme(project_dir="."):
         reader = csv.DictReader(f)
         return list(reader)
 
-def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force=False, project_dir=".", stop_callback=None, thinking=False):
+
+def correct_copy(
+    copy_number,
+    provider_name="ILAAS_OSS",
+    bareme_data=None,
+    force=False,
+    project_dir=".",
+    stop_callback=None,
+    thinking=False,
+):
     """Correct a single copy using the bareme data and LLM."""
     if stop_callback and stop_callback():
         print("Opération annulée (Start).")
@@ -41,15 +50,15 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
         return False
 
     if os.path.exists(correction_csv_file) and not force:
-         print(f"Skipping {copy_dir_name}: {correction_csv_file} already exists.")
-         return True
+        print(f"Skipping {copy_dir_name}: {correction_csv_file} already exists.")
+        return True
 
     print(f"Correcting {copy_dir_name} using {provider_name} to {correction_csv_file}...")
 
     try:
         if stop_callback and stop_callback():
-             print("Opération annulée (Pre-LLM).")
-             return False
+            print("Opération annulée (Pre-LLM).")
+            return False
 
         # Load contents
         sujet_path = os.path.join(project_dir, "sujet.md")
@@ -65,13 +74,19 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
         # Build dynamic instructions from bareme
         questions_instructions = ""
         for row in bareme_data:
-            q_id = row['question']
-            q_type = row['qcm (oui/non)']
+            q_id = row["question"]
+            q_type = row["qcm (oui/non)"]
 
-            questions_instructions += f"- Question {q_id} ({'QCM' if q_type == 'oui' else 'Ouverte'}):\n"
-            if q_type == 'oui':
-                questions_instructions += f"  Réponse correcte attendue : {row['réponse attendue']}\n"
-                questions_instructions += "  Barème : +1 pt par bonne réponse, -0.5 pt par mauvaise, +1 rédaction.\n"
+            questions_instructions += (
+                f"- Question {q_id} ({'QCM' if q_type == 'oui' else 'Ouverte'}):\n"
+            )
+            if q_type == "oui":
+                questions_instructions += (
+                    f"  Réponse correcte attendue : {row['réponse attendue']}\n"
+                )
+                questions_instructions += (
+                    "  Barème : +1 pt par bonne réponse, -0.5 pt par mauvaise, +1 rédaction.\n"
+                )
             else:
                 questions_instructions += f"  Réponse attendue : {row['réponse attendue']}\n"
                 questions_instructions += f"  Points : {row['points']}\n"
@@ -101,7 +116,7 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
             "- 'bonus_redaction': (number) points de rédaction (0 ou 1)\n"
             "\n"
             "REGLES:\n"
-            "- Si la question n'a pas de réponse, mets reponse_etudiant: \"\" et commentaire: \"Pas de réponse\"\n"
+            '- Si la question n\'a pas de réponse, mets reponse_etudiant: "" et commentaire: "Pas de réponse"\n'
             "- Si tu ne comprends pas la réponse, décris ce que tu vois dans reponse_etudiant\n"
             "\n"
             "Exemple JSON:\n"
@@ -115,24 +130,25 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
         system_prompt = (
             "Tu es un assistant JSON strict. Tu ne parles que JSON.\n"
             "ATTENTION: Le contenu contient du LaTeX. Tu DOIS échapper les backslashes dans les chaînes JSON.\n"
-            "Exemple: au lieu de \"\\frac\", écris \"\\\\frac\". Au lieu de \"\\mu\", écris \"\\\\mu\"."
+            'Exemple: au lieu de "\\frac", écris "\\\\frac". Au lieu de "\\mu", écris "\\\\mu".'
         )
 
         provider = get_provider(provider_name)
         response = ask_llm(provider, prompt_text, system_prompt=system_prompt, thinking=thinking)
 
         # DEBUG: Save raw response to file for analysis
-        with open('/tmp/llm_raw_response_copie02.txt', 'w', encoding='utf-8') as f:
+        with open("/tmp/llm_raw_response_copie02.txt", "w", encoding="utf-8") as f:
             f.write(response)
         print(f"DEBUG: Raw response saved to /tmp/llm_raw_response_copie02.txt")
 
         if stop_callback and stop_callback():
-             print("Opération annulée (Post-LLM - Sauvegarde ignorée).")
-             return False
+            print("Opération annulée (Post-LLM - Sauvegarde ignorée).")
+            return False
 
         # Use json_repair to extract and parse JSON from response (handles markdown blocks, LaTeX, etc.)
         try:
             import json_repair
+
             correction_data = json_repair.loads(response)
         except Exception as e:
             print(f"Erreur lors du parsing JSON (même avec json_repair): {e}")
@@ -140,39 +156,45 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
             return False
 
         # Merge with bareme data and write to CSV
-        fieldnames = list(bareme_data[0].keys()) # Start with bareme columns
+        fieldnames = list(bareme_data[0].keys())  # Start with bareme columns
         # Add extra fields from LLM correction
-        extra_fields = ['réponses étudiant', 'commentaires éventuels du correcteur', 'nbre de bonnes réponses si QCM', 'nbre de mauvaises réponses si QCM', 'Rédaction si QCM']
+        extra_fields = [
+            "réponses étudiant",
+            "commentaires éventuels du correcteur",
+            "nbre de bonnes réponses si QCM",
+            "nbre de mauvaises réponses si QCM",
+            "Rédaction si QCM",
+        ]
         for f in extra_fields:
             if f not in fieldnames:
                 fieldnames.append(f)
 
-        with open(correction_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+        with open(correction_csv_file, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
             for row in bareme_data:
-                q_id = row['question']
+                q_id = row["question"]
                 # Copy row to avoid modifying the original list in memory across iterations
                 new_row = row.copy()
 
                 if q_id in correction_data:
                     c_data = correction_data[q_id]
                     # Fill processed fields
-                    new_row['réponses étudiant'] = c_data.get('reponse_etudiant', '')
-                    new_row['note'] = str(c_data.get('note', ''))
-                    new_row['commentaires éventuels du correcteur'] = c_data.get('commentaire', '')
+                    new_row["réponses étudiant"] = c_data.get("reponse_etudiant", "")
+                    new_row["note"] = str(c_data.get("note", ""))
+                    new_row["commentaires éventuels du correcteur"] = c_data.get("commentaire", "")
 
                     # Fill QCM specific fields and recalculate note if present
-                    if row['qcm (oui/non)'] == 'oui':
+                    if row["qcm (oui/non)"] == "oui":
                         try:
-                            nb_bonnes = float(c_data.get('nb_bonnes', 0))
-                            nb_mauvaises = float(c_data.get('nb_mauvaises', 0))
-                            bonus_redaction = float(c_data.get('bonus_redaction', 0))
+                            nb_bonnes = float(c_data.get("nb_bonnes", 0))
+                            nb_mauvaises = float(c_data.get("nb_mauvaises", 0))
+                            bonus_redaction = float(c_data.get("bonus_redaction", 0))
 
-                            new_row['nbre de bonnes réponses si QCM'] = str(nb_bonnes)
-                            new_row['nbre de mauvaises réponses si QCM'] = str(nb_mauvaises)
-                            new_row['Rédaction si QCM'] = str(bonus_redaction)
+                            new_row["nbre de bonnes réponses si QCM"] = str(nb_bonnes)
+                            new_row["nbre de mauvaises réponses si QCM"] = str(nb_mauvaises)
+                            new_row["Rédaction si QCM"] = str(bonus_redaction)
 
                             # Recalculate note to ensure consistency
                             # Barème : +1 par bonne, -0.5 par mauvaise, +1 rédaction
@@ -182,13 +204,15 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
                             # Ou formule simple brute :
                             computed_note = max(0, raw_score + bonus_redaction)
 
-                            new_row['note'] = str(computed_note)
+                            new_row["note"] = str(computed_note)
                         except ValueError:
                             # Fallback to LLM note if parsing fails
                             pass
 
                 else:
-                    new_row['commentaires éventuels du correcteur'] = "NON NOTÉ (Erreur LLM ou ID non trouvé)"
+                    new_row["commentaires éventuels du correcteur"] = (
+                        "NON NOTÉ (Erreur LLM ou ID non trouvé)"
+                    )
 
                 writer.writerow(new_row)
 
@@ -198,6 +222,7 @@ def correct_copy(copy_number, provider_name="ILAAS_OSS", bareme_data=None, force
     except Exception as e:
         print(f"Error correcting {copy_dir_name}: {e}")
         return False
+
 
 def get_existing_copies(project_dir="."):
     """Return a sorted list of copy numbers found in BASE_DIR."""
@@ -216,14 +241,23 @@ def get_existing_copies(project_dir="."):
                 continue
     return sorted(copies)
 
+
 def main():
     parser = argparse.ArgumentParser(description="Batch correct exam copies.")
     parser.add_argument("--start", type=int, default=None, help="Start copy number (inclusive)")
     parser.add_argument("--end", type=int, default=None, help="End copy number (inclusive)")
     parser.add_argument("--provider", type=str, default="ILAAS_OSS", help="LLM Provider to use")
-    parser.add_argument("--force", action="store_true", help="Force overwrite of existing correction files")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force overwrite of existing correction files",
+    )
     parser.add_argument("--project-dir", type=str, default=".", help="Project directory")
-    parser.add_argument("--no-thinking", action="store_true", help="Disable thinking mode for LLM (useful for Qwen models)")
+    parser.add_argument(
+        "--no-thinking",
+        action="store_true",
+        help="Disable thinking mode for LLM (useful for Qwen models)",
+    )
 
     args = parser.parse_args()
 
@@ -248,12 +282,22 @@ def main():
     copies_to_process = [c for c in existing_copies if start_num <= c <= end_num]
 
     print(f"Found {len(existing_copies)} copies total in {base_dir_path}.")
-    print(f"Processing {len(copies_to_process)} copies (from {start_num} to {end_num}) using {args.provider}...")
+    print(
+        f"Processing {len(copies_to_process)} copies (from {start_num} to {end_num}) using {args.provider}..."
+    )
 
     for i in copies_to_process:
-        correct_copy(i, args.provider, bareme_data, force=args.force, project_dir=args.project_dir, thinking=False)
+        correct_copy(
+            i,
+            args.provider,
+            bareme_data,
+            force=args.force,
+            project_dir=args.project_dir,
+            thinking=False,
+        )
 
     print("Batch correction complete.")
+
 
 if __name__ == "__main__":
     main()

@@ -8,12 +8,13 @@ Ce module gère :
 
 Utilisation:
     from correct_ai.database import get_db, init_db, load_sujet, load_corrige, load_bareme
-    
+
     db = get_db("exemple")
     init_db(db)
     load_sujet(db, "exemple/sujet.md")
     ...
 """
+
 import csv
 import os
 import re
@@ -32,13 +33,14 @@ DB_PATH = "korektor.db"
 # Fonctions de Base de Données
 # =============================================================================
 
+
 def get_db(project_dir: str) -> sqlite3.Connection:
     """
     Retourne une connexion à la base SQLite du projet.
-    
+
     Args:
         project_dir: Chemin vers le dossier du projet (ex: "exemple2")
-    
+
     Returns:
         sqlite3.Connection: Connexion à la base de données
     """
@@ -53,7 +55,7 @@ def get_db(project_dir: str) -> sqlite3.Connection:
 def init_db(conn: sqlite3.Connection) -> None:
     """
     Initialise les tables SQLite si elles n'existent pas.
-    
+
     Args:
         conn: Connexion à la base de données
     """
@@ -133,10 +135,11 @@ def init_db(conn: sqlite3.Connection) -> None:
 # Chargement des Données de Base
 # =============================================================================
 
+
 def load_sujet(conn: sqlite3.Connection, sujet_path: str) -> None:
     """
     Charge sujet.md dans la base.
-    
+
     Args:
         conn: Connexion à la base de données
         sujet_path: Chemin vers le fichier sujet.md
@@ -150,7 +153,7 @@ def load_sujet(conn: sqlite3.Connection, sujet_path: str) -> None:
 def load_corrige(conn: sqlite3.Connection, corrige_path: str) -> None:
     """
     Charge corrige.md dans la base.
-    
+
     Args:
         conn: Connexion à la base de données
         corrige_path: Chemin vers le fichier corrige.md
@@ -161,10 +164,12 @@ def load_corrige(conn: sqlite3.Connection, corrige_path: str) -> None:
     conn.commit()
 
 
-def load_bareme(conn: sqlite3.Connection, bareme_path: str, sujet_content: Optional[str] = None) -> None:
+def load_bareme(
+    conn: sqlite3.Connection, bareme_path: str, sujet_content: Optional[str] = None
+) -> None:
     """
     Charge bareme.csv dans la base avec texte_question extrait du sujet.
-    
+
     Args:
         conn: Connexion à la base de données
         bareme_path: Chemin vers le fichier bareme.csv
@@ -173,17 +178,18 @@ def load_bareme(conn: sqlite3.Connection, bareme_path: str, sujet_content: Optio
     # Extraire le texte des questions depuis sujet.md si disponible
     question_texts = {}
     if sujet_content:
-        pattern = r'\(--(Q[\w.\-]+)\)'
+        pattern = r"\(--(Q[\w.\-]+)\)"
         parts = re.split(pattern, sujet_content)
-        for i in range(0, len(parts)-1, 2):
-            question_id = parts[i+1]
+        for i in range(0, len(parts) - 1, 2):
+            question_id = parts[i + 1]
             question_text = parts[i].strip()
             question_texts[question_id] = question_text
-    
+
     with open(bareme_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO bareme 
                 (question, texte_question, type_qcm, reponse_attendue, points)
                 VALUES (?, ?, ?, ?, ?)
@@ -192,13 +198,15 @@ def load_bareme(conn: sqlite3.Connection, bareme_path: str, sujet_content: Optio
                     type_qcm = excluded.type_qcm,
                     reponse_attendue = excluded.reponse_attendue,
                     points = excluded.points
-            """, [
-                row['question'],
-                question_texts.get(row['question'], ''),
-                row['qcm (oui/non)'] == 'oui',
-                row['réponse attendue'],
-                row['points']
-            ])
+            """,
+                [
+                    row["question"],
+                    question_texts.get(row["question"], ""),
+                    row["qcm (oui/non)"] == "oui",
+                    row["réponse attendue"],
+                    row["points"],
+                ],
+            )
     conn.commit()
 
 
@@ -206,21 +214,22 @@ def load_bareme(conn: sqlite3.Connection, bareme_path: str, sujet_content: Optio
 # Gestion des Copies et Extractions
 # =============================================================================
 
+
 def save_extraction(
     conn: sqlite3.Connection,
     copy_id: int,
     pdf_path: str,
     extraction_text: str,
     etudiant_info: Optional[Dict[str, Any]] = None,
-    verified: bool = False
+    verified: bool = False,
 ) -> bool:
     """
     Sauvegarde une extraction OCR dans la base.
-    
+
     ⚠️ **PROTECTION** : Si une extraction est déjà marquée comme vérifiée (extraction_verified=1),
     cette fonction ne l'écrasera PAS. Cela protège les extractions manuellement vérifiées
     dans exemple2/copies_anonymes_validees/.
-    
+
     Args:
         conn: Connexion à la base de données
         copy_id: ID de la copie
@@ -228,33 +237,39 @@ def save_extraction(
         extraction_text: Texte extrait (OCR)
         etudiant_info: Dict avec 'id', 'name', 'firstname' (optionnel)
         verified: Si True, marque comme vérifié manuellement
-    
+
     Returns:
         bool: True si sauvegardé, False si bloqué (déjà vérifié)
     """
     # Vérifier si cette copie est déjà marquée comme vérifiée
-    existing = conn.execute("""
+    existing = conn.execute(
+        """
         SELECT extraction_verified FROM copies WHERE id = ?
-    """, [copy_id]).fetchone()
-    
-    if existing and existing['extraction_verified']:
+    """,
+        [copy_id],
+    ).fetchone()
+
+    if existing and existing["extraction_verified"]:
         # ❌ **PROTECTION** : Ne pas écraser une extraction vérifiée
         return False
-    
+
     # Sauvegarder
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR REPLACE INTO copies 
         (id, pdf_path, extraction_texte, etudiant_id, nom, prenom, extraction_verified)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, [
-        copy_id,
-        pdf_path,
-        extraction_text,
-        etudiant_info.get('id') if etudiant_info else None,
-        etudiant_info.get('name') if etudiant_info else None,
-        etudiant_info.get('firstname') if etudiant_info else None,
-        1 if verified else 0
-    ])
+    """,
+        [
+            copy_id,
+            pdf_path,
+            extraction_text,
+            etudiant_info.get("id") if etudiant_info else None,
+            etudiant_info.get("name") if etudiant_info else None,
+            etudiant_info.get("firstname") if etudiant_info else None,
+            1 if verified else 0,
+        ],
+    )
     conn.commit()
     return True
 
@@ -262,9 +277,9 @@ def save_extraction(
 def load_all_extractions(conn: sqlite3.Connection, project_dir: str) -> None:
     """
     Charge toutes les extractions OCR depuis les fichiers.
-    
+
     ⚠️ **NE CHARGE PAS** les extractions déjà vérifiées manuellement (exemple2/)
-    
+
     Args:
         conn: Connexion à la base de données
         project_dir: Dossier du projet contenant les extractions
@@ -272,7 +287,7 @@ def load_all_extractions(conn: sqlite3.Connection, project_dir: str) -> None:
     base_dir = os.path.join(project_dir, "copies_anonymes_validees")
     if not os.path.exists(base_dir):
         return
-    
+
     for copy_dir in sorted(os.listdir(base_dir)):
         copy_path = os.path.join(base_dir, copy_dir)
         if not os.path.isdir(copy_path):
@@ -282,31 +297,34 @@ def load_all_extractions(conn: sqlite3.Connection, project_dir: str) -> None:
                 copy_id = int(copy_dir.split("_")[1])
             except (ValueError, IndexError):
                 continue
-            
+
             extraction_file = os.path.join(copy_path, "extraction.md")
             pdf_file = os.path.join(base_dir, f"{copy_dir}.pdf")
-            
+
             if os.path.exists(extraction_file):
                 with open(extraction_file, "r", encoding="utf-8") as f:
                     extraction_text = f.read()
-                
+
                 # ⚠️ NE PAS ÉCRASER si déjà vérifié manuellement
-                existing = conn.execute("""
+                existing = conn.execute(
+                    """
                     SELECT extraction_verified FROM copies WHERE id = ?
-                """, [copy_id]).fetchone()
-                
-                if existing and existing['extraction_verified']:
+                """,
+                    [copy_id],
+                ).fetchone()
+
+                if existing and existing["extraction_verified"]:
                     continue
-                
+
                 # Trouver l'étudiant (optionnel)
                 etudiant_info = _find_student_for_copy(copy_id, project_dir)
-                
+
                 # Stocker le PDF comme chemin RELATIF à project_dir
                 # base_dir = project_dir/copies_anonymes_validees
                 # donc pdf_file = project_dir/copies_anonymes_validees/Copie_01.pdf
                 # on veut stocker : copies_anonymes_validees/Copie_01.pdf
                 pdf_path_relatif = os.path.relpath(pdf_file, project_dir)
-                
+
                 # Sauvegarder (non vérifié par défaut)
                 save_extraction(
                     conn=conn,
@@ -314,9 +332,9 @@ def load_all_extractions(conn: sqlite3.Connection, project_dir: str) -> None:
                     pdf_path=pdf_path_relatif,
                     extraction_text=extraction_text,
                     etudiant_info=etudiant_info,
-                    verified=False
+                    verified=False,
                 )
-    
+
     conn.commit()
 
 
@@ -325,11 +343,11 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
     Trouve les infos de l'étudiant pour une copie donnée.
     Utilise correspondance.csv pour mapper Copie_ID → Etudiant_ID,
     puis liste-etudiants.csv pour obtenir Nom/Prénom.
-    
+
     Args:
         copy_id: ID de la copie
         project_dir: Dossier du projet
-    
+
     Returns:
         Dict avec 'id', 'name', 'firstname' ou None
     """
@@ -340,10 +358,10 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
         with open(corr_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if int(row.get('Copie_ID', -1)) == copy_id:
-                    etudiant_id = row.get('Etudiant_ID', '').strip()
+                if int(row.get("Copie_ID", -1)) == copy_id:
+                    etudiant_id = row.get("Etudiant_ID", "").strip()
                     break
-    
+
     # 2. Lire liste-etudiants.csv pour trouver le nom
     students_file = os.path.join(project_dir, "liste-etudiants.csv")
     if not os.path.exists(students_file):
@@ -355,7 +373,7 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
     # Chercher la ligne d'en-tête réelle (contient "Nom" ou "N° étudiant")
     header_idx = None
     for i, line in enumerate(lines):
-        if 'Nom' in line or 'N° étudiant' in line or 'Num' in line:
+        if "Nom" in line or "N° étudiant" in line or "Num" in line:
             header_idx = i
             break
 
@@ -363,41 +381,44 @@ def _find_student_for_copy(copy_id: int, project_dir: str) -> Optional[Dict[str,
         return None
 
     import io
-    reader = csv.DictReader(io.StringIO(''.join(lines[header_idx:])))
+
+    reader = csv.DictReader(io.StringIO("".join(lines[header_idx:])))
     students = list(reader)
-    
+
     # Chercher par Etudiant_ID, ou fallback par position
     for student in students:
-        sid = student.get('Num', '').strip() or student.get('N° étudiant', '').strip()
+        sid = student.get("Num", "").strip() or student.get("N° étudiant", "").strip()
         if etudiant_id and sid == etudiant_id:
             return {
-                'id': sid,
-                'name': student.get('Nom', ''),
-                'firstname': student.get('Prénom', '')
+                "id": sid,
+                "name": student.get("Nom", ""),
+                "firstname": student.get("Prénom", ""),
             }
-    
+
     # Fallback: position dans la liste (moins fiable)
     if copy_id <= len(students):
         student = students[copy_id - 1]
         return {
-            'id': student.get('Num', ''),
-            'name': student.get('Nom', ''),
-            'firstname': student.get('Prénom', '')
+            "id": student.get("Num", ""),
+            "name": student.get("Nom", ""),
+            "firstname": student.get("Prénom", ""),
         }
     return None
 
 
-def mark_extractions_verified(conn: sqlite3.Connection, project_dir: str, verified: bool = True) -> None:
+def mark_extractions_verified(
+    conn: sqlite3.Connection, project_dir: str, verified: bool = True
+) -> None:
     """
     Marque toutes les extractions d'un projet comme vérifiées manuellement.
-    
+
     Args:
         conn: Connexion à la base de données
         project_dir: Dossier du projet
         verified: True pour marquer comme vérifié, False pour annuler
     """
     base_dir = os.path.join(project_dir, "copies_anonymes_validees")
-    
+
     for copy_dir in sorted(os.listdir(base_dir)):
         copy_path = os.path.join(base_dir, copy_dir)
         if not os.path.isdir(copy_path):
@@ -407,11 +428,14 @@ def mark_extractions_verified(conn: sqlite3.Connection, project_dir: str, verifi
                 copy_id = int(copy_dir.split("_")[1])
             except (ValueError, IndexError):
                 continue
-            
-            conn.execute("""
+
+            conn.execute(
+                """
                 UPDATE copies SET extraction_verified = ? WHERE id = ?
-            """, [1 if verified else 0, copy_id])
-    
+            """,
+                [1 if verified else 0, copy_id],
+            )
+
     conn.commit()
 
 
@@ -419,16 +443,17 @@ def mark_extractions_verified(conn: sqlite3.Connection, project_dir: str, verifi
 # Gestion des Corrections
 # =============================================================================
 
+
 def save_correction(
     conn: sqlite3.Connection,
     copy_id: int,
     bareme_id: int,
     data: Dict[str, Any],
-    is_prof: bool = False
+    is_prof: bool = False,
 ) -> None:
     """
     Sauvegarde une correction dans la base (LLM ou Prof).
-    
+
     Args:
         conn: Connexion à la base de données
         copy_id: ID de la copie
@@ -438,54 +463,63 @@ def save_correction(
     """
     if is_prof:
         # Correction validée par le professeur (prioritaire)
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR REPLACE INTO corrections 
             (copie_id, bareme_id, reponse_etudiant, 
              note_prof, commentaire_prof, validee_par_prof, date_validation)
             VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-        """, [
-            copy_id,
-            bareme_id,
-            data.get('reponse_etudiant'),
-            data.get('note'),
-            data.get('commentaire')
-        ])
+        """,
+            [
+                copy_id,
+                bareme_id,
+                data.get("reponse_etudiant"),
+                data.get("note"),
+                data.get("commentaire"),
+            ],
+        )
     else:
         # Correction par LLM
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR REPLACE INTO corrections 
             (copie_id, bareme_id, reponse_etudiant, 
              note_llm, commentaire_llm, raisonnement_llm, 
              nb_bonnes_llm, nb_mauvaises_llm, bonus_redaction_llm, 
              date_correction_llm)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, [
-            copy_id,
-            bareme_id,
-            data.get('reponse_etudiant'),
-            data.get('note'),
-            data.get('commentaire'),
-            data.get('raisonnement'),
-            data.get('nb_bonnes', 0),
-            data.get('nb_mauvaises', 0),
-            data.get('bonus_redaction', 0)
-        ])
+        """,
+            [
+                copy_id,
+                bareme_id,
+                data.get("reponse_etudiant"),
+                data.get("note"),
+                data.get("commentaire"),
+                data.get("raisonnement"),
+                data.get("nb_bonnes", 0),
+                data.get("nb_mauvaises", 0),
+                data.get("bonus_redaction", 0),
+            ],
+        )
     conn.commit()
 
 
-def get_previous_corrections(conn: sqlite3.Connection, current_copy_id: int) -> List[Dict[str, Any]]:
+def get_previous_corrections(
+    conn: sqlite3.Connection, current_copy_id: int
+) -> List[Dict[str, Any]]:
     """
     Récupère les corrections des copies 1..n-1 (avec notes finales = prof si validé, sinon LLM).
-    
+
     Args:
         conn: Connexion à la base de données
         current_copy_id: ID de la copie courante
-    
+
     Returns:
         Liste de dicts avec copie_id, bareme_id, question, texte_question,
         reponse_etudiant, note, commentaire, raisonnement
     """
-    return conn.execute("""
+    return conn.execute(
+        """
         SELECT c.copie_id, c.bareme_id, b.question, b.texte_question,
                c.reponse_etudiant,
                CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END as note,
@@ -495,17 +529,19 @@ def get_previous_corrections(conn: sqlite3.Connection, current_copy_id: int) -> 
         JOIN bareme b ON c.bareme_id = b.id
         WHERE c.copie_id < ?
         ORDER BY c.copie_id, c.bareme_id
-    """, [current_copy_id]).fetchall()
+    """,
+        [current_copy_id],
+    ).fetchall()
 
 
 def has_corrections(conn: sqlite3.Connection, copy_id: int) -> bool:
     """
     Vérifie si une copie a TOUTES ses corrections (pas seulement quelques-unes).
-    
+
     Args:
         conn: Connexion à la base de données
         copy_id: ID de la copie à vérifier
-    
+
     Returns:
         bool: True si la copie a TOUTES les corrections, False sinon
     """
@@ -513,17 +549,15 @@ def has_corrections(conn: sqlite3.Connection, copy_id: int) -> bool:
     correction_count = conn.execute(
         "SELECT COUNT(*) FROM corrections WHERE copie_id = ?", [copy_id]
     ).fetchone()[0]
-    
+
     # Compter le nombre total de questions dans le barème
     question_count = conn.execute("SELECT COUNT(*) FROM bareme").fetchone()[0]
-    
+
     return correction_count >= question_count
 
 
 def get_random_previous_corrections(
-    conn: sqlite3.Connection,
-    current_copy_id: int,
-    max_count: int = 10
+    conn: sqlite3.Connection, current_copy_id: int, max_count: int = 10
 ) -> List[Dict[str, Any]]:
     """
     Récupère TOUTES les corrections de max_count copies précédentes
@@ -539,7 +573,8 @@ def get_random_previous_corrections(
     Returns:
         Liste de dicts avec toutes les corrections des copies sélectionnées
     """
-    return conn.execute("""
+    return conn.execute(
+        """
         SELECT c.copie_id, c.bareme_id, b.question, b.texte_question,
                c.reponse_etudiant,
                CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END as note,
@@ -556,16 +591,18 @@ def get_random_previous_corrections(
             LIMIT ?
         )
         ORDER BY c.copie_id, c.bareme_id
-    """, [current_copy_id, max_count]).fetchall()
+    """,
+        [current_copy_id, max_count],
+    ).fetchall()
 
 
 def get_all_extractions(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     """
     Récupère toutes les extractions OCR.
-    
+
     Args:
         conn: Connexion à la base de données
-    
+
     Returns:
         Liste de dicts avec id, extraction_texte
     """
@@ -575,25 +612,28 @@ def get_all_extractions(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
 def get_note_for_copy(conn: sqlite3.Connection, copy_id: int, bareme_id: int) -> Optional[float]:
     """
     Récupère la note finale (priorité au prof si validée, sinon LLM).
-    
+
     Args:
         conn: Connexion à la base de données
         copy_id: ID de la copie
         bareme_id: ID de la question
-    
+
     Returns:
         Note finale (float) ou None
     """
-    row = conn.execute("""
+    row = conn.execute(
+        """
         SELECT note_prof, note_llm, validee_par_prof 
         FROM corrections 
         WHERE copie_id = ? AND bareme_id = ?
-    """, [copy_id, bareme_id]).fetchone()
-    
-    if row and row['validee_par_prof']:
-        return row['note_prof']
+    """,
+        [copy_id, bareme_id],
+    ).fetchone()
+
+    if row and row["validee_par_prof"]:
+        return row["note_prof"]
     elif row:
-        return row['note_llm']
+        return row["note_llm"]
     return None
 
 
@@ -618,10 +658,11 @@ def get_bareme(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
 # Utilitaires
 # =============================================================================
 
+
 def backup_db(conn: sqlite3.Connection, backup_path: str) -> None:
     """
     Crée un backup de la base.
-    
+
     Args:
         conn: Connexion à la base de données
         backup_path: Chemin vers le fichier de backup
@@ -631,4 +672,5 @@ def backup_db(conn: sqlite3.Connection, backup_path: str) -> None:
     row = conn.execute("PRAGMA database_list").fetchone()
     if row:
         import shutil
-        shutil.copy(row['file'], backup_path)
+
+        shutil.copy(row["file"], backup_path)

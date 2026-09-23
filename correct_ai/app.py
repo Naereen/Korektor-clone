@@ -11,8 +11,7 @@ import time
 from collections import defaultdict
 
 import fitz  # PyMuPDF
-from flask import (Flask, jsonify, redirect, render_template, request,
-                   send_file, url_for)
+from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from pypdf import PdfReader, PdfWriter
 
 # Import local modules
@@ -29,27 +28,28 @@ from llm_providers import get_provider
 
 # --- Configuration & Path Management ---
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-APP_ROOT = os.path.dirname(APP_ROOT) # Go up to project root (where code is)
+APP_ROOT = os.path.dirname(APP_ROOT)  # Go up to project root (where code is)
 
 CONFIG_FILE = os.path.join(APP_ROOT, ".correctai_config.json")
 
+
 class ProjectConfig:
     def __init__(self):
-        self.project_dir = os.path.join(APP_ROOT, 'exemple')
+        self.project_dir = os.path.join(APP_ROOT, "exemple")
         self.load()
 
     def load(self):
         if os.path.exists(CONFIG_FILE):
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(CONFIG_FILE, "r") as f:
                     data = json.load(f)
-                    self.project_dir = data.get('project_dir', APP_ROOT)
+                    self.project_dir = data.get("project_dir", APP_ROOT)
             except:
                 pass
 
     def save(self):
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump({'project_dir': self.project_dir}, f)
+        with open(CONFIG_FILE, "w") as f:
+            json.dump({"project_dir": self.project_dir}, f)
 
     def get_path(self, *args):
         return os.path.join(self.project_dir, *args)
@@ -65,20 +65,23 @@ class ProjectConfig:
     def get_sorted_pdf_path(self):
         return self.get_path("copiesA4_sorted.pdf")
 
+
 config = ProjectConfig()
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__, template_folder="templates", static_folder="static")
 
-APP_ICON_PATH = os.path.join(APP_ROOT, 'favicon-512x512.png')
+APP_ICON_PATH = os.path.join(APP_ROOT, "favicon-512x512.png")
 
 
-@app.route('/favicon-512x512.png')
+@app.route("/favicon-512x512.png")
 def app_icon():
     """Serve the application icon stored at the project root."""
-    return send_file(APP_ICON_PATH, mimetype='image/png')
+    return send_file(APP_ICON_PATH, mimetype="image/png")
+
 
 # Global state for split view
 splitter_doc = None
+
 
 def get_splitter_doc():
     global splitter_doc
@@ -89,40 +92,51 @@ def get_splitter_doc():
         splitter_doc = fitz.open(path)
     return splitter_doc
 
+
 # --- Settings Route ---
-@app.route('/settings', methods=['GET', 'POST'])
+@app.route("/settings", methods=["GET", "POST"])
 def settings():
-    if request.method == 'POST':
-        new_dir = request.form.get('project_dir')
+    if request.method == "POST":
+        new_dir = request.form.get("project_dir")
         if new_dir and os.path.isdir(new_dir):
             config.project_dir = new_dir
             config.save()
             # Reset global state
             global splitter_doc
-            if splitter_doc: splitter_doc.close()
+            if splitter_doc:
+                splitter_doc.close()
             splitter_doc = None
-            return redirect(url_for('index'))
+            return redirect(url_for("index"))
         else:
-            return render_template('settings.html', error="Dossier invalide", current_dir=config.project_dir)
-    return render_template('settings.html', current_dir=config.project_dir)
+            return render_template(
+                "settings.html",
+                error="Dossier invalide",
+                current_dir=config.project_dir,
+            )
+    return render_template("settings.html", current_dir=config.project_dir)
+
 
 # --- ROUTES: Navigation ---
 
-@app.route('/')
-def index():
-    return redirect('/import')
 
-@app.route('/import')
+@app.route("/")
+def index():
+    return redirect("/import")
+
+
+@app.route("/import")
 def import_page():
-    return render_template('import.html', active_page='import', current_dir=config.project_dir)
+    return render_template("import.html", active_page="import", current_dir=config.project_dir)
+
 
 # --- API ROUTES: Project Management ---
 
-@app.route('/api/project/set', methods=['POST'])
+
+@app.route("/api/project/set", methods=["POST"])
 def api_project_set():
     """Définit le dossier du projet."""
     data = request.json
-    new_dir = data.get('project_dir', '')
+    new_dir = data.get("project_dir", "")
     if new_dir and os.path.isdir(new_dir):
         config.project_dir = new_dir
         config.save()
@@ -133,61 +147,79 @@ def api_project_set():
         return jsonify({"success": True, "project_dir": config.project_dir})
     return jsonify({"success": False, "error": "Dossier invalide"}), 400
 
-@app.route('/api/project/check')
+
+@app.route("/api/project/check")
 def api_project_check():
     """Vérifie la structure du dossier projet."""
     project_dir = config.project_dir
     files = {
-        'sujet.md': os.path.exists(os.path.join(project_dir, 'sujet.md')),
-        'corrige.md': os.path.exists(os.path.join(project_dir, 'corrige.md')),
-        'bareme.csv': os.path.exists(os.path.join(project_dir, 'bareme.csv')),
-        'liste-etudiants.csv': os.path.exists(os.path.join(project_dir, 'liste-etudiants.csv')),
-        'correspondance.csv': os.path.exists(os.path.join(project_dir, 'correspondance.csv')),
-        'copiesA3.pdf': os.path.exists(os.path.join(project_dir, 'copiesA3.pdf')),
-        'copiesA4_sorted.pdf': os.path.exists(os.path.join(project_dir, 'copiesA4_sorted.pdf')),
+        "sujet.md": os.path.exists(os.path.join(project_dir, "sujet.md")),
+        "corrige.md": os.path.exists(os.path.join(project_dir, "corrige.md")),
+        "bareme.csv": os.path.exists(os.path.join(project_dir, "bareme.csv")),
+        "liste-etudiants.csv": os.path.exists(os.path.join(project_dir, "liste-etudiants.csv")),
+        "correspondance.csv": os.path.exists(os.path.join(project_dir, "correspondance.csv")),
+        "copiesA3.pdf": os.path.exists(os.path.join(project_dir, "copiesA3.pdf")),
+        "copiesA4_sorted.pdf": os.path.exists(os.path.join(project_dir, "copiesA4_sorted.pdf")),
     }
     # Compter les copies
-    copies_dir = os.path.join(project_dir, 'copies_anonymes_validees')
+    copies_dir = os.path.join(project_dir, "copies_anonymes_validees")
     nb_pdfs = 0
     nb_extractions = 0
     if os.path.isdir(copies_dir):
         for f in os.listdir(copies_dir):
-            if f.startswith('Copie_') and f.endswith('.pdf'):
+            if f.startswith("Copie_") and f.endswith(".pdf"):
                 nb_pdfs += 1
-            if f.startswith('Copie_') and os.path.isdir(os.path.join(copies_dir, f)):
+            if f.startswith("Copie_") and os.path.isdir(os.path.join(copies_dir, f)):
                 nb_extractions += 1
 
-    return jsonify({
-        "project_dir": project_dir,
-        "files": files,
-        "nb_copies_pdf": nb_pdfs,
-        "nb_extractions": nb_extractions
-    })
+    return jsonify(
+        {
+            "project_dir": project_dir,
+            "files": files,
+            "nb_copies_pdf": nb_pdfs,
+            "nb_extractions": nb_extractions,
+        }
+    )
 
-@app.route('/api/bareme/generate', methods=['POST'])
+
+@app.route("/api/bareme/generate", methods=["POST"])
 def api_bareme_generate():
     """Génère le barème via subject_analysis.py."""
     import subprocess
+
     try:
         result = subprocess.run(
-            ['python3', 'correct_ai/subject_analysis.py', '--project-dir', config.project_dir],
-            capture_output=True, text=True, timeout=120,
-            cwd=os.path.dirname(config.project_dir) if os.path.dirname(config.project_dir) else '.'
+            [
+                "python3",
+                "correct_ai/subject_analysis.py",
+                "--project-dir",
+                config.project_dir,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=(
+                os.path.dirname(config.project_dir) if os.path.dirname(config.project_dir) else "."
+            ),
         )
         print(result.stdout)
         if result.returncode == 0:
             # Lire le barème généré
-            bareme_path = os.path.join(config.project_dir, 'bareme.csv')
+            bareme_path = os.path.join(config.project_dir, "bareme.csv")
             bareme_data = []
             if os.path.exists(bareme_path):
-                with open(bareme_path, 'r', encoding='utf-8') as f:
+                with open(bareme_path, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     bareme_data = list(reader)
             return jsonify({"success": True, "bareme": bareme_data, "output": result.stdout})
         else:
-            return jsonify({"success": False, "error": result.stderr or result.stdout}), 500
+            return (
+                jsonify({"success": False, "error": result.stderr or result.stdout}),
+                500,
+            )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 # --- UTILS: Student Loading ---
 def load_students():
@@ -195,23 +227,23 @@ def load_students():
     students = []
     if os.path.exists(csv_path):
         try:
-            with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+            with open(csv_path, "r", newline="", encoding="utf-8") as f:
                 # Read all lines to find the header
                 lines = f.readlines()
 
             header_index = -1
-            delimiter = ';' # default
+            delimiter = ";"  # default
 
             # 1. Detect header line and delimiter
             for i, line in enumerate(lines):
                 # Check for comma or semi-colon
                 if "Nom" in line and ("Prénom" in line or "Prenom" in line):
-                     header_index = i
-                     if line.count(',') > line.count(';'):
-                         delimiter = ','
-                     else:
-                         delimiter = ';'
-                     break
+                    header_index = i
+                    if line.count(",") > line.count(";"):
+                        delimiter = ","
+                    else:
+                        delimiter = ";"
+                    break
 
             if header_index != -1:
                 # Re-open or use the lines from header_index
@@ -220,7 +252,7 @@ def load_students():
 
                 for row in reader:
                     # Robust field detection
-                    keys = list(row.keys()) # keys are from the header line
+                    keys = list(row.keys())  # keys are from the header line
 
                     # Safe helper to find key
                     def find_key(keywords):
@@ -229,9 +261,9 @@ def load_students():
                                 return k
                         return None
 
-                    id_key = find_key(['num', 'etu', 'n° étudiant'])
-                    nom_key = find_key(['nom'])
-                    prenom_key = find_key(['prénom', 'prenom'])
+                    id_key = find_key(["num", "etu", "n° étudiant"])
+                    nom_key = find_key(["nom"])
+                    prenom_key = find_key(["prénom", "prenom"])
 
                     if id_key and nom_key:
                         s_id = row[id_key].strip()
@@ -240,22 +272,26 @@ def load_students():
 
                         # Filter out empty or header-like repetitions if any
                         if s_id and s_name and s_id.lower() != "n° étudiant":
-                            students.append({
-                                "id": s_id,
-                                "label": f"{s_name} {s_first} ({s_id})",
-                                "name": s_name,
-                                "firstname": s_first
-                            })
+                            students.append(
+                                {
+                                    "id": s_id,
+                                    "label": f"{s_name} {s_first} ({s_id})",
+                                    "name": s_name,
+                                    "firstname": s_first,
+                                }
+                            )
             else:
-                 print("Could not find header in students CSV")
+                print("Could not find header in students CSV")
 
         except Exception as e:
             print(f"Error loading students: {e}")
             import traceback
+
             traceback.print_exc()
 
     students.sort(key=lambda x: x["label"])
     return students
+
 
 # --- UTILS: A3 Split Logic (Refactored from sortpdf.py) ---
 def process_a3_split(input_stream, output_path, sort_booklet=True):
@@ -303,11 +339,11 @@ def process_a3_split(input_stream, output_path, sort_booklet=True):
     with open(output_path, "wb") as f:
         writer.write(f)
 
+
 # --- ROUTES: Navigation ---
 
 
-
-@app.route('/split')
+@app.route("/split")
 def split_page():
     doc = get_splitter_doc()
     if not doc:
@@ -315,13 +351,17 @@ def split_page():
 
     total_items = (len(doc) + 3) // 4
     students = load_students()
-    return render_template('split.html', active_page='split', total_items=total_items, students=students)
+    return render_template(
+        "split.html", active_page="split", total_items=total_items, students=students
+    )
+
 
 import subprocess
 import threading
 import time
 
 # ... existing imports ...
+
 
 # --- Batch Processing State ---
 class BatchJob:
@@ -334,7 +374,8 @@ class BatchJob:
         self.current_action = "Inactif"
 
     def start_batch_function(self, job_type, start, end, project_dir, force=False):
-        if self.running: return False
+        if self.running:
+            return False
         self.running = True
         self.stop_requested = False
         self.logs = []
@@ -344,7 +385,8 @@ class BatchJob:
         def run_wrapper():
             # Sauvegarder le handler original du logger korektor
             import logging
-            korektor_logger = logging.getLogger('korektor')
+
+            korektor_logger = logging.getLogger("korektor")
             original_handler = korektor_logger.handlers[0] if korektor_logger.handlers else None
 
             try:
@@ -352,6 +394,7 @@ class BatchJob:
                 class LogCapture:
                     def __init__(self, job):
                         self.job = job
+
                     def write(self, text):
                         if text:
                             # Avoid appending empty newlines excessively
@@ -364,9 +407,10 @@ class BatchJob:
 
                             # Keep action updated
                             if text.strip() and not text.startswith("==="):
-                                self.job.current_action = text.strip()[:50] # Limit length
+                                self.job.current_action = text.strip()[:50]  # Limit length
 
-                    def flush(self): pass
+                    def flush(self):
+                        pass
 
                 original_stdout = sys.stdout
                 sys.stdout = LogCapture(self)
@@ -380,12 +424,12 @@ class BatchJob:
                     def emit(self, record):
                         msg = self.format(record)
                         # Ajouter directement aux logs sans passer par sys.stdout
-                        if hasattr(self.job, 'logs'):
+                        if hasattr(self.job, "logs"):
                             # The frontend concatenates log entries, so preserve the
                             # line boundary normally added by StreamHandler.emit().
-                            self.job.logs.append(msg if msg.endswith('\n') else msg + '\n')
+                            self.job.logs.append(msg if msg.endswith("\n") else msg + "\n")
                             # Mettre à jour l'action en cours
-                            if msg.strip() and not msg.startswith('[') and len(msg) < 50:
+                            if msg.strip() and not msg.startswith("[") and len(msg) < 50:
                                 self.job.current_action = msg.strip()
 
                 # Remplacer le handler par le nôtre
@@ -401,137 +445,153 @@ class BatchJob:
                     # Define stop callback for deep abort
                     check_stop = lambda: self.stop_requested
 
-                    if job_type == 'extraction':
-                         for i in range(start, end + 1):
-                             if self.stop_requested:
-                                 print(">>> Interruption demandée par l'utilisateur.")
-                                 break
+                    if job_type == "extraction":
+                        for i in range(start, end + 1):
+                            if self.stop_requested:
+                                print(">>> Interruption demandée par l'utilisateur.")
+                                break
 
-                             print(f"Processing Copy {i}/{end}...")
-                             # Update progress BEFORE work starts on item
-                             self.current_action = f"Extraction Copie {i}"
+                            print(f"Processing Copy {i}/{end}...")
+                            # Update progress BEFORE work starts on item
+                            self.current_action = f"Extraction Copie {i}"
 
-                             batch_extraction.extract_copy(
-                                 i,
-                                 project_dir=project_dir,
-                                 stop_callback=check_stop,
-                                 force=force,
-                             )
+                            batch_extraction.extract_copy(
+                                i,
+                                project_dir=project_dir,
+                                stop_callback=check_stop,
+                                force=force,
+                            )
 
-                             count += 1
-                             self.progress = int((count / total) * 100)
+                            count += 1
+                            self.progress = int((count / total) * 100)
 
-                    elif job_type == 'correction':
-                         # Obtenir la base de données (init_db est appelé uniquement si tables n'existent pas)
-                         db = get_db(project_dir)
-                         # Vérifier si les tables existent déjà pour éviter init inutile
-                         from database import init_db
-                         table_check = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='corrections'").fetchone()
-                         if not table_check:
-                             print(f"Initialisation de la base de données pour {project_dir}...")
-                             init_db(db)
-                         else:
-                             print(f"Base de données déjà initialisée pour {project_dir}")
+                    elif job_type == "correction":
+                        # Obtenir la base de données (init_db est appelé uniquement si tables n'existent pas)
+                        db = get_db(project_dir)
+                        # Vérifier si les tables existent déjà pour éviter init inutile
+                        from database import init_db
 
-                         # Vérifier et charger les données manquantes
-                         from database import load_all_extractions
+                        table_check = db.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name='corrections'"
+                        ).fetchone()
+                        if not table_check:
+                            print(f"Initialisation de la base de données pour {project_dir}...")
+                            init_db(db)
+                        else:
+                            print(f"Base de données déjà initialisée pour {project_dir}")
 
-                         # Charger extractions (déjà protégé : ne charge pas si extraction_verified=1)
-                         load_all_extractions(db, project_dir)
+                        # Vérifier et charger les données manquantes
+                        from database import load_all_extractions
 
-                         # Charger sujet/corrige/bareme UNIQUEMENT s'ils n'existent pas dans la base
-                         from database import (load_bareme, load_corrige,
-                                               load_sujet)
+                        # Charger extractions (déjà protégé : ne charge pas si extraction_verified=1)
+                        load_all_extractions(db, project_dir)
 
-                         sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
-                         corrige_exists = db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0
-                         bareme_exists = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0] > 0
+                        # Charger sujet/corrige/bareme UNIQUEMENT s'ils n'existent pas dans la base
+                        from database import load_bareme, load_corrige, load_sujet
 
-                         sujet_path = os.path.join(project_dir, "sujet.md")
-                         corrige_path = os.path.join(project_dir, "corrige.md")
-                         bareme_path = os.path.join(project_dir, "bareme.csv")
+                        sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
+                        corrige_exists = (
+                            db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0
+                        )
+                        bareme_exists = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0] > 0
 
-                         if os.path.exists(sujet_path) and not sujet_exists:
-                             print("Chargement de sujet.md...")
-                             load_sujet(db, sujet_path)
-                             sujet_exists = True
+                        sujet_path = os.path.join(project_dir, "sujet.md")
+                        corrige_path = os.path.join(project_dir, "corrige.md")
+                        bareme_path = os.path.join(project_dir, "bareme.csv")
 
-                         if os.path.exists(corrige_path) and not corrige_exists:
-                             print("Chargement de corrige.md...")
-                             load_corrige(db, corrige_path)
-                             corrige_exists = True
+                        if os.path.exists(sujet_path) and not sujet_exists:
+                            print("Chargement de sujet.md...")
+                            load_sujet(db, sujet_path)
+                            sujet_exists = True
 
-                         if os.path.exists(bareme_path) and not bareme_exists:
-                             print("Chargement de bareme.csv...")
-                             sujet_content = ""
-                             if os.path.exists(sujet_path):
-                                 with open(sujet_path, "r", encoding="utf-8") as f:
-                                     sujet_content = f.read()
-                             load_bareme(db, bareme_path, sujet_content)
-                             bareme_exists = True
+                        if os.path.exists(corrige_path) and not corrige_exists:
+                            print("Chargement de corrige.md...")
+                            load_corrige(db, corrige_path)
+                            corrige_exists = True
 
-                         # Recalculer les flags apres chargement conditionnel
-                         sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
-                         corrige_exists = db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0
-                         bareme_exists = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0] > 0
+                        if os.path.exists(bareme_path) and not bareme_exists:
+                            print("Chargement de bareme.csv...")
+                            sujet_content = ""
+                            if os.path.exists(sujet_path):
+                                with open(sujet_path, "r", encoding="utf-8") as f:
+                                    sujet_content = f.read()
+                            load_bareme(db, bareme_path, sujet_content)
+                            bareme_exists = True
 
-                         if sujet_exists and corrige_exists and bareme_exists:
-                             print("Sujet, corrigé et barème déjà chargés dans la base")
+                        # Recalculer les flags apres chargement conditionnel
+                        sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
+                        corrige_exists = (
+                            db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0
+                        )
+                        bareme_exists = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0] > 0
 
-                             # Obtenir le provider
-                             from llm_providers import get_provider
-                             provider = get_provider()
+                        if sujet_exists and corrige_exists and bareme_exists:
+                            print("Sujet, corrigé et barème déjà chargés dans la base")
 
-                             for i in range(start, end + 1):
-                                 if self.stop_requested:
-                                     print(">>> Interruption demandée par l'utilisateur.")
-                                     break
+                            # Obtenir le provider
+                            from llm_providers import get_provider
 
-                                 # Vérifier si la copie a déjà DES corrections (même partielles)
-                                 existing_count = db.execute(
-                                     "SELECT COUNT(*) FROM corrections WHERE copie_id = ?", [i]
-                                 ).fetchone()[0]
+                            provider = get_provider()
 
-                                 if existing_count > 0 and not force:
-                                     print(f"⏭️  Copie {i} a déjà {existing_count}/26 corrections, passage à la suivante (utilise force=True pour écraser)")
-                                     count += 1
-                                     self.progress = int((count / total) * 100)
-                                     continue
+                            for i in range(start, end + 1):
+                                if self.stop_requested:
+                                    print(">>> Interruption demandée par l'utilisateur.")
+                                    break
 
-                                 print(f"Correcting Copy {i}/{end}...")
-                                 self.current_action = f"Correction Copie {i}"
+                                # Vérifier si la copie a déjà DES corrections (même partielles)
+                                existing_count = db.execute(
+                                    "SELECT COUNT(*) FROM corrections WHERE copie_id = ?",
+                                    [i],
+                                ).fetchone()[0]
 
-                                 # Si force=True, supprimer les corrections existantes de cette copie
-                                 if force and existing_count > 0:
-                                     db.execute("DELETE FROM corrections WHERE copie_id = ?", [i])
-                                     db.commit()
-                                     print(f"✏️  Suppression des {existing_count} corrections existantes pour la copie {i}")
+                                if existing_count > 0 and not force:
+                                    print(
+                                        f"⏭️  Copie {i} a déjà {existing_count}/26 corrections, passage à la suivante (utilise force=True pour écraser)"
+                                    )
+                                    count += 1
+                                    self.progress = int((count / total) * 100)
+                                    continue
 
-                                 # Appeler la correction incrémentale v2
-                                 batch_correction_v2.correct_copy_incremental(
-                                     copy_id=i,
-                                     provider=provider,
-                                     db=db,
-                                     project_dir=project_dir,
-                                     test_mode=False
-                                 )
+                                print(f"Correcting Copy {i}/{end}...")
+                                self.current_action = f"Correction Copie {i}"
 
-                                 count += 1
-                                 self.progress = int((count / total) * 100)
+                                # Si force=True, supprimer les corrections existantes de cette copie
+                                if force and existing_count > 0:
+                                    db.execute(
+                                        "DELETE FROM corrections WHERE copie_id = ?",
+                                        [i],
+                                    )
+                                    db.commit()
+                                    print(
+                                        f"✏️  Suppression des {existing_count} corrections existantes pour la copie {i}"
+                                    )
 
-                             db.close()
+                                # Appeler la correction incrémentale v2
+                                batch_correction_v2.correct_copy_incremental(
+                                    copy_id=i,
+                                    provider=provider,
+                                    db=db,
+                                    project_dir=project_dir,
+                                    test_mode=False,
+                                )
+
+                                count += 1
+                                self.progress = int((count / total) * 100)
+
+                            db.close()
                 except Exception as e:
-                     print(f"Error in batch loop: {e}")
-                     import traceback
-                     traceback.print_exc(file=sys.stdout)
+                    print(f"Error in batch loop: {e}")
+                    import traceback
+
+                    traceback.print_exc(file=sys.stdout)
 
                 if self.stop_requested:
-                     self.current_action = "Arrêté"
-                     self.logs.append("=== Traitement interrompu ===\n")
+                    self.current_action = "Arrêté"
+                    self.logs.append("=== Traitement interrompu ===\n")
                 else:
-                     self.progress = 100
-                     self.current_action = "Terminé"
-                     self.logs.append("=== Fin du traitement ===\n")
+                    self.progress = 100
+                    self.current_action = "Terminé"
+                    self.logs.append("=== Fin du traitement ===\n")
 
             except Exception as e:
                 self.logs.append(f"Erreur fatale wrapper: {e}\n")
@@ -557,53 +617,68 @@ class BatchJob:
             return True
         return False
 
+
 current_job = BatchJob()
 
-@app.route('/process')
-def process_page():
-    return render_template('process.html', active_page='process')
 
-@app.route('/api/batch/start', methods=['POST'])
+@app.route("/process")
+def process_page():
+    return render_template("process.html", active_page="process")
+
+
+@app.route("/api/batch/start", methods=["POST"])
 def batch_start():
     data = request.json
-    job_type = data.get('type') # 'extraction' or 'correction'
-    req_start = data.get('start')
-    req_end = data.get('end')
+    job_type = data.get("type")  # 'extraction' or 'correction'
+    req_start = data.get("start")
+    req_end = data.get("end")
 
     # Determine range
-    existing = get_copy_ids() # helper needed
+    existing = get_copy_ids()  # helper needed
     if not existing:
-         return jsonify({"success": False, "error": "Aucune copie trouvée"}), 400
+        return jsonify({"success": False, "error": "Aucune copie trouvée"}), 400
 
     start_id = req_start if req_start is not None else min(existing)
     end_id = req_end if req_end is not None else max(existing)
 
     if start_id < 1 or end_id > max(existing) or start_id > end_id:
-        return jsonify({
-            "success": False,
-            "error": f"Plage invalide : choisissez une plage entre 1 et {max(existing)}.",
-        }), 400
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"Plage invalide : choisissez une plage entre 1 et {max(existing)}.",
+                }
+            ),
+            400,
+        )
 
     # Launch Job
-    if current_job.start_batch_function(job_type, start_id, end_id, config.project_dir, force=data.get('force', False)):
+    if current_job.start_batch_function(
+        job_type, start_id, end_id, config.project_dir, force=data.get("force", False)
+    ):
         return jsonify({"success": True})
     else:
         return jsonify({"success": False, "error": "Un job est déjà en cours"}), 409
 
-@app.route('/api/batch/stop', methods=['POST'])
+
+@app.route("/api/batch/stop", methods=["POST"])
 def batch_stop():
     if current_job.stop():
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "Aucun job actif"}), 400
 
-@app.route('/api/batch/status')
+
+@app.route("/api/batch/status")
 def batch_status():
-    return jsonify({
-        "running": current_job.running,
-        "progress": current_job.progress,
-        "action": current_job.current_action,
-        "logs": current_job.logs[-50:] # Send last 50 lines
-    })
+    return jsonify(
+        {
+            "running": current_job.running,
+            "progress": current_job.progress,
+            "action": current_job.current_action,
+            "logs": current_job.logs[-50:],  # Send last 50 lines
+        }
+    )
+
 
 def get_copy_ids():
     ids = []
@@ -613,22 +688,24 @@ def get_copy_ids():
             if f.startswith("Copie_") and f.endswith(".pdf"):
                 try:
                     ids.append(int(f.replace("Copie_", "").replace(".pdf", "")))
-                except: pass
+                except:
+                    pass
     return sorted(ids)
 
 
-@app.route('/verify')
+@app.route("/verify")
 def verify_page():
-    return render_template('verify.html', active_page='verify')
+    return render_template("verify.html", active_page="verify")
 
 
 # --- ROUTES: API Import ---
 
-@app.route('/api/import', methods=['POST'])
+
+@app.route("/api/import", methods=["POST"])
 def api_import():
     try:
-        file = request.files.get('file')
-        sort_booklet = request.form.get('sort_booklet') == 'true'
+        file = request.files.get("file")
+        sort_booklet = request.form.get("sort_booklet") == "true"
 
         if not file:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
@@ -653,17 +730,20 @@ def api_import():
         return jsonify({"success": True})
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 # --- ROUTES: API Splitter ---
 
-@app.route('/api/split/thumbnail/<int:page_num>')
+
+@app.route("/api/split/thumbnail/<int:page_num>")
 def split_thumbnail(page_num):
     try:
         doc = get_splitter_doc()
-        if not doc: return "", 404
+        if not doc:
+            return "", 404
 
         page_idx = page_num - 1
         if 0 <= page_idx < len(doc):
@@ -673,19 +753,22 @@ def split_thumbnail(page_num):
             clip_rect = fitz.Rect(0, 0, rect.width, rect.height * 0.35)
             pix = page.get_pixmap(clip=clip_rect, dpi=72)
             img_data = pix.tobytes("png")
-            return send_file(io.BytesIO(img_data), mimetype='image/png')
+            return send_file(io.BytesIO(img_data), mimetype="image/png")
         return "Page not found", 404
     except Exception as e:
         return str(e), 500
 
-@app.route('/api/split/process', methods=['POST'])
+
+@app.route("/api/split/process", methods=["POST"])
 def split_process():
     data = request.json
-    if not data: return jsonify({"success": False, "error": "No data"}), 400
+    if not data:
+        return jsonify({"success": False, "error": "No data"}), 400
 
     try:
         doc = get_splitter_doc()
-        if not doc: return jsonify({"success": False, "error": "Doc not loaded"}), 500
+        if not doc:
+            return jsonify({"success": False, "error": "Doc not loaded"}), 500
 
         # Logic from split_copies.py
         copy_segments = []
@@ -694,12 +777,12 @@ def split_process():
         copy_students = []
 
         for item in data:
-            page_num = item['page_num']
-            is_continuation = item.get('is_continuation', False)
-            student_id = item.get('student_id', None)
+            page_num = item["page_num"]
+            is_continuation = item.get("is_continuation", False)
+            student_id = item.get("student_id", None)
             start_idx = page_num - 1
 
-            is_same_student = (student_id is not None and student_id == current_student_id)
+            is_same_student = student_id is not None and student_id == current_student_id
 
             if is_continuation or is_same_student:
                 current_copy_segments.append(start_idx)
@@ -719,11 +802,21 @@ def split_process():
         output_dir = config.get_output_dir()
         csv_path = config.get_path("correspondance.csv")
         students_list = load_students()
-        student_info_map = {s['id']: s for s in students_list}
+        student_info_map = {s["id"]: s for s in students_list}
 
-        with open(csv_path, "w", newline='', encoding='utf-8') as csv_file:
+        with open(csv_path, "w", newline="", encoding="utf-8") as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow(["Copie_ID", "Fichier", "Nb_Pages", "Page_Range", "Etudiant_ID", "Nom", "Prenom"])
+            writer.writerow(
+                [
+                    "Copie_ID",
+                    "Fichier",
+                    "Nb_Pages",
+                    "Page_Range",
+                    "Etudiant_ID",
+                    "Nom",
+                    "Prenom",
+                ]
+            )
 
             for i, segments in enumerate(copy_segments):
                 copy_id = i + 1
@@ -749,7 +842,7 @@ def split_process():
 
                 for start_idx in segments:
                     end_idx = min(start_idx + 4, len(doc))
-                    new_doc.insert_pdf(doc, from_page=start_idx, to_page=end_idx-1)
+                    new_doc.insert_pdf(doc, from_page=start_idx, to_page=end_idx - 1)
 
                     # Header mask & Numbering
                     segment_first_page = new_doc[total_pages]
@@ -762,28 +855,42 @@ def split_process():
                     shape.commit()
 
                     text = f"Copie {copy_id}"
-                    segment_first_page.insert_textbox(header_rect, text, fontsize=40, color=(0, 0, 0), align=1)
+                    segment_first_page.insert_textbox(
+                        header_rect, text, fontsize=40, color=(0, 0, 0), align=1
+                    )
 
-                    total_pages += (end_idx - start_idx)
+                    total_pages += end_idx - start_idx
 
                 filename = f"Copie_{copy_id:02d}.pdf"
                 filepath = os.path.join(output_dir, filename)
                 new_doc.save(filepath)
                 new_doc.close()
 
-                writer.writerow([copy_id, filename, total_pages, page_range_str, s_id or "", s_nom, s_prenom])
+                writer.writerow(
+                    [
+                        copy_id,
+                        filename,
+                        total_pages,
+                        page_range_str,
+                        s_id or "",
+                        s_nom,
+                        s_prenom,
+                    ]
+                )
 
         return jsonify({"success": True, "message": f"{len(copy_segments)} copies générées."})
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 # --- ROUTES: API Verification/Validator ---
 
-@app.route('/api/copies')
+
+@app.route("/api/copies")
 def list_copies():
     copies = []
     output_dir = config.get_output_dir()
@@ -804,18 +911,19 @@ def list_copies():
 
         # Quick fix: scan for Copy_*.pdf and sort numerically
         pdf_files = [f for f in files if f.startswith("Copie_") and f.endswith(".pdf")]
-        pdf_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
+        pdf_files.sort(key=lambda x: int(x.split("_")[1].split(".")[0]))
         return jsonify([f.replace(".pdf", "") for f in pdf_files])
 
     return jsonify(copies)
 
-@app.route('/api/bareme')
+
+@app.route("/api/bareme")
 def get_bareme():
     questions = []
     path = config.get_path("bareme.csv")
     if os.path.exists(path):
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     questions.append(row)
@@ -823,7 +931,8 @@ def get_bareme():
             print(f"Error reading bareme: {e}")
     return jsonify(questions)
 
-@app.route('/api/pdf/<copie_id>')
+
+@app.route("/api/pdf/<copie_id>")
 def get_pdf(copie_id):
     # copie_id like "Copie_01"
     filename = f"{copie_id}.pdf"
@@ -832,6 +941,7 @@ def get_pdf(copie_id):
         return send_file(path)
     return "Not found", 404
 
+
 # Use subfolders for data to keep clean
 def get_copy_dir(copie_id):
     d = os.path.join(config.get_output_dir(), copie_id)
@@ -839,31 +949,33 @@ def get_copy_dir(copie_id):
         os.makedirs(d)
     return d
 
-@app.route('/api/extraction/<copie_id>', methods=['GET', 'POST'])
+
+@app.route("/api/extraction/<copie_id>", methods=["GET", "POST"])
 def handle_extraction(copie_id):
     # Store markdown in a subfolder: copies_anonymes_validees/Copie_XX/extraction.md
     copy_dir = get_copy_dir(copie_id)
     file_path = os.path.join(copy_dir, "extraction.md")
 
-    if request.method == 'POST':
-        content = request.json.get('content', '')
-        with open(file_path, 'w', encoding='utf-8') as f:
+    if request.method == "POST":
+        content = request.json.get("content", "")
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
         return jsonify({"success": True})
     else:
         if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 return jsonify({"content": f.read()})
         return jsonify({"content": ""})
 
-@app.route('/api/correction/<copie_id>', methods=['GET', 'POST'])
+
+@app.route("/api/correction/<copie_id>", methods=["GET", "POST"])
 def handle_correction(copie_id):
     # Store CSV in a subfolder: copies_anonymes_validees/Copie_XX/correction.csv
     copy_dir = get_copy_dir(copie_id)
     ai_file_path = os.path.join(copy_dir, "correction.csv")
     prof_file_path = os.path.join(copy_dir, "correction_prof.csv")
 
-    if request.method == 'POST':
+    if request.method == "POST":
         data = request.json
         if data:
             # Fix: Load bareme to get strict field order
@@ -871,18 +983,18 @@ def handle_correction(copie_id):
                 fieldnames = []
                 bareme_path = config.get_path("bareme.csv")
                 if os.path.exists(bareme_path):
-                     with open(bareme_path, 'r', encoding='utf-8') as bf:
-                         reader = csv.DictReader(bf)
-                         fieldnames = reader.fieldnames
+                    with open(bareme_path, "r", encoding="utf-8") as bf:
+                        reader = csv.DictReader(bf)
+                        fieldnames = reader.fieldnames
 
                 if not fieldnames:
-                     # Fallback if bareme not found/empty
-                     fieldnames = list(data[0].keys())
+                    # Fallback if bareme not found/empty
+                    fieldnames = list(data[0].keys())
 
                 # Compulsory write to correction_prof.csv
-                with open(prof_file_path, 'w', newline='', encoding='utf-8') as f:
+                with open(prof_file_path, "w", newline="", encoding="utf-8") as f:
                     # extrasaction='ignore' prevents errors if frontend sent extra props
-                    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                     writer.writeheader()
                     writer.writerows(data)
             except Exception as e:
@@ -896,7 +1008,7 @@ def handle_correction(copie_id):
         target_path = prof_file_path if os.path.exists(prof_file_path) else ai_file_path
 
         if os.path.exists(target_path):
-            with open(target_path, 'r', encoding='utf-8') as f:
+            with open(target_path, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
         return jsonify(rows)
@@ -904,7 +1016,8 @@ def handle_correction(copie_id):
 
 # --- ROUTES: DB Verification (SQLite) ---
 
-@app.route('/api/db/bareme')
+
+@app.route("/api/db/bareme")
 def get_db_bareme():
     """Recupere le bareme depuis la base de donnees SQLite"""
     try:
@@ -916,7 +1029,7 @@ def get_db_bareme():
         return get_bareme()
 
 
-@app.route('/api/db/copies')
+@app.route("/api/db/copies")
 def list_db_copies():
     """Liste toutes les copies depuis la base de donnees SQLite"""
     try:
@@ -924,33 +1037,38 @@ def list_db_copies():
         copies = db.execute(
             "SELECT id, etudiant_id, nom, prenom FROM copies ORDER BY id"
         ).fetchall()
-        return jsonify([
-            {
-                'id': row['id'],
-                'etudiant_id': row['etudiant_id'],
-                'nom': row['nom'],
-                'prenom': row['prenom'],
-            }
-            for row in copies
-        ])
+        return jsonify(
+            [
+                {
+                    "id": row["id"],
+                    "etudiant_id": row["etudiant_id"],
+                    "nom": row["nom"],
+                    "prenom": row["prenom"],
+                }
+                for row in copies
+            ]
+        )
     except Exception as e:
         print(f"Error listing copies from DB: {e}")
         return jsonify([])
 
 
-@app.route('/api/db/corrections/<int:copie_id>', methods=['GET', 'POST'])
+@app.route("/api/db/corrections/<int:copie_id>", methods=["GET", "POST"])
 def get_db_corrections(copie_id):
     """Recupere toutes les corrections d'une copie depuis la base de donnees SQLite"""
     try:
         db = get_db(config.project_dir)
 
-        if request.method == 'POST':
+        if request.method == "POST":
             corrections = request.get_json(silent=True)
             if not isinstance(corrections, list):
-                return jsonify({'success': False, 'error': 'Format de corrections invalide'}), 400
+                return (
+                    jsonify({"success": False, "error": "Format de corrections invalide"}),
+                    400,
+                )
 
             for correction in corrections:
-                question = correction.get('question')
+                question = correction.get("question")
                 if not question:
                     continue
 
@@ -960,7 +1078,8 @@ def get_db_corrections(copie_id):
                 if not bareme_row:
                     continue
 
-                db.execute("""
+                db.execute(
+                    """
                     UPDATE corrections
                     SET reponse_etudiant = ?,
                         note_prof = ?,
@@ -968,18 +1087,21 @@ def get_db_corrections(copie_id):
                         validee_par_prof = 1,
                         date_validation = CURRENT_TIMESTAMP
                     WHERE copie_id = ? AND bareme_id = ?
-                """, [
-                    correction.get('reponses etudiant', ''),
-                    correction.get('note'),
-                    correction.get('commentaires eventuels du correcteur', ''),
-                    copie_id,
-                    bareme_row['id'],
-                ])
+                """,
+                    [
+                        correction.get("reponses etudiant", ""),
+                        correction.get("note"),
+                        correction.get("commentaires eventuels du correcteur", ""),
+                        copie_id,
+                        bareme_row["id"],
+                    ],
+                )
 
             db.commit()
-            return jsonify({'success': True})
+            return jsonify({"success": True})
 
-        corrections = db.execute("""
+        corrections = db.execute(
+            """
             SELECT
                 c.bareme_id,
                 b.question,
@@ -999,38 +1121,44 @@ def get_db_corrections(copie_id):
             JOIN bareme b ON c.bareme_id = b.id
             WHERE c.copie_id = ?
             ORDER BY b.id
-        """, [copie_id]).fetchall()
+        """,
+            [copie_id],
+        ).fetchall()
 
         result = []
         for row in corrections:
-            result.append({
-                'question': row['question'],
-                'texte_question': row['texte_question'],
-                'qcm (oui/non)': 'oui' if row['type_qcm'] else 'non',
-                'reponse attendue': row['reponse_attendue'],
-                'points': row['points'],
-                'reponses etudiant': row['reponse_etudiant'],
-                'note': row['note'],
-                'commentaires eventuels du correcteur': row['commentaire'],
-                'raisonnement_llm': row['raisonnement'],
-                'nbre de bonnes reponses si QCM': row['nb_bonnes_llm'],
-                'nbre de mauvaises reponses si QCM': row['nb_mauvaises_llm'],
-                'Redaction si QCM': row['bonus_redaction_llm'],
-                'validee_par_prof': row['validee_par_prof']
-            })
+            result.append(
+                {
+                    "question": row["question"],
+                    "texte_question": row["texte_question"],
+                    "qcm (oui/non)": "oui" if row["type_qcm"] else "non",
+                    "reponse attendue": row["reponse_attendue"],
+                    "points": row["points"],
+                    "reponses etudiant": row["reponse_etudiant"],
+                    "note": row["note"],
+                    "commentaires eventuels du correcteur": row["commentaire"],
+                    "raisonnement_llm": row["raisonnement"],
+                    "nbre de bonnes reponses si QCM": row["nb_bonnes_llm"],
+                    "nbre de mauvaises reponses si QCM": row["nb_mauvaises_llm"],
+                    "Redaction si QCM": row["bonus_redaction_llm"],
+                    "validee_par_prof": row["validee_par_prof"],
+                }
+            )
         return jsonify(result)
     except Exception as e:
         print(f"Error reading corrections from DB for copy {copie_id}: {e}")
         import traceback
+
         traceback.print_exc()
         return jsonify([])
 
 
 # --- ROUTES: OCR Verification ---
 
-@app.route('/verify_ocr')
+
+@app.route("/verify_ocr")
 def verify_ocr_page():
-    return render_template('verify_ocr.html', active_page='verify_ocr')
+    return render_template("verify_ocr.html", active_page="verify_ocr")
 
 
 def get_ocr_project_dir():
@@ -1040,42 +1168,42 @@ def get_ocr_project_dir():
 
 def get_ocr_copy_dir(copie_id):
     """Get directory for a specific copy in the current project"""
-    base_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
+    base_dir = os.path.join(get_ocr_project_dir(), "copies_anonymes_validees")
     d = os.path.join(base_dir, copie_id)
     if not os.path.exists(d):
         os.makedirs(d, exist_ok=True)
     return d
 
 
-@app.route('/api/ocr/copies')
+@app.route("/api/ocr/copies")
 def list_ocr_copies():
     """List all copies in the current project's copies_anonymes_validees"""
-    copies_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
+    copies_dir = os.path.join(get_ocr_project_dir(), "copies_anonymes_validees")
     copies = []
 
     if os.path.exists(copies_dir):
         for item in os.listdir(copies_dir):
             item_path = os.path.join(copies_dir, item)
             # Directories starting with Copie_ (post-extraction)
-            if os.path.isdir(item_path) and item.startswith('Copie_'):
+            if os.path.isdir(item_path) and item.startswith("Copie_"):
                 copies.append(item)
             # PDF files directly in copies_anonymes_validees (pre-extraction)
-            elif item.startswith('Copie_') and item.endswith('.pdf'):
-                copies.append(item.replace('.pdf', ''))
+            elif item.startswith("Copie_") and item.endswith(".pdf"):
+                copies.append(item.replace(".pdf", ""))
 
     # Deduplicate and sort
-    copies = sorted(set(copies), key=lambda x: int(x.replace('Copie_', '')))
+    copies = sorted(set(copies), key=lambda x: int(x.replace("Copie_", "")))
     return jsonify(copies)
 
 
-@app.route('/api/ocr/pdf/<copie_id>')
+@app.route("/api/ocr/pdf/<copie_id>")
 def get_ocr_pdf(copie_id):
     """Get PDF for a copy in exemple2"""
     from flask import request
 
-    page_num = request.args.get('page', None)
+    page_num = request.args.get("page", None)
 
-    copies_dir = os.path.join(get_ocr_project_dir(), 'copies_anonymes_validees')
+    copies_dir = os.path.join(get_ocr_project_dir(), "copies_anonymes_validees")
 
     # First try: Copie_XX/Copie_XX.pdf
     pdf_path = os.path.join(copies_dir, copie_id, f"{copie_id}.pdf")
@@ -1097,7 +1225,8 @@ def get_ocr_pdf(copie_id):
                 img_bytes = pix.tobytes("png")
                 doc.close()
                 from io import BytesIO
-                return send_file(BytesIO(img_bytes), mimetype='image/png')
+
+                return send_file(BytesIO(img_bytes), mimetype="image/png")
             doc.close()
         except Exception as e:
             print(f"Error generating page image: {e}")
@@ -1107,7 +1236,7 @@ def get_ocr_pdf(copie_id):
     return send_file(pdf_path)
 
 
-@app.route('/api/ocr/pages/<copie_id>')
+@app.route("/api/ocr/pages/<copie_id>")
 def get_ocr_pages(copie_id):
     """Get list of pages with markdown content for a copy"""
     copy_dir = get_ocr_copy_dir(copie_id)
@@ -1115,13 +1244,13 @@ def get_ocr_pages(copie_id):
 
     if os.path.exists(copy_dir):
         for f in os.listdir(copy_dir):
-            if f.startswith('page') and f.endswith('.md'):
+            if f.startswith("page") and f.endswith(".md"):
                 try:
                     # Remove 'page' prefix and '.md' suffix
-                    page_num = f.replace('page', '').replace('.md', '')
+                    page_num = f.replace("page", "").replace(".md", "")
                     # Normalize to integer for sorting, but keep original string
                     file_path = os.path.join(copy_dir, f)
-                    with open(file_path, 'r', encoding='utf-8') as fp:
+                    with open(file_path, "r", encoding="utf-8") as fp:
                         pages[page_num] = fp.read()
                 except Exception as e:
                     print(f"Error reading page file {f}: {e}")
@@ -1139,13 +1268,10 @@ def get_ocr_pages(copie_id):
         except:
             pass
 
-    return jsonify({
-        "pages": pages,
-        "total_pages": total_pages
-    })
+    return jsonify({"pages": pages, "total_pages": total_pages})
 
 
-@app.route('/api/ocr/content/<copie_id>/<page_num>', methods=['GET', 'POST'])
+@app.route("/api/ocr/content/<copie_id>/<page_num>", methods=["GET", "POST"])
 def handle_ocr_page_content(copie_id, page_num):
     """Get or save markdown content for a specific page"""
     copy_dir = get_ocr_copy_dir(copie_id)
@@ -1159,19 +1285,19 @@ def handle_ocr_page_content(copie_id, page_num):
 
     file_path = os.path.join(copy_dir, f"page{page_num_padded}.md")
 
-    if request.method == 'POST':
-        content = request.json.get('content', '')
-        with open(file_path, 'w', encoding='utf-8') as f:
+    if request.method == "POST":
+        content = request.json.get("content", "")
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
         return jsonify({"success": True})
     else:
         if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 return jsonify({"content": f.read()})
         return jsonify({"content": ""})
 
 
-@app.route('/api/ocr/rebuild_extraction/<copie_id>', methods=['POST'])
+@app.route("/api/ocr/rebuild_extraction/<copie_id>", methods=["POST"])
 def rebuild_extraction(copie_id):
     """Rebuild extraction.md from all page markdown files"""
     copy_dir = get_ocr_copy_dir(copie_id)
@@ -1179,14 +1305,16 @@ def rebuild_extraction(copie_id):
 
     try:
         # Lire TOUS les fichiers pageXX.md dans le dossier
-        page_files = sorted([f for f in os.listdir(copy_dir) if f.startswith('page') and f.endswith('.md')])
+        page_files = sorted(
+            [f for f in os.listdir(copy_dir) if f.startswith("page") and f.endswith(".md")]
+        )
 
         parts = []
         for page_file in page_files:
-            page_num = page_file.replace('page', '').replace('.md', '')
+            page_num = page_file.replace("page", "").replace(".md", "")
             file_path = os.path.join(copy_dir, page_file)
 
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             if content.strip():
@@ -1197,27 +1325,35 @@ def rebuild_extraction(copie_id):
 
         full_content = "\n\n".join(parts)
 
-        with open(extraction_path, 'w', encoding='utf-8') as f:
+        with open(extraction_path, "w", encoding="utf-8") as f:
             f.write(full_content)
 
-        return jsonify({"success": True, "message": f"extraction.md regénérée avec {len(parts)} pages"})
+        return jsonify(
+            {
+                "success": True,
+                "message": f"extraction.md regénérée avec {len(parts)} pages",
+            }
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/ocr')
+@app.route("/ocr")
 def ocr_page():
-    return render_template('ocr.html', active_page='ocr')
+    return render_template("ocr.html", active_page="ocr")
 
-@app.route('/correction')
+
+@app.route("/correction")
 def correction_page():
-    return render_template('correction.html', active_page='correction')
+    return render_template("correction.html", active_page="correction")
 
-@app.route('/bilan')
+
+@app.route("/bilan")
 def bilan_page():
-    return render_template('bilan.html', active_page='bilan')
+    return render_template("bilan.html", active_page="bilan")
 
-@app.route('/api/bilan/stats')
+
+@app.route("/api/bilan/stats")
 def api_bilan_stats():
     """Retourne les stats globales de la base pour le dashboard."""
     try:
@@ -1233,12 +1369,15 @@ def api_bilan_stats():
         nb_corrections = db.execute("SELECT COUNT(*) FROM corrections").fetchone()[0]
 
         # Copies entièrement corrigées (ont toutes les questions)
-        nb_full = db.execute("""
+        nb_full = db.execute(
+            """
             SELECT COUNT(*) FROM (
                 SELECT copie_id, COUNT(*) as cnt FROM corrections
                 GROUP BY copie_id HAVING cnt = ?
             )
-        """, [nb_questions]).fetchone()[0]
+        """,
+            [nb_questions],
+        ).fetchone()[0]
 
         # Notes par copie
         notes = db.execute("""
@@ -1254,28 +1393,43 @@ def api_bilan_stats():
         max_points = db.execute("SELECT SUM(points) FROM bareme").fetchone()[0] or 0
 
         # Copies problématiques (moins de 100% des corrections)
-        problematic = db.execute("""
+        problematic = db.execute(
+            """
             SELECT copie_id, COUNT(*) as cnt FROM corrections
             GROUP BY copie_id HAVING cnt < ?
             ORDER BY copie_id
-        """, [nb_questions]).fetchall()
+        """,
+            [nb_questions],
+        ).fetchall()
 
         db.close()
 
-        return jsonify({
-            "nb_copies": nb_copies,
-            "nb_questions": nb_questions,
-            "nb_corrections": nb_corrections,
-            "nb_fully_corrected": nb_full,
-            "max_points": max_points,
-            "notes": [{"copie_id": n['copie_id'], "total": n['total'], "nb_corr": n['nb_corr']} for n in notes],
-            "problematic": [{"copie_id": p['copie_id'], "missing": nb_questions - p['cnt']} for p in problematic]
-        })
+        return jsonify(
+            {
+                "nb_copies": nb_copies,
+                "nb_questions": nb_questions,
+                "nb_corrections": nb_corrections,
+                "nb_fully_corrected": nb_full,
+                "max_points": max_points,
+                "notes": [
+                    {
+                        "copie_id": n["copie_id"],
+                        "total": n["total"],
+                        "nb_corr": n["nb_corr"],
+                    }
+                    for n in notes
+                ],
+                "problematic": [
+                    {"copie_id": p["copie_id"], "missing": nb_questions - p["cnt"]}
+                    for p in problematic
+                ],
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     PORT = 5000
     print(f"CorrectAI running on http://127.0.0.1:{PORT}")
-    app.run(debug=True, host='0.0.0.0', port=PORT)
+    app.run(debug=True, host="0.0.0.0", port=PORT)

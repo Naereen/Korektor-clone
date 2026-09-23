@@ -1,4 +1,3 @@
-
 import argparse
 import csv
 import json
@@ -17,7 +16,7 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
         print(f"Error: {sujet_path} not found.")
         return False
 
-    with open(sujet_path, 'r', encoding='utf-8') as f:
+    with open(sujet_path, "r", encoding="utf-8") as f:
         original_content = f.read()
 
     print(f"Analyzing {sujet_path} ({len(original_content)} chars)...")
@@ -25,7 +24,7 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
 
     # Regex to find markers like (--Q1.1) or (--Q1) or (--Q_Intro)
     # Captures the marker content e.g. "Q1.1"
-    pattern = r'\(--(Q[\w\.\-]+)\)'
+    pattern = r"\(--(Q[\w\.\-]+)\)"
 
     # Split: this returns [TextBefore, Marker1, TextBetween, Marker2, ...]
     parts = re.split(pattern, original_content)
@@ -57,9 +56,9 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
 
     # So the loop should pair parts[i] (text) with parts[i+1] (id).
 
-    for i in range(0, len(parts)-1, 2):
+    for i in range(0, len(parts) - 1, 2):
         text_content = parts[i]
-        question_id = parts[i+1]
+        question_id = parts[i + 1]
 
         # Check if text_content is just whitespace? No, context matters.
 
@@ -67,10 +66,7 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
         # But we remove the marker from the text field (it is the ID).
         # Reconstruction will be: text + "(--" + numero + ")"
 
-        data.append({
-            "numero": question_id,
-            "texte": text_content
-        })
+        data.append({"numero": question_id, "texte": text_content})
 
     # Handle any trailing text after the last marker?
     # annotated file ends with (--Q4.2)\n
@@ -82,22 +78,16 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
         # Ideally the file ends with a marker.
         # Let's attach it to a "Footer" or similar if critical.
         # Or assuming prompt says "Full reconstruction", we must save it.
-        data.append({
-            "numero": "END", # Special marker
-            "texte": last_bit
-        })
+        data.append({"numero": "END", "texte": last_bit})  # Special marker
     elif last_bit:
         # Just whitespace
-        data.append({
-            "numero": "END",
-            "texte": last_bit
-        })
+        data.append({"numero": "END", "texte": last_bit})
 
     # VERIFICATION
     reconstructed = ""
     for item in data:
-        reconstructed += item['texte']
-        if item['numero'] != "END":
+        reconstructed += item["texte"]
+        if item["numero"] != "END":
             reconstructed += f"(--{item['numero']})"
 
     if reconstructed == original_content:
@@ -114,7 +104,7 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
                 break
 
     output_path = os.path.join(project_dir, output_file)
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
     print(f"Structure saved to {output_path}")
@@ -122,6 +112,7 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
     # Generate Bareme CSV immediately
     generate_bareme_from_structure(data, project_dir)
     return True
+
 
 def generate_bareme_from_structure(structure_data, project_dir="."):
     """
@@ -140,7 +131,10 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
     # We send the list of questions and ask for a JSON enrichment
     # Chunking might be needed if too many questions, but usually fits in context (100 lines json)
 
-    questions_text = json.dumps([{k:v for k,v in item.items() if k in ['numero', 'texte']} for item in structure_data], ensure_ascii=False)
+    questions_text = json.dumps(
+        [{k: v for k, v in item.items() if k in ["numero", "texte"]} for item in structure_data],
+        ensure_ascii=False,
+    )
 
     prompt = (
         "Tu es un assistant pédagogique, pour une classe de CPGE scientifique filière MP2I, en informatique.\n"
@@ -156,7 +150,7 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
         f"DATA: {questions_text}\n"
         "\n"
         "FORMAT DE REPONSE (JSON strict) :\n"
-        "Une liste d'objets : `[{\"numero\": \"Qx.y\", \"qcm\": \"Oui/Non\", \"reponse\": \"...\", \"points\": \"...\"}, ...]`\n"
+        'Une liste d\'objets : `[{"numero": "Qx.y", "qcm": "Oui/Non", "reponse": "...", "points": "..."}, ...]`\n'
         "Réponds UNIQUEMENT le JSON."
     )
 
@@ -164,33 +158,48 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
         # Use UNISTRA_QWEN for consistency
         provider = get_provider()
 
-        response = ask_llm(provider, prompt, system_prompt="Tu es un expert en évaluation.", thinking=False)
+        response = ask_llm(
+            provider,
+            prompt,
+            system_prompt="Tu es un expert en évaluation.",
+            thinking=False,
+        )
 
         # Use json_repair to parse JSON (handles markdown blocks, LaTeX, etc.)
         enrichment = json_repair.loads(response)
 
         # Convert to Dict for easy lookup
-        enrich_map = {item['numero']: item for item in enrichment}
+        enrich_map = {item["numero"]: item for item in enrichment}
 
-        fieldnames = ["question", "qcm (oui/non)", "réponse attendue", "points", "note", "commentaires"]
+        fieldnames = [
+            "question",
+            "qcm (oui/non)",
+            "réponse attendue",
+            "points",
+            "note",
+            "commentaires",
+        ]
 
-        with open(bareme_path, 'w', newline='', encoding='utf-8') as f:
+        with open(bareme_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
             for item in structure_data:
-                qid = item['numero']
-                if qid == "END": continue
+                qid = item["numero"]
+                if qid == "END":
+                    continue
 
                 info = enrich_map.get(qid, {})
-                writer.writerow({
-                    "question": qid,
-                    "qcm (oui/non)": info.get('qcm', 'Non'),
-                    "réponse attendue": info.get('reponse', ''),
-                    "points": info.get('points', ''),
-                    "note": "",
-                    "commentaires": ""
-                })
+                writer.writerow(
+                    {
+                        "question": qid,
+                        "qcm (oui/non)": info.get("qcm", "Non"),
+                        "réponse attendue": info.get("reponse", ""),
+                        "points": info.get("points", ""),
+                        "note": "",
+                        "commentaires": "",
+                    }
+                )
         print(f"Bareme saved to {bareme_path}")
 
     except Exception as e:
@@ -198,12 +207,21 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
         # raise e  # DEBUG:
         # Fallback: create empty bareme
         fieldnames = ["question", "qcm (oui/non)", "réponse attendue", "points"]
-        with open(bareme_path, 'w', newline='', encoding='utf-8') as f:
+        with open(bareme_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for item in structure_data:
-                if item['numero'] == "END": continue
-                writer.writerow({"question": item['numero'], "qcm (oui/non)": "?", "réponse attendue": "", "points": ""})
+                if item["numero"] == "END":
+                    continue
+                writer.writerow(
+                    {
+                        "question": item["numero"],
+                        "qcm (oui/non)": "?",
+                        "réponse attendue": "",
+                        "points": "",
+                    }
+                )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze exam subject structure")

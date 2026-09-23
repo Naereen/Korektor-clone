@@ -38,7 +38,9 @@ def rebuild_extraction_for_copy(copy_dir: Path) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Reconstruit les extraction.md à partir des pageXX.md")
+    parser = argparse.ArgumentParser(
+        description="Reconstruit les extraction.md à partir des pageXX.md"
+    )
     parser.add_argument("--project-dir", required=True, help="Dossier du projet (ex: exemple)")
     args = parser.parse_args()
 

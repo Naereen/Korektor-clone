@@ -28,7 +28,7 @@ class ProviderConfig:
 
     def api_key(self) -> str:
         if not self.api_key_env:
-            return "sk-dummy" # Some providers require a non-empty string even if not checked
+            return "sk-dummy"  # Some providers require a non-empty string even if not checked
         api_key_from_env = os.getenv(self.api_key_env, "sk-dummy")
         # DEBUG:
         # print(f"Using API key from environment variable '{self.api_key_env}'")
@@ -41,7 +41,7 @@ PROVIDERS: Dict[str, ProviderConfig] = {
         name="MISTRAL_LARGE",
         url="https://api.mistral.ai/v1/chat/completions",
         model="mistral-large-latest",
-        #model="pixtral-12b-2409", # Using Pixtral for Vision capabilities
+        # model="pixtral-12b-2409", # Using Pixtral for Vision capabilities
         api_key_env="MISTRAL_API_KEY",
     ),
     "MISTRAL_NEMO": ProviderConfig(
@@ -157,7 +157,13 @@ def get_provider(
     # To support overrides, we might return a customized object or just use the base.
     # For now, we return base modified.
 
-    return ProviderConfig(name=name, url=url, model=model, api_key_env=base.api_key_env, verify_ssl=base.verify_ssl)
+    return ProviderConfig(
+        name=name,
+        url=url,
+        model=model,
+        api_key_env=base.api_key_env,
+        verify_ssl=base.verify_ssl,
+    )
 
 
 def pdf_to_base64_images(
@@ -185,7 +191,7 @@ def ask_llm_with_pdf(
     provider: ProviderConfig,
     pdf_path: str,
     prompt_text: str,
-    system_prompt: str = "Tu es une IA expert en OCR et transcription manuscrite. Tu dois transcrire fidèlement le texte. Pas de bavardage."
+    system_prompt: str = "Tu es une IA expert en OCR et transcription manuscrite. Tu dois transcrire fidèlement le texte. Pas de bavardage.",
 ) -> str:
     """Envoie un PDF (converti en images) à l'API LLM Vision."""
 
@@ -198,30 +204,36 @@ def ask_llm_with_pdf(
     user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt_text}]
 
     for b64_img in images_b64:
-        user_content.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{b64_img}"
+        user_content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"},
             }
-        })
+        )
 
     payload = {
         "model": provider.model,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
+            {"role": "user", "content": user_content},
         ],
     }
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {provider.api_key()}"
+        "Authorization": f"Bearer {provider.api_key()}",
     }
 
     print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
 
     try:
-        response = requests.post(provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl)
+        response = requests.post(
+            provider.url,
+            json=payload,
+            headers=headers,
+            timeout=600,
+            verify=provider.verify_ssl,
+        )
         response.raise_for_status()
 
         result_json = response.json()
@@ -230,7 +242,7 @@ def ask_llm_with_pdf(
 
     except Exception as e:
         print(f"Erreur lors de l'appel LLM: {e}")
-        if 'response' in locals():
+        if "response" in locals():
             print(f"Response (si dispo): {response.text}")
         raise
 
@@ -239,7 +251,7 @@ def ask_llm(
     provider: ProviderConfig,
     prompt_text: str,
     system_prompt: str = "Tu es une IA utile.",
-    thinking: bool = True
+    thinking: bool = True,
 ) -> str:
     """Envoie une requête texte simple à l'API LLM."""
 
@@ -247,8 +259,8 @@ def ask_llm(
         "model": provider.model,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt_text}
-        ]
+            {"role": "user", "content": prompt_text},
+        ],
     }
 
     # Handle thinking mode for Qwen models (works with chat_template_kwargs)
@@ -257,13 +269,19 @@ def ask_llm(
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {provider.api_key()}"
+        "Authorization": f"Bearer {provider.api_key()}",
     }
 
     print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
 
     try:
-        response = requests.post(provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl)
+        response = requests.post(
+            provider.url,
+            json=payload,
+            headers=headers,
+            timeout=600,
+            verify=provider.verify_ssl,
+        )
         response.raise_for_status()
 
         result_json = response.json()
@@ -285,7 +303,7 @@ def ask_llm(
 
     except Exception as e:
         print(f"Erreur lors de l'appel LLM: {e}")
-        if 'response' in locals():
+        if "response" in locals():
             print(f"Response (si dispo): {response.text}")
         raise
 
@@ -294,6 +312,7 @@ def estimate_text_tokens(text: str) -> int:
     """Estime le nombre de tokens dans un texte."""
     try:
         import tiktoken
+
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text))
     except ImportError:
@@ -306,7 +325,7 @@ def ask_llm_with_progress(
     prompt_text: str,
     system_prompt: str = "Tu es une IA utile.",
     thinking: bool = True,
-    progress_callback: Optional[Callable[[str], None]] = None
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> str:
     """
     Appelle le LLM en mode streaming avec suivi de progression.
@@ -331,9 +350,9 @@ def ask_llm_with_progress(
         "model": provider.model,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt_text}
+            {"role": "user", "content": prompt_text},
         ],
-        "stream": True
+        "stream": True,
     }
 
     # Handle thinking mode for Qwen models
@@ -342,7 +361,7 @@ def ask_llm_with_progress(
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {provider.api_key()}"
+        "Authorization": f"Bearer {provider.api_key()}",
     }
 
     full_response = ""
@@ -356,21 +375,21 @@ def ask_llm_with_progress(
             headers=headers,
             stream=True,
             timeout=600,
-            verify=provider.verify_ssl
+            verify=provider.verify_ssl,
         ) as response:
             for chunk in response.iter_lines():
                 if not chunk:
                     continue
 
                 # Gérer le format SSE (Server-Sent Events) : "data: {json}"
-                chunk_str = chunk.decode('utf-8')
+                chunk_str = chunk.decode("utf-8")
 
                 # Ignorer les chunks [DONE] et les lignes vides
-                if chunk_str.strip() == '[DONE]':
+                if chunk_str.strip() == "[DONE]":
                     break
 
                 # Enlever le préfixe "data: " s'il est présent
-                if chunk_str.startswith('data: '):
+                if chunk_str.startswith("data: "):
                     chunk_str = chunk_str[6:]  # Enlever "data: " (6 caractères)
 
                 try:
@@ -383,12 +402,11 @@ def ask_llm_with_progress(
 
                             # Log au premier chunk et périodiquement (10s ou 20 tokens)
                             current_time = time.time()
-                            if (received_tokens > 0 and received_tokens % 20 == 0) or \
-                               (current_time - last_log_time >= 10):
+                            if (received_tokens > 0 and received_tokens % 20 == 0) or (
+                                current_time - last_log_time >= 10
+                            ):
                                 if progress_callback:
-                                    progress_callback(
-                                        f"[{received_tokens} tokens reçus]"
-                                    )
+                                    progress_callback(f"[{received_tokens} tokens reçus]")
                                 last_log_time = current_time
                 except json.JSONDecodeError:
                     continue
@@ -404,4 +422,12 @@ def ask_llm_with_progress(
     return full_response
 
 
-__all__ = ["ProviderConfig", "PROVIDERS", "get_provider", "DEFAULT_PROVIDER", "ask_llm_with_pdf", "ask_llm", "ask_llm_with_progress"]
+__all__ = [
+    "ProviderConfig",
+    "PROVIDERS",
+    "get_provider",
+    "DEFAULT_PROVIDER",
+    "ask_llm_with_pdf",
+    "ask_llm",
+    "ask_llm_with_progress",
+]

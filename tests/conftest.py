@@ -2,6 +2,7 @@
 Fixtures pytest pour les tests Korektor.
 Utilise uv run pytest pour exécuter.
 """
+
 import os
 import shutil
 import sqlite3
@@ -32,16 +33,16 @@ def temp_test_dir(tmp_path):
     """
     # Copier les fichiers de base depuis exemple/ (si disponible)
     files_to_copy = ["sujet.md", "corrige.md", "bareme.csv", "liste-etudiants.csv"]
-    
+
     for file_name in files_to_copy:
         src = EXEMPLE_DIR / file_name
         if src.exists():
             shutil.copy(src, tmp_path / file_name)
-    
+
     # Créer un sous-dossier pour les copies (vide par défaut)
     copies_dir = tmp_path / "copies_anonymes_validees"
     copies_dir.mkdir(exist_ok=True)
-    
+
     return str(tmp_path)
 
 
@@ -55,16 +56,12 @@ def test_db_path(temp_test_dir):
 def mock_llm_response():
     """Réponse LLM mockée pour les tests."""
     return {
-        "Q1.1": {
-            "note": 1.0,
-            "commentaire": "Bonne réponse",
-            "reponse_etudiant": "D"
-        },
+        "Q1.1": {"note": 1.0, "commentaire": "Bonne réponse", "reponse_etudiant": "D"},
         "Q1.2": {
             "note": 0.5,
             "commentaire": "Réponse partielle",
-            "reponse_etudiant": "A,B"
-        }
+            "reponse_etudiant": "A,B",
+        },
     }
 
 
