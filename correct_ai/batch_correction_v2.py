@@ -22,9 +22,10 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import json_repair
+from correct_ai.llm_providers import ProviderConfig
 
 # Ajouter le répertoire parent au path pour importer les autres modules
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -114,14 +115,19 @@ def parse_llm_response(response: str) -> Dict[str, Any]:
             return {}
         # Si le LLM retourne une liste [{"question": "Q1", ...}], la convertir en dict
         if isinstance(result, list):
-            return {item.get("question", str(i)): item for i, item in enumerate(result)}
-        return result
+            return {
+                item.get("question", str(i)): item
+                for i, item in enumerate(result)
+                if isinstance(item, dict)
+            }
+        return result if isinstance(result, dict) else {}
     except Exception:
         pass
 
     # Essayer avec json standard
     try:
-        return json.loads(response)
+        result = json.loads(response)
+        return result if isinstance(result, dict) else {}
     except json.JSONDecodeError as e:
         # Essayons de corriger manuellement
         # Remplacer les simples quotes par des doubles
@@ -142,7 +148,7 @@ def parse_llm_response(response: str) -> Dict[str, Any]:
 
 def correct_copy_incremental(
     copy_id: int,
-    provider: Dict[str, Any],
+    provider: Union[ProviderConfig, Dict[str, Any]],
     db: sqlite3.Connection,
     project_dir: str,
     test_mode: bool = False,
@@ -242,9 +248,17 @@ def correct_copy_incremental(
                     get_provider,
                 )
 
-                p = get_provider(
-                    provider.name if hasattr(provider, "name") else provider.get("name")
-                )
+                if isinstance(provider, str):
+                    provider_name = provider
+                elif isinstance(provider, dict):
+                    provider_name = provider.get("name")
+                else:
+                    # Accept ProviderConfig instances imported through either module path.
+                    provider_name = getattr(provider, "name", None)
+
+                if not provider_name:
+                    raise ValueError("Configuration provider invalide: nom absent")
+                p = get_provider(provider_name)
 
                 # Chemin absolu du PDF
                 pdf_abs_path = os.path.join(project_dir, current_copy["pdf_path"])
@@ -372,6 +386,8 @@ def correct_copy_incremental(
             else:
                 logger.error(f"❌ Copie {copy_id} échouée après 2 tentatives: {e}")
                 return False
+
+    return False
 
 
 def correct_all_incremental(

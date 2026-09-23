@@ -14,9 +14,11 @@ import fitz  # PyMuPDF
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from pypdf import PdfReader, PdfWriter
 
-# Import local modules
-# Ensure current dir is in sys.path to import siblings if needed, though they are in the same package
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Import local modules when the file is launched directly.
+APP_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(APP_MODULE_DIR)
+sys.path.insert(0, APP_MODULE_DIR)
+sys.path.insert(0, PROJECT_ROOT)
 
 import batch_correction
 import batch_correction_v2
@@ -135,7 +137,7 @@ def import_page():
 @app.route("/api/project/set", methods=["POST"])
 def api_project_set():
     """Définit le dossier du projet."""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     new_dir = data.get("project_dir", "")
     if new_dir and os.path.isdir(new_dir):
         config.project_dir = new_dir
@@ -397,9 +399,9 @@ class BatchJob:
 
                     def write(self, text):
                         if text:
-                            # Avoid appending empty newlines excessively
-                            if text.strip():
-                                self.job.logs.append(text)
+                            # print() may write the message and its newline separately.
+                            # Keep both writes so the frontend can reconstruct lines.
+                            self.job.logs.append(text)
                             # Heuristic progress update from logs
                             if "Processing" in text or "Traitem" in text:
                                 # Don't overwrite calculated progress if it's running
@@ -628,7 +630,7 @@ def process_page():
 
 @app.route("/api/batch/start", methods=["POST"])
 def batch_start():
-    data = request.json
+    data = request.get_json(silent=True) or {}
     job_type = data.get("type")  # 'extraction' or 'correction'
     req_start = data.get("start")
     req_end = data.get("end")
@@ -638,8 +640,11 @@ def batch_start():
     if not existing:
         return jsonify({"success": False, "error": "Aucune copie trouvée"}), 400
 
-    start_id = req_start if req_start is not None else min(existing)
-    end_id = req_end if req_end is not None else max(existing)
+    try:
+        start_id = int(req_start) if req_start is not None else min(existing)
+        end_id = int(req_end) if req_end is not None else max(existing)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Les bornes doivent être des entiers."}), 400
 
     if start_id < 1 or end_id > max(existing) or start_id > end_id:
         return (
@@ -1020,6 +1025,7 @@ def handle_correction(copie_id):
 @app.route("/api/db/bareme")
 def get_db_bareme():
     """Recupere le bareme depuis la base de donnees SQLite"""
+    db = None
     try:
         db = get_db(config.project_dir)
         bareme = db_get_bareme(db)
@@ -1027,11 +1033,15 @@ def get_db_bareme():
     except Exception as e:
         print(f"Error reading bareme from DB: {e}")
         return get_bareme()
+    finally:
+        if db is not None:
+            db.close()
 
 
 @app.route("/api/db/copies")
 def list_db_copies():
     """Liste toutes les copies depuis la base de donnees SQLite"""
+    db = None
     try:
         db = get_db(config.project_dir)
         copies = db.execute(
@@ -1051,11 +1061,15 @@ def list_db_copies():
     except Exception as e:
         print(f"Error listing copies from DB: {e}")
         return jsonify([])
+    finally:
+        if db is not None:
+            db.close()
 
 
 @app.route("/api/db/corrections/<int:copie_id>", methods=["GET", "POST"])
 def get_db_corrections(copie_id):
     """Recupere toutes les corrections d'une copie depuis la base de donnees SQLite"""
+    db = None
     try:
         db = get_db(config.project_dir)
 
@@ -1151,6 +1165,9 @@ def get_db_corrections(copie_id):
 
         traceback.print_exc()
         return jsonify([])
+    finally:
+        if db is not None:
+            db.close()
 
 
 # --- ROUTES: OCR Verification ---
@@ -1356,6 +1373,7 @@ def bilan_page():
 @app.route("/api/bilan/stats")
 def api_bilan_stats():
     """Retourne les stats globales de la base pour le dashboard."""
+    db = None
     try:
         db = get_db(config.project_dir)
 
@@ -1427,6 +1445,9 @@ def api_bilan_stats():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
 
 
 if __name__ == "__main__":

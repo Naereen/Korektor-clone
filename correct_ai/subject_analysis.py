@@ -169,7 +169,13 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
         enrichment = json_repair.loads(response)
 
         # Convert to Dict for easy lookup
-        enrich_map = {item["numero"]: item for item in enrichment}
+        if not isinstance(enrichment, list):
+            raise ValueError("La réponse du LLM doit être une liste JSON")
+        enrich_map = {
+            item["numero"]: item
+            for item in enrichment
+            if isinstance(item, dict) and item.get("numero")
+        }
 
         fieldnames = [
             "question",

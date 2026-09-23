@@ -86,12 +86,16 @@
 </div>
 
 <div id="grid" class="grid"></div>
+<div id="split-config"
+    data-total-items="{{ total_items }}"
+    data-students="{{ students | tojson | forceescape }}"></div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    const totalItems = {{ total_items }};
-    const students = {{ students | tojson }};
+    const splitConfig = document.getElementById('split-config');
+    const totalItems = Number(splitConfig.dataset.totalItems);
+    const students = JSON.parse(splitConfig.dataset.students);
     const cardsData = [];
 
     function refreshStudentOptions() {

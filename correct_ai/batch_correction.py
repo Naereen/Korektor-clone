@@ -150,6 +150,8 @@ def correct_copy(
             import json_repair
 
             correction_data = json_repair.loads(response)
+            if not isinstance(correction_data, dict):
+                correction_data = {}
         except Exception as e:
             print(f"Erreur lors du parsing JSON (même avec json_repair): {e}")
             print(f"Réponse brute : {response[:500]}...")
@@ -180,6 +182,8 @@ def correct_copy(
 
                 if q_id in correction_data:
                     c_data = correction_data[q_id]
+                    if not isinstance(c_data, dict):
+                        c_data = {}
                     # Fill processed fields
                     new_row["réponses étudiant"] = c_data.get("reponse_etudiant", "")
                     new_row["note"] = str(c_data.get("note", ""))
