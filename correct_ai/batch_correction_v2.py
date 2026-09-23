@@ -265,6 +265,7 @@ def correct_copy_incremental(
 
                 # Callback pour afficher la progression
                 def progress_callback(msg):
+                    """Forward streaming progress messages to the Korektor logger."""
                     logger.info(msg)
 
                 try:
@@ -554,6 +555,7 @@ def get_stats_for_copy(db: sqlite3.Connection, copy_id: int) -> Dict[str, Any]:
 
 
 def main():
+    """Parse CLI options and run the incremental correction batch."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Correction incrémentale de copies avec Korektor")

@@ -1,3 +1,19 @@
+"""Korektor's Flask web application and workflow orchestration layer.
+
+This module owns the browser-facing application.  It exposes HTML routes for
+the import, split, OCR, correction, validation, and reporting screens, plus
+JSON endpoints consumed by those screens.  The application coordinates the
+PDF utilities, SQLite persistence layer, OCR/correction batch modules, and
+the long-running background job state shown in the browser.
+
+The main architectural boundaries are ``ProjectConfig`` for project paths,
+``BatchJob`` for asynchronous batch execution, and Flask route handlers for
+the HTTP boundary.  Domain work remains in the sibling modules so that the
+web layer can be exercised with Flask's test client without requiring a live
+server.  The file can be imported as a package module or launched directly
+with ``uv run python correct_ai/app.py``.
+"""
+
 import collections
 import copy
 import csv
@@ -37,10 +53,12 @@ CONFIG_FILE = os.path.join(APP_ROOT, ".correctai_config.json")
 
 class ProjectConfig:
     def __init__(self):
+        """Initialize paths and load persisted project configuration."""
         self.project_dir = os.path.join(APP_ROOT, "exemple")
         self.load()
 
     def load(self):
+        """Load the project directory from the JSON configuration file."""
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r") as f:
@@ -50,13 +68,16 @@ class ProjectConfig:
                 pass
 
     def save(self):
+        """Persist the current project directory to the JSON configuration file."""
         with open(CONFIG_FILE, "w") as f:
             json.dump({"project_dir": self.project_dir}, f)
 
     def get_path(self, *args):
+        """Return a path formed by joining the project directory and components."""
         return os.path.join(self.project_dir, *args)
 
     def get_output_dir(self):
+        """Return and create the directory containing anonymized copies."""
         # User requested subfolders for correction: 'corrections' or keep 'copies_anonymes_validees'
         # Let's keep the legacy name for continuity, or strictly follow "sub-dossiers".
         # Current valid data is in 'copies_anonymes_validees'.
@@ -65,6 +86,7 @@ class ProjectConfig:
         return path
 
     def get_sorted_pdf_path(self):
+        """Return the sorted booklet PDF path used by the splitter."""
         return self.get_path("copiesA4_sorted.pdf")
 
 
@@ -86,6 +108,7 @@ splitter_doc = None
 
 
 def get_splitter_doc():
+    """Return the cached split-view PDF, opening it when necessary."""
     global splitter_doc
     path = config.get_sorted_pdf_path()
     if not os.path.exists(path):
@@ -98,6 +121,7 @@ def get_splitter_doc():
 # --- Settings Route ---
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
+    """Render or update the project settings page."""
     if request.method == "POST":
         new_dir = request.form.get("project_dir")
         if new_dir and os.path.isdir(new_dir):
@@ -123,11 +147,13 @@ def settings():
 
 @app.route("/")
 def index():
+    """Redirect the root URL to the import workflow."""
     return redirect("/import")
 
 
 @app.route("/import")
 def import_page():
+    """Render the project import page."""
     return render_template("import.html", active_page="import", current_dir=config.project_dir)
 
 
@@ -136,6 +162,7 @@ def import_page():
 
 @app.route("/api/project/set", methods=["POST"])
 def api_project_set():
+    """Set the active project directory through the JSON API."""
     """Définit le dossier du projet."""
     data = request.get_json(silent=True) or {}
     new_dir = data.get("project_dir", "")
@@ -152,6 +179,7 @@ def api_project_set():
 
 @app.route("/api/project/check")
 def api_project_check():
+    """Return project file readiness and copy counts as JSON."""
     """Vérifie la structure du dossier projet."""
     project_dir = config.project_dir
     files = {
@@ -186,6 +214,7 @@ def api_project_check():
 
 @app.route("/api/bareme/generate", methods=["POST"])
 def api_bareme_generate():
+    """Run subject analysis and return the generated rubric as JSON."""
     """Génère le barème via subject_analysis.py."""
     import subprocess
 
@@ -225,6 +254,7 @@ def api_bareme_generate():
 
 # --- UTILS: Student Loading ---
 def load_students():
+    """Load student metadata from the project's CSV file."""
     csv_path = config.get_path("liste-etudiants.csv")
     students = []
     if os.path.exists(csv_path):
@@ -258,6 +288,7 @@ def load_students():
 
                     # Safe helper to find key
                     def find_key(keywords):
+                        """Find the first CSV column containing one keyword."""
                         for k in keys:
                             if k and any(sub in k.lower() for sub in keywords):
                                 return k
@@ -297,6 +328,7 @@ def load_students():
 
 # --- UTILS: A3 Split Logic (Refactored from sortpdf.py) ---
 def process_a3_split(input_stream, output_path, sort_booklet=True):
+    """Split booklet pages into A4 pages and optionally reorder them."""
     reader = PdfReader(input_stream)
     writer = PdfWriter()
 
@@ -347,6 +379,7 @@ def process_a3_split(input_stream, output_path, sort_booklet=True):
 
 @app.route("/split")
 def split_page():
+    """Render the booklet split and student assignment page."""
     doc = get_splitter_doc()
     if not doc:
         return "Veuillez d'abord importer un document (Étape 1).", 404
@@ -368,6 +401,7 @@ import time
 # --- Batch Processing State ---
 class BatchJob:
     def __init__(self):
+        """Initialize the state shared by one background batch job."""
         self.running = False
         self.stop_requested = False
         self.logs = []
@@ -376,6 +410,7 @@ class BatchJob:
         self.current_action = "Inactif"
 
     def start_batch_function(self, job_type, start, end, project_dir, force=False):
+        """Start an extraction or correction job in a background thread."""
         if self.running:
             return False
         self.running = True
@@ -385,6 +420,7 @@ class BatchJob:
         self.current_action = f"Démarrage: {job_type} [{start}-{end}]"
 
         def run_wrapper():
+            """Execute the selected batch while capturing output for polling."""
             # Sauvegarder le handler original du logger korektor
             import logging
 
@@ -395,9 +431,11 @@ class BatchJob:
                 # Capture standard output/error to self.logs
                 class LogCapture:
                     def __init__(self, job):
+                        """Bind stdout capture to the active batch job."""
                         self.job = job
 
                     def write(self, text):
+                        """Append stdout fragments while preserving line breaks."""
                         if text:
                             # print() may write the message and its newline separately.
                             # Keep both writes so the frontend can reconstruct lines.
@@ -412,6 +450,7 @@ class BatchJob:
                                 self.job.current_action = text.strip()[:50]  # Limit length
 
                     def flush(self):
+                        """Provide the file-like flush operation expected by print()."""
                         pass
 
                 original_stdout = sys.stdout
@@ -420,10 +459,12 @@ class BatchJob:
                 # Créer un handler personnalisé pour capturer les logs du logger
                 class LogCaptureHandler(logging.StreamHandler):
                     def __init__(self, job):
+                        """Initialize a logging handler bound to a batch job."""
                         super().__init__(sys.stdout)  # sys.stdout est déjà LogCapture
                         self.job = job
 
                     def emit(self, record):
+                        """Append one formatted logging record to the job buffer."""
                         msg = self.format(record)
                         # Ajouter directement aux logs sans passer par sys.stdout
                         if hasattr(self.job, "logs"):
@@ -610,9 +651,11 @@ class BatchJob:
         return True
 
     def start(self, command):
+        """Retain the legacy start API; batch starts use start_batch_function."""
         pass
 
     def stop(self):
+        """Request cooperative cancellation of the active background job."""
         if self.running:
             self.stop_requested = True
             self.logs.append("=== Demande d'arrêt reçue... ===\n")
@@ -625,11 +668,13 @@ current_job = BatchJob()
 
 @app.route("/process")
 def process_page():
+    """Render the combined batch processing page."""
     return render_template("process.html", active_page="process")
 
 
 @app.route("/api/batch/start", methods=["POST"])
 def batch_start():
+    """Validate and start a requested extraction or correction batch."""
     data = request.get_json(silent=True) or {}
     job_type = data.get("type")  # 'extraction' or 'correction'
     req_start = data.get("start")
@@ -668,6 +713,7 @@ def batch_start():
 
 @app.route("/api/batch/stop", methods=["POST"])
 def batch_stop():
+    """Request cancellation of the current batch job."""
     if current_job.stop():
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "Aucun job actif"}), 400
@@ -675,6 +721,7 @@ def batch_stop():
 
 @app.route("/api/batch/status")
 def batch_status():
+    """Return current batch state and recent log entries as JSON."""
     return jsonify(
         {
             "running": current_job.running,
@@ -686,6 +733,7 @@ def batch_status():
 
 
 def get_copy_ids():
+    """Return sorted copy numbers discovered in the output directory."""
     ids = []
     output_dir = config.get_output_dir()
     if os.path.exists(output_dir):
@@ -700,6 +748,7 @@ def get_copy_ids():
 
 @app.route("/verify")
 def verify_page():
+    """Render the correction validation page."""
     return render_template("verify.html", active_page="verify")
 
 
@@ -708,6 +757,7 @@ def verify_page():
 
 @app.route("/api/import", methods=["POST"])
 def api_import():
+    """Accept an uploaded booklet PDF and create the sorted PDF artifact."""
     try:
         file = request.files.get("file")
         sort_booklet = request.form.get("sort_booklet") == "true"
@@ -745,6 +795,7 @@ def api_import():
 
 @app.route("/api/split/thumbnail/<int:page_num>")
 def split_thumbnail(page_num):
+    """Render a thumbnail of one page in the split-view PDF."""
     try:
         doc = get_splitter_doc()
         if not doc:
@@ -766,6 +817,7 @@ def split_thumbnail(page_num):
 
 @app.route("/api/split/process", methods=["POST"])
 def split_process():
+    """Create anonymized copy PDFs from submitted page assignments."""
     data = request.json
     if not data:
         return jsonify({"success": False, "error": "No data"}), 400
@@ -897,6 +949,7 @@ def split_process():
 
 @app.route("/api/copies")
 def list_copies():
+    """List copy identifiers found in the file-based output directory."""
     copies = []
     output_dir = config.get_output_dir()
     if os.path.exists(output_dir):
@@ -924,6 +977,7 @@ def list_copies():
 
 @app.route("/api/bareme")
 def get_bareme():
+    """Return the file-based rubric CSV as JSON rows."""
     questions = []
     path = config.get_path("bareme.csv")
     if os.path.exists(path):
@@ -939,6 +993,7 @@ def get_bareme():
 
 @app.route("/api/pdf/<copie_id>")
 def get_pdf(copie_id):
+    """Serve the PDF associated with a copy identifier."""
     # copie_id like "Copie_01"
     filename = f"{copie_id}.pdf"
     path = os.path.join(config.get_output_dir(), filename)
@@ -949,6 +1004,7 @@ def get_pdf(copie_id):
 
 # Use subfolders for data to keep clean
 def get_copy_dir(copie_id):
+    """Return and create the file directory for one copy."""
     d = os.path.join(config.get_output_dir(), copie_id)
     if not os.path.exists(d):
         os.makedirs(d)
@@ -957,6 +1013,7 @@ def get_copy_dir(copie_id):
 
 @app.route("/api/extraction/<copie_id>", methods=["GET", "POST"])
 def handle_extraction(copie_id):
+    """Read or write the legacy Markdown extraction for one copy."""
     # Store markdown in a subfolder: copies_anonymes_validees/Copie_XX/extraction.md
     copy_dir = get_copy_dir(copie_id)
     file_path = os.path.join(copy_dir, "extraction.md")
@@ -975,6 +1032,7 @@ def handle_extraction(copie_id):
 
 @app.route("/api/correction/<copie_id>", methods=["GET", "POST"])
 def handle_correction(copie_id):
+    """Read or write the legacy CSV correction for one copy."""
     # Store CSV in a subfolder: copies_anonymes_validees/Copie_XX/correction.csv
     copy_dir = get_copy_dir(copie_id)
     ai_file_path = os.path.join(copy_dir, "correction.csv")
@@ -1024,6 +1082,7 @@ def handle_correction(copie_id):
 
 @app.route("/api/db/bareme")
 def get_db_bareme():
+    """Return the SQLite rubric rows as JSON."""
     """Recupere le bareme depuis la base de donnees SQLite"""
     db = None
     try:
@@ -1040,6 +1099,7 @@ def get_db_bareme():
 
 @app.route("/api/db/copies")
 def list_db_copies():
+    """Return copy identifiers and student metadata from SQLite."""
     """Liste toutes les copies depuis la base de donnees SQLite"""
     db = None
     try:
@@ -1068,6 +1128,7 @@ def list_db_copies():
 
 @app.route("/api/db/corrections/<int:copie_id>", methods=["GET", "POST"])
 def get_db_corrections(copie_id):
+    """Read or update teacher-visible corrections for one copy in SQLite."""
     """Recupere toutes les corrections d'une copie depuis la base de donnees SQLite"""
     db = None
     try:
@@ -1175,15 +1236,18 @@ def get_db_corrections(copie_id):
 
 @app.route("/verify_ocr")
 def verify_ocr_page():
+    """Render the OCR validation page."""
     return render_template("verify_ocr.html", active_page="verify_ocr")
 
 
 def get_ocr_project_dir():
+    """Return the active project directory used by OCR routes."""
     """Get the current project directory for OCR verification"""
     return config.project_dir
 
 
 def get_ocr_copy_dir(copie_id):
+    """Return and create the OCR directory for one copy."""
     """Get directory for a specific copy in the current project"""
     base_dir = os.path.join(get_ocr_project_dir(), "copies_anonymes_validees")
     d = os.path.join(base_dir, copie_id)
@@ -1194,6 +1258,7 @@ def get_ocr_copy_dir(copie_id):
 
 @app.route("/api/ocr/copies")
 def list_ocr_copies():
+    """List copy directories and PDFs available to the OCR validator."""
     """List all copies in the current project's copies_anonymes_validees"""
     copies_dir = os.path.join(get_ocr_project_dir(), "copies_anonymes_validees")
     copies = []
@@ -1215,6 +1280,7 @@ def list_ocr_copies():
 
 @app.route("/api/ocr/pdf/<copie_id>")
 def get_ocr_pdf(copie_id):
+    """Serve a copy PDF or a rendered page image."""
     """Get PDF for a copy in exemple2"""
     from flask import request
 
@@ -1255,6 +1321,7 @@ def get_ocr_pdf(copie_id):
 
 @app.route("/api/ocr/pages/<copie_id>")
 def get_ocr_pages(copie_id):
+    """Return page Markdown content and PDF page count for one copy."""
     """Get list of pages with markdown content for a copy"""
     copy_dir = get_ocr_copy_dir(copie_id)
     pages = {}
@@ -1290,6 +1357,7 @@ def get_ocr_pages(copie_id):
 
 @app.route("/api/ocr/content/<copie_id>/<page_num>", methods=["GET", "POST"])
 def handle_ocr_page_content(copie_id, page_num):
+    """Read or write one normalized OCR page Markdown file."""
     """Get or save markdown content for a specific page"""
     copy_dir = get_ocr_copy_dir(copie_id)
 
@@ -1316,6 +1384,7 @@ def handle_ocr_page_content(copie_id, page_num):
 
 @app.route("/api/ocr/rebuild_extraction/<copie_id>", methods=["POST"])
 def rebuild_extraction(copie_id):
+    """Rebuild one copy's extraction Markdown from page files."""
     """Rebuild extraction.md from all page markdown files"""
     copy_dir = get_ocr_copy_dir(copie_id)
     extraction_path = os.path.join(copy_dir, "extraction.md")
@@ -1357,21 +1426,25 @@ def rebuild_extraction(copie_id):
 
 @app.route("/ocr")
 def ocr_page():
+    """Render the OCR batch page."""
     return render_template("ocr.html", active_page="ocr")
 
 
 @app.route("/correction")
 def correction_page():
+    """Render the automatic correction batch page."""
     return render_template("correction.html", active_page="correction")
 
 
 @app.route("/bilan")
 def bilan_page():
+    """Render the correction statistics page."""
     return render_template("bilan.html", active_page="bilan")
 
 
 @app.route("/api/bilan/stats")
 def api_bilan_stats():
+    """Return aggregate correction statistics from SQLite as JSON."""
     """Retourne les stats globales de la base pour le dashboard."""
     db = None
     try:

@@ -1,3 +1,18 @@
+"""Legacy single-copy correction workflow.
+
+This module implements the original CSV-based correction path.  It loads the
+subject, official answer key, rubric, and OCR extraction, builds a prompt for
+an OpenAI-compatible provider, parses the returned JSON, and writes one
+``correction.csv`` file per copy.  The newer SQLite/incremental workflow lives
+in ``batch_correction_v2.py``; this module remains available for compatibility
+with older projects and command-line usage.
+
+The functions deliberately keep file-system and provider concerns together to
+match the historical data layout.  Callers can stop before or after the LLM
+request through ``stop_callback`` and can use ``force`` to replace an existing
+CSV result.
+"""
+
 import argparse
 import csv
 import json
@@ -10,7 +25,7 @@ BAREME_FILE = "bareme.csv"
 
 
 def load_bareme(project_dir="."):
-    """Load the bareme CSV file."""
+    """Load the scoring rubric CSV from ``project_dir`` as dictionaries."""
     path = os.path.join(project_dir, BAREME_FILE)
     if not os.path.exists(path):
         print(f"Error: {path} not found.")
@@ -29,7 +44,11 @@ def correct_copy(
     stop_callback=None,
     thinking=False,
 ):
-    """Correct a single copy using the bareme data and LLM."""
+    """Score one OCR extraction with an LLM and write the legacy CSV result.
+
+    The function preserves existing results unless ``force`` is enabled and
+    supports cooperative cancellation through ``stop_callback``.
+    """
     if stop_callback and stop_callback():
         print("Opération annulée (Start).")
         return False
@@ -229,7 +248,7 @@ def correct_copy(
 
 
 def get_existing_copies(project_dir="."):
-    """Return a sorted list of copy numbers found in BASE_DIR."""
+    """Return sorted copy numbers found below the project's copy directory."""
     base_dir_path = os.path.join(project_dir, BASE_DIR)
 
     if not os.path.exists(base_dir_path):
@@ -247,6 +266,7 @@ def get_existing_copies(project_dir="."):
 
 
 def main():
+    """Parse CLI options and run the legacy CSV correction batch."""
     parser = argparse.ArgumentParser(description="Batch correct exam copies.")
     parser.add_argument("--start", type=int, default=None, help="Start copy number (inclusive)")
     parser.add_argument("--end", type=int, default=None, help="End copy number (inclusive)")

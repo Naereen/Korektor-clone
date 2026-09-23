@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""
-Reconstruit TOUS les extraction.md à partir des pageXX.md
-- Lit UNIQUEMENT les fichiers pageXX.md (pas d'écriture)
-- Écrit extraction.md dans chaque dossier Copie_XX/
-- Gère les pages vides correctement
+"""Rebuild every copy-level OCR extraction from page Markdown files.
 
-Utilisation:
+The utility scans ``copies_anonymes_validees/Copie_XX`` directories, reads
+only their ``page*.md`` files, and writes a single ordered ``extraction.md``.
+It preserves empty pages with explicit markers, which makes the resulting
+document faithful to the PDF page sequence and useful for later OCR review.
+
+It is intentionally independent from the LLM pipeline: no network request is
+made and no page file is changed.  It can therefore be safely rerun after a
+manual page correction or after a partial extraction.
+
+Usage:
     python correct_ai/rebuild_all_extraction.py --project-dir exemple
 """
 
@@ -15,7 +20,7 @@ from pathlib import Path
 
 
 def rebuild_extraction_for_copy(copy_dir: Path) -> None:
-    """Reconstruit extraction.md à partir des pageXX.md"""
+    """Rebuild one ``extraction.md`` from sorted ``page*.md`` files."""
     page_files = sorted(copy_dir.glob("page*.md"))
     if not page_files:
         print(f"⚠️  {copy_dir.name}: Aucun fichier page*.md trouvé")
@@ -38,6 +43,7 @@ def rebuild_extraction_for_copy(copy_dir: Path) -> None:
 
 
 def main():
+    """Parse command-line arguments and rebuild all eligible copy folders."""
     parser = argparse.ArgumentParser(
         description="Reconstruit les extraction.md à partir des pageXX.md"
     )

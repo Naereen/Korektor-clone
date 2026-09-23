@@ -1,3 +1,17 @@
+"""Extract annotated exam structure and generate a scoring rubric.
+
+``analyze_subject`` parses ``(--Q...)`` markers from ``sujet.md`` and writes a
+byte-reconstructible JSON structure.  It then asks an LLM to enrich each
+question with QCM status, expected answers, and suggested points.  The
+enrichment is written to ``bareme.csv`` and a deterministic fallback rubric
+is produced if the provider response cannot be parsed.
+
+This module is intentionally a command-line-friendly orchestration layer: it
+does not own database persistence, and it delegates provider communication to
+``llm_providers.py``.  The generated files are later loaded by the database
+layer for correction and validation.
+"""
+
 import argparse
 import csv
 import json
@@ -10,6 +24,7 @@ from llm_providers import ask_llm, get_provider
 
 
 def analyze_subject(project_dir=".", output_file="structure.json"):
+    """Parse question markers, save structure JSON, and generate the rubric."""
     sujet_path = os.path.join(project_dir, "sujet.md")
 
     if not os.path.exists(sujet_path):
@@ -116,8 +131,10 @@ def analyze_subject(project_dir=".", output_file="structure.json"):
 
 def generate_bareme_from_structure(structure_data, project_dir="."):
     """
-    Generates bareme.csv based on the structure.json.
-    Uses LLM to guess if QCM and expected answer.
+    Generate ``bareme.csv`` from parsed question structure using an LLM.
+
+    If enrichment fails, write a structurally valid fallback rubric so the
+    teacher can complete it manually.
     """
     bareme_path = os.path.join(project_dir, "bareme.csv")
     print("Generating bareme.csv from structure...")

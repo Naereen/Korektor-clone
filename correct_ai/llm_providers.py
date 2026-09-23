@@ -1,9 +1,18 @@
-"""Configuration des différents providers LLM compatibles OpenAI.
+"""Configuration and transport helpers for Korektor's LLM providers.
 
-Chaque provider est défini par :
-- url : endpoint /v1/chat/completions compatible OpenAI
-- model : nom du modèle à utiliser
-- api_key_env : nom de la variable d'environnement contenant la clé (None si pas nécessaire)
+This module centralizes the OpenAI-compatible HTTP contract used by OCR,
+subject analysis, and automatic correction.  ``ProviderConfig`` stores an
+endpoint, model name, authentication environment variable, and TLS policy;
+``get_provider`` resolves named configurations while allowing callers to
+override a model or URL for local deployments.
+
+The transport helpers cover three payload shapes: text-only chat requests,
+vision requests where PDF pages are rendered as base64 JPEG images, and
+streaming chat requests that report progress through a callback.  Keeping
+these concerns here prevents the workflow modules from duplicating headers,
+timeouts, Qwen thinking options, response validation, and token estimation.
+Provider-specific failures are deliberately propagated to the batch layers,
+which decide whether to retry, reduce context, or stop processing.
 """
 
 import base64
@@ -27,6 +36,7 @@ class ProviderConfig:
     verify_ssl: bool = True
 
     def api_key(self) -> str:
+        """Return the configured API key, or a dummy key for local providers."""
         if not self.api_key_env:
             return "sk-dummy"  # Some providers require a non-empty string even if not checked
         api_key_from_env = os.getenv(self.api_key_env, "sk-dummy")

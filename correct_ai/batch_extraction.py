@@ -1,3 +1,18 @@
+"""OCR extraction pipeline for handwritten exam copies.
+
+The module converts individual PDF pages into JPEG/base64 payloads and sends
+them to an OpenAI-compatible vision endpoint.  ``extract_copy`` processes a
+copy page by page, keeps prior page text as context, writes each page to a
+Markdown file, and finally rebuilds ``extraction.md``.  Atomic lock files
+prevent two workers from processing the same copy at once, while the ``force``
+option intentionally removes prior page and extraction files before starting
+again.
+
+The command-line entry point and the Flask batch job both use this module.
+Provider configuration is delegated to ``llm_providers.py`` and cancellation
+is injected through an optional callback rather than through global state.
+"""
+
 import argparse
 import base64
 import logging
@@ -22,8 +37,7 @@ logger = logging.getLogger("batch_extraction")
 
 
 def extract_markdown(response):
-    """Extraire le contenu entre <markdown> et </markdown>.
-    Retourne le texte ou None si les balises ne sont pas trouvées."""
+    """Return the trimmed text enclosed by ``<markdown>`` tags, or ``None``."""
     logger.info(f"\n--- extract_markdown called ---")
     logger.info(f"Raw response (first 500 chars): {response[:500]}")
 
@@ -40,7 +54,7 @@ def extract_markdown(response):
 
 
 def page_to_base64(pdf_path, page_idx, dpi=150):
-    """Convert une page PDF en image base64 JPEG."""
+    """Render one PDF page at ``dpi`` and return its JPEG as base64 text."""
     doc = fitz.open(pdf_path)
     page = doc[page_idx]
     pix = page.get_pixmap(dpi=dpi)
@@ -50,9 +64,14 @@ def page_to_base64(pdf_path, page_idx, dpi=150):
 
 
 def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=600):
-    """Envoie une seule image à l'API LLM Vision.
+    """Send one vision image and its prompt to an OpenAI-compatible endpoint.
+
     Args:
-        timeout: timeout en secondes pour la requête (default: 600)
+        provider: Provider configuration containing endpoint and credentials.
+        image_b64: JPEG image encoded as base64 text.
+        prompt_text: User instruction sent alongside the image.
+        system_prompt: System-level behavior instruction.
+        timeout: HTTP timeout in seconds.
     """
     user_content: List[Dict[str, Any]] = [
         {"type": "text", "text": prompt_text},
@@ -95,6 +114,12 @@ def extract_copy(
     use_ref_page1=False,
     force=False,
 ):
+    """Extract and persist OCR Markdown for one numbered exam copy.
+
+    Existing page files are reused unless ``force`` is true.  The optional
+    callback is checked between expensive operations so a web job can stop
+    cooperatively.
+    """
     if stop_callback and stop_callback():
         print("Opération annulée (Start).")
         return False
@@ -390,6 +415,7 @@ def extract_copy(
 
 
 def main():
+    """Parse CLI options and run OCR extraction for the requested range."""
     parser = argparse.ArgumentParser(description="Batch extract text from exam copies.")
     parser.add_argument("--start", type=int, default=1, help="Start copy number (inclusive)")
     parser.add_argument("--end", type=int, default=5, help="End copy number (inclusive)")
