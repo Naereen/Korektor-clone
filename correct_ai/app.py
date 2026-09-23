@@ -1442,6 +1442,12 @@ def bilan_page():
     return render_template("bilan.html", active_page="bilan")
 
 
+@app.route("/documentation")
+def documentation_page():
+    """Render the in-application documentation based on the project README."""
+    return render_template("documentation.html", active_page="documentation")
+
+
 @app.route("/api/bilan/stats")
 def api_bilan_stats():
     """Return aggregate correction statistics from SQLite as JSON."""

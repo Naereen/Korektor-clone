@@ -1,0 +1,234 @@
+{% extends "layout.html" %}
+
+{% block extra_css %}
+<style>
+    .documentation-page {
+        max-width: 1180px;
+        margin: 0 auto;
+    }
+
+    .documentation-hero {
+        background: linear-gradient(135deg, #eef2ff, #ffffff 60%, #e0f2fe);
+        border: 1px solid #dbe4ff;
+        border-radius: 12px;
+        padding: clamp(24px, 5vw, 56px);
+        margin-bottom: 24px;
+    }
+
+    .documentation-hero h1 {
+        color: #312e81;
+        font-weight: 700;
+    }
+
+    .documentation-section {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: clamp(18px, 3vw, 32px);
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    .documentation-section h2 {
+        color: #1e3a8a;
+        border-bottom: 2px solid #dbeafe;
+        padding-bottom: 8px;
+        margin-bottom: 18px;
+    }
+
+    .documentation-section h3 {
+        color: #374151;
+        margin-top: 24px;
+    }
+
+    .documentation-section li {
+        margin-bottom: 8px;
+    }
+
+    .documentation-section pre {
+        background: #111827;
+        color: #e5e7eb;
+        border-radius: 7px;
+        padding: 16px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+    }
+
+    .documentation-section code {
+        color: #1d4ed8;
+    }
+
+    .documentation-section pre code {
+        color: inherit;
+    }
+
+    .documentation-toc a {
+        text-decoration: none;
+    }
+
+    .documentation-toc a:hover {
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="documentation-page">
+    <header class="documentation-hero">
+        <p class="text-uppercase text-primary fw-bold small mb-2">Guide de l'application</p>
+        <h1>Korektor</h1>
+        <p class="lead mb-0">Assistant IA pour la correction de copies manuscrites.</p>
+        <p class="text-muted mt-3 mb-0">Cette page reprend la documentation du projet et décrit le parcours complet, de l'import du scan au bilan des notes.</p>
+    </header>
+
+    <section class="documentation-section documentation-toc" aria-labelledby="toc-title">
+        <h2 id="toc-title">Sommaire</h2>
+        <ol>
+            <li><a href="#fonctionnalites">Fonctionnalités</a></li>
+            <li><a href="#installation">Installation</a></li>
+            <li><a href="#utilisation">Utilisation</a></li>
+            <li><a href="#donnees">Structure des données</a></li>
+            <li><a href="#api">Configuration API et endpoints</a></li>
+            <li><a href="#cli">Commandes CLI</a></li>
+            <li><a href="#ocr">Vérification OCR</a></li>
+        </ol>
+    </section>
+
+    <section id="fonctionnalites" class="documentation-section">
+        <h2>Fonctionnalités</h2>
+        <ol>
+            <li><strong>Numérisation et import</strong> : découpage intelligent de scans A3 vers A4 et regroupement par étudiant.</li>
+            <li><strong>Structuration du sujet</strong> : analyse du sujet et du corrigé pour générer un barème structuré avec questions, réponses attendues et points.</li>
+            <li><strong>Extraction OCR</strong> : transcription du contenu manuscrit en Markdown avec structuration assistée par LLM.</li>
+            <li><strong>Correction IA</strong> : notation assistée avec notes, commentaires, raisonnement et contexte des copies précédentes.</li>
+            <li><strong>Vérification professeur</strong> : relecture des copies, ajustement des notes et validation des corrections.</li>
+            <li><strong>Bilan</strong> : suivi des copies corrigées, des notes brutes et des notes reconverties sur 20.</li>
+        </ol>
+    </section>
+
+    <section id="installation" class="documentation-section">
+        <h2>Installation</h2>
+        <p><strong>Prérequis :</strong> Python 3.12 ou plus récent et <a href="https://docs.astral.sh/uv/">uv</a>.</p>
+        <p>Créer l'environnement virtuel et installer les dépendances :</p>
+        <pre><code>uv venv
+source .venv/bin/activate
+uv sync</code></pre>
+        <p>Les dépendances et les groupes de développement sont déclarés dans <code>pyproject.toml</code>. Une installation historique reste possible avec :</p>
+        <pre><code>uv pip install -r requirements.txt</code></pre>
+        <p>Définir ensuite une clé API correspondant au provider utilisé, par exemple :</p>
+        <pre><code>export UNISTRA_API_KEY="votre_cle_ici"
+# ou, selon le provider :
+export ILAAS_API_KEY="votre_cle_ici"</code></pre>
+    </section>
+
+    <section id="utilisation" class="documentation-section">
+        <h2>Utilisation</h2>
+        <h3>Lancer l'application</h3>
+        <pre><code>make run
+# ou
+uv run python correct_ai/app.py</code></pre>
+        <p>L'interface est accessible sur <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a>.</p>
+
+        <h3>Configurer un projet</h3>
+        <ul>
+            <li>Le dossier de travail par défaut est <code>./exemple</code>.</li>
+            <li>Le dossier actif peut être changé depuis l'onglet <strong>Import</strong>.</li>
+            <li>Les fichiers principaux sont <code>sujet.md</code>, <code>corrige.md</code> et <code>liste-etudiants.csv</code>.</li>
+            <li><code>bareme.csv</code> est généré depuis l'onglet Import et peut être vérifié ou modifié avant son chargement en base.</li>
+        </ul>
+
+        <h3>Parcours recommandé</h3>
+        <ol>
+            <li><strong>Import</strong> : sélectionner le projet, vérifier les fichiers, générer le barème et importer le PDF.</li>
+            <li><strong>Découpage</strong> : valider le découpage A3 vers A4 et l'identification des étudiants.</li>
+            <li><strong>OCR</strong> : lancer l'extraction sur une plage de copies. La case <strong>Forcer</strong> permet de recalculer les extractions existantes.</li>
+            <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page.</li>
+            <li><strong>Correction</strong> : lancer la correction incrémentale. La case <strong>Forcer</strong> permet d'écraser les corrections existantes.</li>
+            <li><strong>Vérif Correction</strong> : contrôler les réponses, les commentaires, le raisonnement et les notes.</li>
+            <li><strong>Bilan</strong> : consulter l'état global, les notes et les copies incomplètes.</li>
+        </ol>
+    </section>
+
+    <section id="donnees" class="documentation-section">
+        <h2>Structure des données</h2>
+        <h3>Base SQLite : <code>korektor.db</code></h3>
+        <p>La base conserve les informations nécessaires à la correction et à la validation :</p>
+        <ul>
+            <li><code>sujet</code> : contenu du sujet.</li>
+            <li><code>corrige</code> : corrigé officiel.</li>
+            <li><code>bareme</code> : questions, types, réponses attendues et points.</li>
+            <li><code>copies</code> : métadonnées, PDF, extraction OCR et état de vérification.</li>
+            <li><code>corrections</code> : notes LLM, notes professeur, commentaires, raisonnement et champs QCM.</li>
+            <li><code>stats</code> : statistiques de traitement disponibles pour les extensions futures.</li>
+        </ul>
+        <p>Une note professeur validée est prioritaire sur la note LLM dans l'interface et dans le bilan.</p>
+
+        <h3>Fichiers d'une copie</h3>
+        <p>Dans <code>copies_anonymes_validees/Copie_01/</code>, l'application conserve notamment :</p>
+        <ul>
+            <li><code>Copie_01.pdf</code> : scan individuel, généralement stocké au niveau du dossier parent.</li>
+            <li><code>extraction.md</code> : transcription complète.</li>
+            <li><code>pageXX.md</code> : transcription indépendante de chaque page.</li>
+            <li><code>correction.csv</code> ou les données SQLite : résultat de correction selon le workflow utilisé.</li>
+        </ul>
+    </section>
+
+    <section id="api" class="documentation-section">
+        <h2>Configuration API et endpoints</h2>
+        <p>Les providers sont configurés dans <code>correct_ai/llm_providers.py</code>. Chaque configuration indique l'URL compatible OpenAI, le modèle, la variable de clé API et la vérification TLS.</p>
+        <p>Le provider par défaut est défini par <code>DEFAULT_PROVIDER</code>. Les appels disposent d'un timeout de 600 secondes ; les modèles Qwen peuvent utiliser le mode thinking.</p>
+
+        <h3>Endpoints de données</h3>
+        <ul>
+            <li><code>GET /api/db/bareme</code> : récupérer le barème depuis SQLite.</li>
+            <li><code>GET /api/db/copies</code> : lister les copies et les métadonnées étudiants.</li>
+            <li><code>GET /api/db/corrections/&lt;copie_id&gt;</code> : récupérer les corrections d'une copie.</li>
+            <li><code>POST /api/db/corrections/&lt;copie_id&gt;</code> : enregistrer les corrections professeur.</li>
+            <li><code>GET /api/bilan/stats</code> : obtenir les statistiques globales.</li>
+            <li><code>GET /api/project/check</code> : vérifier les fichiers du projet et compter les copies.</li>
+        </ul>
+    </section>
+
+    <section id="cli" class="documentation-section">
+        <h2>Commandes CLI et Makefile</h2>
+        <p>Les commandes courantes sont regroupées dans le <code>Makefile</code> :</p>
+        <pre><code>make help       # afficher les commandes
+make run        # lancer l'application
+make test       # exécuter les tests
+make compile    # vérifier la syntaxe Python
+make check      # compiler puis tester
+make format     # appliquer isort et black</code></pre>
+
+        <h3>Générer le barème</h3>
+        <pre><code>uv run python correct_ai/subject_analysis.py --project-dir mon_projet</code></pre>
+        <p>Les marqueurs de question du sujet suivent la forme <code>(--Qx.y)</code> et doivent être placés après le texte de chaque question.</p>
+
+        <h3>Correction incrémentale</h3>
+        <pre><code>uv run python correct_ai/batch_correction_v2.py \
+  --project-dir mon_projet --start 1 --end 31
+
+# Mode test sans appel LLM réel
+uv run python correct_ai/batch_correction_v2.py \
+  --project-dir mon_projet --start 1 --end 5 --test-mode</code></pre>
+        <ul>
+            <li><code>--start</code> et <code>--end</code> : plage inclusive.</li>
+            <li><code>--provider</code> : provider LLM à utiliser.</li>
+            <li><code>--test-mode</code> : réponse mockée sans appel réseau.</li>
+        </ul>
+        <p>La correction v2 prend en compte un échantillon de copies précédentes, applique un budget de contexte et effectue des tentatives de reprise en cas d'échec.</p>
+    </section>
+
+    <section id="ocr" class="documentation-section">
+        <h2>Vérification OCR</h2>
+        <p>L'onglet <strong>Vérif OCR</strong> permet de vérifier et corriger manuellement l'extraction :</p>
+        <ul>
+            <li>visualisation page par page des PDF ;</li>
+            <li>édition du Markdown extrait ;</li>
+            <li>prévisualisation avec rendu LaTeX par MathJax ;</li>
+            <li>sauvegarde et annulation des modifications ;</li>
+            <li>détection des erreurs courantes de LaTeX ;</li>
+            <li>reconstruction de <code>extraction.md</code> à partir des pages.</li>
+        </ul>
+    </section>
+</div>
+{% endblock %}

@@ -77,3 +77,26 @@ class TestCorrectionPage:
         content = resp.data.decode("utf-8")
         assert "/api/batch/status" in content
         assert "data.running" in content
+
+
+class TestDocumentationPage:
+    """Verify the in-application documentation route and navigation entry."""
+
+    def test_page_loads(self, client):
+        """Ensure the documentation page renders successfully."""
+        response = client.get("/documentation")
+        assert response.status_code == 200
+
+    def test_page_contains_readme_sections(self, client):
+        """Ensure the page exposes the main README documentation sections."""
+        response = client.get("/documentation")
+        content = response.data.decode("utf-8")
+        assert "Fonctionnalités" in content
+        assert "Installation" in content
+        assert "Structure des données" in content
+        assert "Commandes CLI" in content
+
+    def test_navigation_contains_documentation_after_bilan(self, client):
+        """Ensure Documentation appears after Bilan in the shared navigation."""
+        content = client.get("/documentation").data.decode("utf-8")
+        assert content.index("Bilan") < content.index("Documentation")
