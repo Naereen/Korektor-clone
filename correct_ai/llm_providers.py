@@ -14,7 +14,7 @@ import time
 import fitz  # PyMuPDF
 import requests
 from dataclasses import dataclass
-from typing import Dict, Optional, List, Callable
+from typing import Any, Dict, Optional, List, Callable
 
 
 @dataclass
@@ -28,7 +28,10 @@ class ProviderConfig:
     def api_key(self) -> str:
         if not self.api_key_env:
             return "sk-dummy" # Some providers require a non-empty string even if not checked
-        return os.getenv(self.api_key_env, "sk-dummy")
+        api_key_from_env = os.getenv(self.api_key_env, "sk-dummy")
+        # DEBUG:
+        # print(f"Using API key from environment variable '{self.api_key_env}'")
+        return api_key_from_env
 
 
 # Registre des providers connus
@@ -74,9 +77,10 @@ PROVIDERS: Dict[str, ProviderConfig] = {
     "ILAAS_OSS": ProviderConfig(
         name="ILAAS_OSS",
         url="https://llm.ilaas.fr/v1/chat/completions",
-        model="gpt-oss-120b",
+        # model="gpt-oss-120b",
         # model="qwen-3-30b",
         # model="mistral-small-3.2-24b",
+        model="qwen-3.6-35b-instruct",
         api_key_env="ILAAS_API_KEY",
     ),
     "OPENAI_MODEL": ProviderConfig(
@@ -113,7 +117,8 @@ PROVIDERS: Dict[str, ProviderConfig] = {
 
 # DEFAULT_PROVIDER = "MISTRAL_CODESTRAL"
 # DEFAULT_PROVIDER = "IRMA_LLMCODE"
-DEFAULT_PROVIDER = "UNISTRA_QWEN"
+# DEFAULT_PROVIDER = "UNISTRA_QWEN"
+DEFAULT_PROVIDER = "ILAAS_OSS"
 # DEFAULT_PROVIDER = "GB10B_QWEN"
 # DEFAULT_PROVIDER = "MISTRAL_NEMO"
 # DEFAULT_PROVIDER = "LOCAL_QWEN_CODER"
@@ -122,13 +127,13 @@ DEFAULT_PROVIDER = "UNISTRA_QWEN"
 
 
 def get_provider(
-    name: Optional[str] = None,
+    name: Optional[str] = DEFAULT_PROVIDER,
     override_model: Optional[str] = None,
     override_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> ProviderConfig:
     """Retourne la configuration d'un provider.
-    
+
     Args:
         name: Nom du provider dans PROVIDERS (None => DEFAULT_PROVIDER)
         override_model: Remplace le nom de modèle si fourni
@@ -145,28 +150,33 @@ def get_provider(
     base = PROVIDERS[name]
     model = override_model or base.model
     url = override_url or base.url
-    
+
     # Create a new instance, but we can't just pass api_key to __init__ because it's not a field
     # We'll rely on the property or the user manual check.
     # To support overrides, we might return a customized object or just use the base.
     # For now, we return base modified.
-    
+
     return ProviderConfig(name=name, url=url, model=model, api_key_env=base.api_key_env, verify_ssl=base.verify_ssl)
 
 
-def pdf_to_base64_images(pdf_path: str) -> List[str]:
+def pdf_to_base64_images(
+    pdf_path: str,
+    dpi: int = 100,
+    jpg_quality: int = 90,
+) -> List[str]:
     """Convertit toutes les pages d'un PDF en images base64 (JPEG)."""
     doc = fitz.open(pdf_path)
     images_b64 = []
-    
+
     for page in doc:
         # Render page to pixmap (image)
-        # dpi=150 is usually a good balance for LLM vision
-        pix = page.get_pixmap(dpi=150)
-        img_data = pix.tobytes("jpeg")
+        pix = page.get_pixmap(dpi=dpi)
+        img_data = pix.tobytes("jpeg", jpg_quality=jpg_quality)
         base64_str = base64.b64encode(img_data).decode("utf-8")
         images_b64.append(base64_str)
-        
+
+    doc.close()
+
     return images_b64
 
 
@@ -177,15 +187,15 @@ def ask_llm_with_pdf(
     system_prompt: str = "Tu es une IA expert en OCR et transcription manuscrite. Tu dois transcrire fidèlement le texte. Pas de bavardage."
 ) -> str:
     """Envoie un PDF (converti en images) à l'API LLM Vision."""
-    
+
     # 1. Convertir le PDF en images
     print(f"Conversion du PDF {pdf_path} en images...")
     images_b64 = pdf_to_base64_images(pdf_path)
-    
+
     # 2. Construire le contenu message utilisateur
     # Format standard OpenAI Vision: [{"type": "text", ...}, {"type": "image_url", ...}]
-    user_content = [{"type": "text", "text": prompt_text}]
-    
+    user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt_text}]
+
     for b64_img in images_b64:
         user_content.append({
             "type": "image_url",
@@ -201,22 +211,22 @@ def ask_llm_with_pdf(
             {"role": "user", "content": user_content}
         ],
     }
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {provider.api_key()}"
     }
 
     print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
-    
+
     try:
         response = requests.post(provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl)
         response.raise_for_status()
-        
+
         result_json = response.json()
         content = result_json["choices"][0]["message"]["content"]
         return content
-        
+
     except Exception as e:
         print(f"Erreur lors de l'appel LLM: {e}")
         if 'response' in locals():
@@ -231,7 +241,7 @@ def ask_llm(
     thinking: bool = True
 ) -> str:
     """Envoie une requête texte simple à l'API LLM."""
-    
+
     payload = {
         "model": provider.model,
         "messages": [
@@ -239,43 +249,43 @@ def ask_llm(
             {"role": "user", "content": prompt_text}
         ]
     }
-    
+
     # Handle thinking mode for Qwen models (works with chat_template_kwargs)
     if "QWEN" in provider.model.upper():
         payload["chat_template_kwargs"] = {"enable_thinking": thinking}
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {provider.api_key()}"
     }
 
     print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
-    
+
     try:
         response = requests.post(provider.url, json=payload, headers=headers, timeout=600, verify=provider.verify_ssl)
         response.raise_for_status()
-        
+
         result_json = response.json()
-        
+
         # Check if 'choices' exists
         if "choices" not in result_json:
-             print(f"Unexpected API response format: {result_json}")
-             raise ValueError(f"API returned unexpected format: {result_json}")
+            print(f"Unexpected API response format: {result_json}")
+            raise ValueError(f"API returned unexpected format: {result_json}")
 
         # Extract content
         content = result_json["choices"][0]["message"]["content"]
-        
+
         if content is None or content == "":
-             print(f"Warning: API returned None/Empty content. Full response: {result_json}")
-             return ""
+            print(f"Warning: API returned None/Empty content. Full response: {result_json}")
+            return ""
 
         print(f"DEBUG: Content received length: {len(content)}")
         return content
-        
+
     except Exception as e:
         print(f"Erreur lors de l'appel LLM: {e}")
         if 'response' in locals():
-             print(f"Response (si dispo): {response.text}")
+            print(f"Response (si dispo): {response.text}")
         raise
 
 
@@ -299,14 +309,14 @@ def ask_llm_with_progress(
 ) -> str:
     """
     Appelle le LLM en mode streaming avec suivi de progression.
-    
+
     Args:
         provider: Configuration du provider LLM
         prompt_text: Texte du prompt
         system_prompt: Prompt système
         thinking: Activer le mode thinking
         progress_callback: Fonction pour afficher la progression (message: str)
-    
+
     Returns:
         str: Réponse complète du LLM
     """
@@ -314,7 +324,7 @@ def ask_llm_with_progress(
     prompt_tokens = estimate_text_tokens(prompt_text)
     if progress_callback:
         progress_callback(f"[Tokens envoyés: {prompt_tokens}]")
-    
+
     # 2. Préparer le payload avec stream=True
     payload = {
         "model": provider.model,
@@ -324,44 +334,44 @@ def ask_llm_with_progress(
         ],
         "stream": True
     }
-    
+
     # Handle thinking mode for Qwen models
     if "QWEN" in provider.model.upper():
         payload["chat_template_kwargs"] = {"enable_thinking": thinking}
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {provider.api_key()}"
     }
-    
+
     full_response = ""
     received_tokens = 0
     last_log_time = time.time()
-    
+
     try:
         with requests.post(
-            provider.url, 
-            json=payload, 
-            headers=headers, 
-            stream=True, 
-            timeout=600, 
+            provider.url,
+            json=payload,
+            headers=headers,
+            stream=True,
+            timeout=600,
             verify=provider.verify_ssl
         ) as response:
             for chunk in response.iter_lines():
                 if not chunk:
                     continue
-                
+
                 # Gérer le format SSE (Server-Sent Events) : "data: {json}"
                 chunk_str = chunk.decode('utf-8')
-                
+
                 # Ignorer les chunks [DONE] et les lignes vides
                 if chunk_str.strip() == '[DONE]':
                     break
-                
+
                 # Enlever le préfixe "data: " s'il est présent
                 if chunk_str.startswith('data: '):
                     chunk_str = chunk_str[6:]  # Enlever "data: " (6 caractères)
-                
+
                 try:
                     chunk_data = json.loads(chunk_str)
                     if "choices" in chunk_data and len(chunk_data["choices"]) > 0:
@@ -369,7 +379,7 @@ def ask_llm_with_progress(
                         if content:
                             full_response += content
                             received_tokens += estimate_text_tokens(content)
-                            
+
                             # Log au premier chunk et périodiquement (10s ou 20 tokens)
                             current_time = time.time()
                             if (received_tokens > 0 and received_tokens % 20 == 0) or \
@@ -381,15 +391,15 @@ def ask_llm_with_progress(
                                 last_log_time = current_time
                 except json.JSONDecodeError:
                     continue
-                    
+
     except Exception as e:
         if progress_callback:
             progress_callback(f"[Erreur: {str(e)}]")
         raise
-    
+
     if progress_callback:
         progress_callback(f"[Total: {received_tokens} tokens reçus]")
-    
+
     return full_response
 
 
