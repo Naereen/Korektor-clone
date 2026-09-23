@@ -31,4 +31,14 @@ env/
 ## Configuration for CorrectAI (Korektor)o
 .correctai_config.json
 
+## TP et DS etc
+ds_*
+ds-*
+tp_*
+tp-*
+eval_*
+eval-*
+td_*
+td-*
+
 ## Temporary/throwaway scripts (plot iterations, one-off scripts)
