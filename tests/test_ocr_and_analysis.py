@@ -8,7 +8,7 @@ provider responses and fallback rubric generation can be checked offline.
 import json
 from types import SimpleNamespace
 
-import fitz
+import pymupdf
 
 from correct_ai import batch_extraction, rebuild_all_extraction, subject_analysis
 
@@ -22,7 +22,7 @@ def test_extract_markdown_tags_and_missing_tags():
 def test_page_to_base64_renders_requested_page(tmp_path):
     """Page rendering should return non-empty base64 image data."""
     pdf_path = tmp_path / "pages.pdf"
-    document = fitz.open()
+    document = pymupdf.open()
     document.new_page()
     document.save(pdf_path)
     document.close()
@@ -36,7 +36,7 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
     copy_dir = base_dir / "Copie_01"
     copy_dir.mkdir(parents=True)
     pdf_path = base_dir / "Copie_01.pdf"
-    document = fitz.open()
+    document = pymupdf.open()
     document.new_page()
     document.save(pdf_path)
     document.close()

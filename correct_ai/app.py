@@ -26,7 +26,7 @@ import threading
 import time
 from collections import defaultdict
 
-import fitz  # PyMuPDF
+import pymupdf
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from pypdf import PdfReader, PdfWriter
 
@@ -120,7 +120,7 @@ def get_splitter_doc():
     if not os.path.exists(path):
         return None
     if splitter_doc is None or splitter_doc.is_closed:
-        splitter_doc = fitz.open(path)
+        splitter_doc = pymupdf.open(path)
     return splitter_doc
 
 
@@ -812,7 +812,7 @@ def split_thumbnail(page_num):
             page = doc[page_idx]
             rect = page.rect
             # Header only
-            clip_rect = fitz.Rect(0, 0, rect.width, rect.height * 0.35)
+            clip_rect = pymupdf.Rect(0, 0, rect.width, rect.height * 0.35)
             pix = page.get_pixmap(clip=clip_rect, dpi=72)
             img_data = pix.tobytes("png")
             return send_file(io.BytesIO(img_data), mimetype="image/png")
@@ -891,7 +891,7 @@ def split_process():
                     s_nom = student_info_map[s_id].get("name", "")
                     s_prenom = student_info_map[s_id].get("firstname", "")
 
-                new_doc = fitz.open()
+                new_doc = pymupdf.open()
                 total_pages = 0
 
                 # Range
@@ -910,7 +910,7 @@ def split_process():
                     # Header mask & Numbering
                     segment_first_page = new_doc[total_pages]
                     rect = segment_first_page.rect
-                    header_rect = fitz.Rect(0, 0, rect.width, rect.height * 0.35)
+                    header_rect = pymupdf.Rect(0, 0, rect.width, rect.height * 0.35)
 
                     shape = segment_first_page.new_shape()
                     shape.draw_rect(header_rect)
@@ -1307,7 +1307,7 @@ def get_ocr_pdf(copie_id):
     if page_num is not None:
         try:
             page_index = int(page_num) - 1
-            doc = fitz.open(pdf_path)
+            doc = pymupdf.open(pdf_path)
             if 0 <= page_index < len(doc):
                 page = doc[page_index]
                 pix = page.get_pixmap(dpi=150)
@@ -1352,7 +1352,7 @@ def get_ocr_pages(copie_id):
     total_pages = 0
     if os.path.exists(pdf_path):
         try:
-            doc = fitz.open(pdf_path)
+            doc = pymupdf.open(pdf_path)
             total_pages = len(doc)
             doc.close()
         except:

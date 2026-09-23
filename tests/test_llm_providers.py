@@ -10,7 +10,7 @@ import json
 import os
 from types import SimpleNamespace
 
-import fitz
+import pymupdf
 import pytest
 
 from correct_ai.llm_providers import (
@@ -108,7 +108,7 @@ def test_ask_llm_rejects_missing_choices(monkeypatch):
 def test_pdf_to_base64_images(tmp_path):
     """Each PDF page should become decodable base64 JPEG data."""
     pdf_path = tmp_path / "copy.pdf"
-    doc = fitz.open()
+    doc = pymupdf.open()
     doc.new_page()
     doc.new_page()
     doc.save(pdf_path)
@@ -122,7 +122,7 @@ def test_pdf_to_base64_images(tmp_path):
 def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
     """Vision requests should contain one image block per PDF page."""
     pdf_path = tmp_path / "copy.pdf"
-    doc = fitz.open()
+    doc = pymupdf.open()
     doc.new_page()
     doc.save(pdf_path)
     doc.close()

@@ -8,7 +8,7 @@ without starting a server or contacting an LLM provider.
 import csv
 import io
 
-import fitz
+import pymupdf
 import pytest
 
 from correct_ai import app as app_module
@@ -27,7 +27,7 @@ def project_client(tmp_path, monkeypatch):
 
 def make_pdf(path, pages=1):
     """Create a small valid PDF containing the requested number of pages."""
-    document = fitz.open()
+    document = pymupdf.open()
     for index in range(pages):
         page = document.new_page()
         page.insert_text((72, 72), f"Page {index + 1}")

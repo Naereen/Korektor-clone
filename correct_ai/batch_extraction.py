@@ -20,7 +20,7 @@ import os
 import sys
 from typing import Any, Dict, List
 
-import fitz
+import pymupdf
 import requests
 
 try:
@@ -59,7 +59,7 @@ def extract_markdown(response):
 
 def page_to_base64(pdf_path, page_idx, dpi=150):
     """Render one PDF page at ``dpi`` and return its JPEG as base64 text."""
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     page = doc[page_idx]
     pix = page.get_pixmap(dpi=dpi)
     img_data = pix.tobytes("jpeg")
@@ -180,7 +180,7 @@ def extract_copy(
 
     # Count pages
     # Ouvrir le PDF une seule fois
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     num_pages = len(doc)
 
     # Extraire la page 1 comme référence si demandé (aide au déchiffrement de l'écriture)

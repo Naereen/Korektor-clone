@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-import fitz  # PyMuPDF
+import pymupdf
 import requests
 
 
@@ -182,7 +182,7 @@ def pdf_to_base64_images(
     jpg_quality: int = 90,
 ) -> List[str]:
     """Convertit toutes les pages d'un PDF en images base64 (JPEG)."""
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     images_b64 = []
 
     for page in doc:
