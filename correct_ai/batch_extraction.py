@@ -6,6 +6,7 @@ import base64
 import fitz
 import requests
 import logging
+from typing import Any, Dict, List
 from llm_providers import get_provider
 
 BASE_DIR = "copies_anonymes_validees"
@@ -25,15 +26,15 @@ def extract_markdown(response):
     Retourne le texte ou None si les balises ne sont pas trouvées."""
     logger.info(f"\n--- extract_markdown called ---")
     logger.info(f"Raw response (first 500 chars): {response[:500]}")
-    
+
     start = response.find("<markdown>")
     end = response.find("</markdown>")
-    
+
     if start >= 0 and end > start:
         text = response[start + len("<markdown>"):end].strip()
         logger.info(f"✓ Markdown extracted, text length: {len(text)}")
         return text
-    
+
     logger.info(f"✗ No <markdown>...</markdown> tags found")
     return None
 
@@ -53,7 +54,7 @@ def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=
     Args:
         timeout: timeout en secondes pour la requête (default: 600)
     """
-    user_content = [
+    user_content: List[Dict[str, Any]] = [
         {"type": "text", "text": prompt_text},
         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
     ]
@@ -79,7 +80,14 @@ def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=
     return resp.json()["choices"][0]["message"]["content"]
 
 
-def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name="UNISTRA_QWEN", use_ref_page1=False):
+def extract_copy(
+    copy_number,
+    project_dir=".",
+    stop_callback=None,
+    provider_name="ILAAS_OSS",
+    use_ref_page1=False,
+    force=False,
+):
     if stop_callback and stop_callback():
         print("Opération annulée (Start).")
         return False
@@ -109,6 +117,12 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
         else:
             print(f"Skipping {copy_dir_name}: locked by another process.")
         return True
+
+    if force:
+        for filename in os.listdir(output_dir):
+            if filename == "extraction.md" or (filename.startswith("page") and filename.endswith(".md")):
+                os.remove(os.path.join(output_dir, filename))
+        print(f"Forcing OCR recalculation for {copy_dir_name}.")
 
     # Si extraction.md existe déjà, libérer le lock et skip
     if os.path.exists(output_file):
@@ -172,7 +186,7 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
                 return False
 
             page_num = page_idx + 1
-            
+
             # Vérifier si la page a déjà été extraite
             page_file = os.path.join(output_dir, f"page{page_num:02d}.md")
             if os.path.exists(page_file):
@@ -187,12 +201,12 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
                 })
                 accumulated_text += "\n" + transcription
                 continue
-            
+
             page_start_time = time_mod.time()
             print(f"  Page {page_num}/{num_pages}...")
 
             image_b64 = page_to_base64(pdf_path, page_idx)
-            
+
             # Contexte global (sujet + corrigé) pour aider à reconnaître le vocabulaire
             global_context = (
                 f"RÉFÉRENCE — SUJET DE L'EXAMEN (vocabulaire, notations) :\n"
@@ -236,12 +250,12 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
             for attempt in range(max_retries):
                 try:
                     logger.info(f"  Page {page_num}: Attempt {attempt+1}/{max_retries}")
-                    
+
                     # Construire user_content avec éventuellement la page 1 comme référence
-                    user_content = [
+                    user_content: List[Dict[str, Any]] = [
                         {"type": "text", "text": prompt_text}
                     ]
-                    
+
                     # Ajouter la page 1 comme référence pour les pages 2+ si demandé
                     if use_ref_page1 and page_idx >= 1 and ref_page1_b64:
                         user_content.append({
@@ -252,12 +266,12 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
                             "type": "text",
                             "text": "La première image ci-dessus est la PAGE 1 (Exercice 0) - utilisez-la comme référence pour déchiffrer l'écriture de cet étudiant. La page à transcrire est ci-dessous."
                         })
-                    
+
                     user_content.append({
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
                     })
-                    
+
                     # Appeler le LLM avec le user_content construit
                     payload = {
                         "model": provider.model,
@@ -276,14 +290,14 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
                     )
                     resp.raise_for_status()
                     response = resp.json()["choices"][0]["message"]["content"]
-                    
+
                     # Extraire le markdown entre les balises
                     transcription = extract_markdown(response)
-                    
+
                     if transcription is not None:
                         logger.info(f"  Page {page_num}: ✓ Extraction successful")
                         break
-                    
+
                     logger.info(f"  Page {page_num}: ✗ No <markdown> tags found")
                     print(f"    ✗ Page {page_num} Pas de balises <markdown>")
                     transcription = ""
@@ -303,7 +317,7 @@ def extract_copy(copy_number, project_dir=".", stop_callback=None, provider_name
             if transcription is None:
                 page_status = "failed"
                 transcription = ""
-            
+
             logger.info(f"  Page {page_num}: Final status = {page_status}, text length = {len(transcription) if transcription else 0}")
 
             # Sauvegarder page par page avec statut
@@ -368,18 +382,18 @@ def main():
     parser.add_argument("--start", type=int, default=1, help="Start copy number (inclusive)")
     parser.add_argument("--end", type=int, default=5, help="End copy number (inclusive)")
     parser.add_argument("--project-dir", type=str, default=".", help="Project directory")
-    parser.add_argument("--provider", type=str, default="UNISTRA_QWEN", help="LLM provider name")
+    parser.add_argument("--provider", type=str, default="ILAAS_OSS", help="LLM provider name")
     parser.add_argument("--ref-page1", action="store_true", help="Use page 1 as visual reference for pages 2+")
-    
+
     args = parser.parse_args()
-    
+
     print(f"Starting batch extraction from Copie {args.start} to {args.end} in {args.project_dir}...")
     if args.ref_page1:
         print("  Using page 1 as visual reference for handwriting style")
-    
+
     for i in range(args.start, args.end + 1):
         extract_copy(i, args.project_dir, provider_name=args.provider, use_ref_page1=args.ref_page1)
-        
+
     print("Batch processing complete.")
 
 if __name__ == "__main__":

@@ -22,6 +22,13 @@
                     </div>
                 </div>
 
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="force-ocr">
+                    <label class="form-check-label small" for="force-ocr">
+                        Forcer (recalculer les extractions existantes)
+                    </label>
+                </div>
+
                 <div class="d-grid mb-2">
                     <button id="btn-start" class="btn btn-warning" onclick="startJob()">
                         <i class="bi bi-file-text"></i> Lancer l'extraction OCR
@@ -125,7 +132,8 @@ document.addEventListener('DOMContentLoaded', function() {
 async function startJob() {
     const startVal = document.getElementById('range-start').value;
     const endVal = document.getElementById('range-end').value;
-    const msg = 'Lancer l\'extraction OCR' + (endVal ? ' (Copies ' + (startVal || '1') + '-' + endVal + ')' : ' sur toutes les copies') + ' ?';
+    const forceVal = document.getElementById('force-ocr').checked;
+    const msg = 'Lancer l\'extraction OCR' + (endVal ? ' (Copies ' + (startVal || '1') + '-' + endVal + ')' : ' sur toutes les copies') + (forceVal ? ' en forçant le recalcul' : '') + ' ?';
     if (!confirm(msg)) return;
 
     try {
@@ -136,7 +144,7 @@ async function startJob() {
                 type: 'extraction',
                 start: startVal ? parseInt(startVal) : null,
                 end: endVal ? parseInt(endVal) : null,
-                force: false
+                force: forceVal
             })
         });
         const data = await res.json();

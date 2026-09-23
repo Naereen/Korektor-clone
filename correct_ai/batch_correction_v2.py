@@ -20,6 +20,7 @@ import sqlite3
 import logging
 import time
 import random
+import json_repair
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -46,7 +47,37 @@ from correct_ai.database import (
     get_sujet, get_corrige, get_bareme, get_all_extractions,
     has_corrections, get_random_previous_corrections
 )
-from correct_ai.prompt_builder import build_incremental_prompt
+from correct_ai.prompt_builder import build_incremental_prompt, estimate_prompt_tokens
+
+
+def _fit_previous_corrections_to_prompt(
+    sujet: str,
+    corrige: str,
+    bareme: List[Dict[str, Any]],
+    previous_corrections: List[Dict[str, Any]],
+    current_extraction: str,
+) -> List[Dict[str, Any]]:
+    """Keep complete recent copies while staying within the prompt budget."""
+    max_tokens = int(os.getenv("KOREKTOR_MAX_PROMPT_TOKENS", "22000"))
+    selected: List[Dict[str, Any]] = []
+    copy_ids = list(dict.fromkeys(corr["copie_id"] for corr in previous_corrections))
+
+    for copy_id in reversed(copy_ids):
+        candidate = [corr for corr in previous_corrections if corr["copie_id"] == copy_id]
+        trial = candidate + selected
+        prompt_tokens = estimate_prompt_tokens(
+            sujet, corrige, bareme, trial, current_extraction
+        )
+        if prompt_tokens > max_tokens:
+            continue
+        selected = trial
+
+    selected_copy_ids = set(corr["copie_id"] for corr in selected)
+    logger.info(
+        f"📚 Contexte précédent réduit à {len(selected_copy_ids)} copie(s), "
+        f"{len(selected)} correction(s), budget {max_tokens} tokens"
+    )
+    return sorted(selected, key=lambda corr: (corr["copie_id"], corr["bareme_id"]))
 
 
 def parse_llm_response(response: str) -> Dict[str, Any]:
@@ -69,7 +100,6 @@ def parse_llm_response(response: str) -> Dict[str, Any]:
         return {}
     
     try:
-        import json_repair
         result = json_repair.loads(response)
         # json_repair peut retourner une string pour les réponses vides
         if isinstance(result, str):
@@ -157,6 +187,14 @@ def correct_copy_incremental(
             if not current_copy:
                 logger.error(f"❌ Copie {copy_id} non trouvée dans la base")
                 return False
+
+            previous_corrections = _fit_previous_corrections_to_prompt(
+                sujet,
+                corrige,
+                bareme,
+                previous_corrections,
+                current_copy["extraction_texte"],
+            )
             
             # 2. Construire le prompt
             prompt = build_incremental_prompt(
@@ -203,7 +241,9 @@ def correct_copy_incremental(
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'appel LLM pour la copie {copy_id}: {e}")
                     # Si le prompt est trop grand, réessayer sans images (texte seul)
-                    if "context length" in str(e).lower() or "tokens" in str(e).lower():
+                    error_text = str(e).lower()
+                    is_oversized_request = getattr(getattr(e, "response", None), "status_code", None) == 413
+                    if is_oversized_request or "request entity too large" in error_text or "context length" in error_text or "tokens" in error_text:
                         logger.warning("⚠️  Prompt trop grand - passage en mode texte seul...")
                         try:
                             response = ask_llm_with_progress(
@@ -294,7 +334,7 @@ def correct_all_incremental(
     start: int,
     end: int,
     project_dir: str,
-    provider_name: str = "UNISTRA_QWEN",
+    provider_name: str = "ILAAS_OSS",
     test_mode: bool = False
 ) -> None:
     """
@@ -453,7 +493,7 @@ def main():
     parser.add_argument("--start", type=int, required=True, help="Première copie à corriger")
     parser.add_argument("--end", type=int, required=True, help="Dernière copie à corriger")
     parser.add_argument("--test-mode", action="store_true", help="Mode test (gratuit, sans appel LLM réel)")
-    parser.add_argument("--provider", default="UNISTRA_QWEN", help="Nom du provider LLM")
+    parser.add_argument("--provider", default="ILAAS_OSS", help="Nom du provider LLM")
     
     args = parser.parse_args()
     
