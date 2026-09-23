@@ -115,8 +115,8 @@
         headerRatio = Number(value) / 100;
         document.getElementById('header-ratio-value').innerText = `${value} %`;
         document.querySelectorAll('.card-img').forEach((image) => {
-            const separator = image.src.includes('?') ? '&' : '?';
-            image.src = `${image.src.split('?')[0]}${separator}header_ratio=${headerRatio}&t=${Date.now()}`;
+            const baseUrl = image.src.split('?')[0];
+            image.src = `${baseUrl}?header_ratio=${headerRatio}&t=${Date.now()}`;
         });
     }
 
