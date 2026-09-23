@@ -58,13 +58,14 @@
                             <tr>
                                 <th>Copie</th>
                                 <th>Note</th>
+                                <th>Note / 20</th>
                                 <th>/<span id="stat-max-header">-</span></th>
                                 <th>Questions corrigées</th>
                                 <th>Statut</th>
                             </tr>
                         </thead>
                         <tbody id="notes-table">
-                            <tr><td colspan="5" class="text-center text-muted">Chargement...</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted">Chargement...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -120,7 +121,11 @@ async function loadBilan() {
 
             rows += '<tr>';
             rows += '<td><strong>Copie ' + n.copie_id + '</strong></td>';
+            const scoreOutOfTwenty = data.max_points > 0
+                ? Number(n.total || 0) / data.max_points * 20
+                : 0;
             rows += '<td>' + n.total + '</td>';
+            rows += '<td>' + scoreOutOfTwenty.toFixed(2) + '</td>';
             rows += '<td><div class="progress" style="height:6px;"><div class="progress-bar ' + barColor + '" style="width:' + pct + '%"></div></div></td>';
             rows += '<td><small>' + n.nb_corr + '/' + data.nb_questions + '</small></td>';
             rows += '<td>' + statusBadge + '</td>';

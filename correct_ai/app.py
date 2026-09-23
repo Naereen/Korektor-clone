@@ -20,7 +20,7 @@ PROJECT_ROOT = os.path.dirname(APP_MODULE_DIR)
 sys.path.insert(0, APP_MODULE_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-import batch_correction
+# import batch_correction
 import batch_correction_v2
 import batch_extraction
 from database import get_all_extractions

@@ -398,7 +398,10 @@
         const percentage = maximum > 0
             ? Math.max(0, Math.min(100, total / maximum * 100))
             : 0;
-        studentScore.innerText = `Note totale : ${total.toFixed(1)} / ${maximum.toFixed(1)}`;
+        const scoreOutOfTwenty = maximum > 0 ? total / maximum * 20 : 0;
+        studentScore.innerText =
+            `Note totale : ${total.toFixed(1)} / ${maximum.toFixed(1)} ` +
+            `(${scoreOutOfTwenty.toFixed(2)} / 20)`;
         studentProgressBar.style.width = `${percentage}%`;
         studentProgressBar.className = `progress-bar ${percentage >= 50 ? 'bg-success' : percentage >= 25 ? 'bg-warning' : 'bg-danger'}`;
         studentProgressBar.setAttribute('aria-valuenow', percentage.toFixed(0));
