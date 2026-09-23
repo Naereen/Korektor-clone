@@ -1,27 +1,31 @@
-import os
+import collections
+import copy
 import csv
 import io
-import copy
 import json
-import collections
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
-import fitz # PyMuPDF
-from pypdf import PdfReader, PdfWriter
+import os
 import shutil
-from collections import defaultdict
+import sys
 import threading
 import time
-import sys
+from collections import defaultdict
+
+import fitz  # PyMuPDF
+from flask import (Flask, jsonify, redirect, render_template, request,
+                   send_file, url_for)
+from pypdf import PdfReader, PdfWriter
 
 # Import local modules
 # Ensure current dir is in sys.path to import siblings if needed, though they are in the same package
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from llm_providers import get_provider
-import batch_extraction
 import batch_correction
 import batch_correction_v2
-from database import get_db, get_bareme as db_get_bareme, get_all_extractions
+import batch_extraction
+from database import get_all_extractions
+from database import get_bareme as db_get_bareme
+from database import get_db
+from llm_providers import get_provider
 
 # --- Configuration & Path Management ---
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -436,7 +440,8 @@ class BatchJob:
                          load_all_extractions(db, project_dir)
 
                          # Charger sujet/corrige/bareme UNIQUEMENT s'ils n'existent pas dans la base
-                         from database import load_sujet, load_corrige, load_bareme
+                         from database import (load_bareme, load_corrige,
+                                               load_sujet)
 
                          sujet_exists = db.execute("SELECT COUNT(*) FROM sujet").fetchone()[0] > 0
                          corrige_exists = db.execute("SELECT COUNT(*) FROM corrige").fetchone()[0] > 0

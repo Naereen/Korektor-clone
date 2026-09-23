@@ -1,12 +1,13 @@
 
-import os
-import sys
 import argparse
 import base64
+import logging
+import os
+import sys
+from typing import Any, Dict, List
+
 import fitz
 import requests
-import logging
-from typing import Any, Dict, List
 from llm_providers import get_provider
 
 BASE_DIR = "copies_anonymes_validees"

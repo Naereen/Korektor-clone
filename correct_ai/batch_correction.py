@@ -1,9 +1,10 @@
 
-import os
 import argparse
 import csv
 import json
-from llm_providers import get_provider, ask_llm
+import os
+
+from llm_providers import ask_llm, get_provider
 
 BASE_DIR = "copies_anonymes_validees"
 BAREME_FILE = "bareme.csv"

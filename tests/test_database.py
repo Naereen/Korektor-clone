@@ -4,11 +4,12 @@ Tests unitaires pour la couche Database (Phase 1).
 Exécution:
     uv run pytest tests/test_database.py -v
 """
-import pytest
-import os
-import sys
-import sqlite3
 import hashlib
+import os
+import sqlite3
+import sys
+
+import pytest
 
 # Ajouter le répertoire parent au path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -125,7 +126,8 @@ def test_db_with_data(test_db_with_schema, tmp_path):
     conn.execute("INSERT OR REPLACE INTO corrige (id, contenu) VALUES (1, ?)", [corrige_content])
 
     # Insérer des questions de barème synthétiques
-    import csv, io
+    import csv
+    import io
     bareme_csv = io.StringIO(
         "question,qcm (oui/non),réponse attendue,points\n"
         "Q1,oui,A,1.0\n"
@@ -260,7 +262,8 @@ class TestLoadBareme:
 
     def _insert_bareme_csv(self, conn, csv_str, question_texts=None):
         """Helper: insère un CSV de barème dans la base."""
-        import csv, io
+        import csv
+        import io
         reader = csv.DictReader(io.StringIO(csv_str))
         for row in reader:
             texte = question_texts.get(row['question'], '') if question_texts else ''
@@ -546,7 +549,7 @@ class TestSaveCorrection:
     def test_save_correction_with_raisonnement(self, test_db_with_data):
         """1.2.3 : Vérifier que raisonnement_llm est sauvegardé via la fonction save_correction."""
         from correct_ai.database import save_correction
-        
+
         # Insérer une copie
         test_db_with_data.execute("""
             INSERT INTO copies (id, pdf_path, extraction_texte) VALUES (2, 'copie2.pdf', 'extraction2')

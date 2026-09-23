@@ -11,9 +11,9 @@ Exemple:
 """
 import argparse
 import os
-import sys
-import sqlite3
 import shutil
+import sqlite3
+import sys
 from pathlib import Path
 
 # Ajouter le répertoire parent au path pour importer correct_ai
@@ -122,7 +122,7 @@ def load_bareme(conn, bareme_path, sujet_content=None):
     """Charge bareme.csv dans la base avec texte_question extrait du sujet."""
     import csv
     import re
-    
+
     # Extraire le texte des questions depuis sujet.md
     question_texts = {}
     if sujet_content:
@@ -221,7 +221,8 @@ def find_student_for_copy(copy_id, project_dir):
     if not os.path.exists(students_file):
         return None
 
-    import csv, io
+    import csv
+    import io
     with open(students_file, "r", encoding="utf-8") as f:
         lines = f.readlines()
 

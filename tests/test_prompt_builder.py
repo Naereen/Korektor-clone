@@ -4,9 +4,10 @@ Tests unitaires pour la couche Prompt Builder (Phase 2).
 Exécution:
     uv run pytest tests/test_prompt_builder.py -v
 """
-import pytest
 import os
 import sys
+
+import pytest
 
 # Ajouter le répertoire parent au path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -86,8 +87,8 @@ def previous_corrections_data():
 # Import de la vraie fonction
 # =============================================================================
 
-from correct_ai.prompt_builder import build_incremental_prompt, build_simple_prompt
-
+from correct_ai.prompt_builder import (build_incremental_prompt,
+                                       build_simple_prompt)
 
 # =============================================================================
 # Tests de build_incremental_prompt (2.1)

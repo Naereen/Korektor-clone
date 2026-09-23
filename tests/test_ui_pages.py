@@ -1,10 +1,11 @@
 """
 Tests pour les pages OCR et Correction (UI refactor).
 """
-import pytest
+import json
 import os
 import sys
-import json
+
+import pytest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))

@@ -14,13 +14,12 @@ Utilisation:
     load_sujet(db, "exemple/sujet.md")
     ...
 """
-import os
-import sqlite3
 import csv
+import os
 import re
+import sqlite3
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-
+from typing import Any, Dict, List, Optional
 
 # =============================================================================
 # Configuration

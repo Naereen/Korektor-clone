@@ -1,12 +1,14 @@
 
-import os
-import sys
-import json
 import argparse
-import re
 import csv
+import json
+import os
+import re
+import sys
+
 import json_repair
-from llm_providers import get_provider, ask_llm
+from llm_providers import ask_llm, get_provider
+
 
 def analyze_subject(project_dir=".", output_file="structure.json"):
     sujet_path = os.path.join(project_dir, "sujet.md")

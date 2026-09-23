@@ -19,7 +19,7 @@ Utilisation:
         current_extraction=extraction_text
     )
 """
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
 def build_incremental_prompt(

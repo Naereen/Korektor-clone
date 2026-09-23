@@ -13,16 +13,17 @@ Utilisation:
     # Corriger toutes les copies de 1 à 10
     correct_all_incremental(start=1, end=10, project_dir="exemple2", provider_name="UNISTRA_QWEN")
 """
-import os
-import sys
 import json
-import sqlite3
 import logging
-import time
+import os
 import random
-import json_repair
+import sqlite3
+import sys
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
+import json_repair
 
 # Ajouter le répertoire parent au path pour importer les autres modules
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,13 +42,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger('korektor')
 
-from correct_ai.database import (
-    get_db, init_db, load_sujet, load_corrige, load_bareme,
-    load_all_extractions, save_correction, get_previous_corrections,
-    get_sujet, get_corrige, get_bareme, get_all_extractions,
-    has_corrections, get_random_previous_corrections
-)
-from correct_ai.prompt_builder import build_incremental_prompt, estimate_prompt_tokens
+from correct_ai.database import (get_all_extractions, get_bareme, get_corrige,
+                                 get_db, get_previous_corrections,
+                                 get_random_previous_corrections, get_sujet,
+                                 has_corrections, init_db,
+                                 load_all_extractions, load_bareme,
+                                 load_corrige, load_sujet, save_correction)
+from correct_ai.prompt_builder import (build_incremental_prompt,
+                                       estimate_prompt_tokens)
 
 
 def _fit_previous_corrections_to_prompt(
@@ -219,7 +221,9 @@ def correct_copy_incremental(
             if test_mode:
                 response = '{"Q0": {"note": 1.0, "commentaire": "Test - Mode mock", "raisonnement": "Raisonnement test pour validation du format", "reponse_etudiant": "Test"}}'
             else:
-                from correct_ai.llm_providers import get_provider, ask_llm_with_pdf, ask_llm_with_progress
+                from correct_ai.llm_providers import (ask_llm_with_pdf,
+                                                      ask_llm_with_progress,
+                                                      get_provider)
                 
                 p = get_provider(provider.name if hasattr(provider, 'name') else provider.get('name'))
 

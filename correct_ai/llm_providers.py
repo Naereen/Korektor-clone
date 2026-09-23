@@ -6,15 +6,16 @@ Chaque provider est défini par :
 - api_key_env : nom de la variable d'environnement contenant la clé (None si pas nécessaire)
 """
 
-import os
 import base64
 import io
 import json
+import os
 import time
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
+
 import fitz  # PyMuPDF
 import requests
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, List, Callable
 
 
 @dataclass

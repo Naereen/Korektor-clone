@@ -2,13 +2,13 @@
 Fixtures pytest pour les tests Korektor.
 Utilise uv run pytest pour exécuter.
 """
-import pytest
-import sqlite3
 import os
 import shutil
+import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
 
 # Chemin du répertoire du projet
 PROJECT_DIR = Path(__file__).parent.parent

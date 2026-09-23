@@ -11,10 +11,9 @@ Exemple:
 """
 import argparse
 import os
-import sys
 import shutil
+import sys
 from pathlib import Path
-
 
 # Dossiers à protéger (NE JAMAIS SUPPRIMER)
 PROTECTED_DIRS = [

@@ -1,10 +1,11 @@
 """
 Tests pour les nouvelles routes de l'onglet Import (UI refactor).
 """
-import pytest
+import json
 import os
 import sys
-import json
+
+import pytest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
@@ -56,8 +57,9 @@ class TestProjectCheck:
         assert data['files']['corrige.md'] is True
 
     def test_check_missing_files(self, client, original_dir):
-        from app import config
         import tempfile
+
+        from app import config
         with tempfile.TemporaryDirectory() as td:
             config.project_dir = td
             config.save()
@@ -103,8 +105,9 @@ class TestBaremeGenerate:
         assert 'points' in row
 
     def test_generate_bareme_no_subject(self, client, original_dir):
-        from app import config
         import tempfile
+
+        from app import config
         with tempfile.TemporaryDirectory() as td:
             config.project_dir = td
             config.save()

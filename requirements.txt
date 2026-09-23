@@ -3,3 +3,6 @@ pymupdf
 pypdf
 requests
 json_repair
+tiktoken
+black
+isort

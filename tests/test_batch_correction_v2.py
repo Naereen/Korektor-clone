@@ -4,28 +4,26 @@ Tests unitaires pour la couche Correction (Phase 3).
 Exécution:
     uv run pytest tests/test_batch_correction_v2.py -v
 """
-import pytest
-import os
-import sys
 import json
+import os
 import sqlite3
+import sys
+
+import pytest
 
 # Ajouter le répertoire parent au path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 
-from correct_ai.database import (
-    get_db, init_db, load_sujet, load_corrige, load_bareme,
-    load_all_extractions, save_correction, get_previous_corrections,
-    get_sujet, get_corrige, get_bareme, get_note_for_copy
-)
+from correct_ai.batch_correction_v2 import (correct_copy_incremental_mock,
+                                            parse_llm_response)
+from correct_ai.database import (get_bareme, get_corrige, get_db,
+                                 get_note_for_copy, get_previous_corrections,
+                                 get_sujet, init_db, load_all_extractions,
+                                 load_bareme, load_corrige, load_sujet,
+                                 save_correction)
 from correct_ai.prompt_builder import build_incremental_prompt
-from correct_ai.batch_correction_v2 import (
-    parse_llm_response,
-    correct_copy_incremental_mock
-)
-
 
 # =============================================================================
 # Fixtures
@@ -276,7 +274,7 @@ class TestIntegration:
         
         # D'abord, sauvegarder une correction LLM
         from correct_ai.database import save_correction
-        
+
         # Insérer une question dans bareme si nécessaire
         bareme = db.execute("SELECT * FROM bareme LIMIT 1").fetchone()
         if bareme:

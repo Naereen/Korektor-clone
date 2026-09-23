@@ -9,26 +9,24 @@ Ces tests valident :
 Exécution:
     uv run pytest tests/test_integration.py -v
 """
-import pytest
 import os
-import sys
 import shutil
+import sys
+
+import pytest
 
 # Ajouter le répertoire parent au path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 
-from correct_ai.database import (
-    get_db, init_db, load_sujet, load_corrige, load_bareme,
-    load_all_extractions, save_correction, get_previous_corrections,
-    get_sujet, get_corrige, get_bareme, save_extraction
-)
-from correct_ai.batch_correction_v2 import (
-    correct_copy_incremental_mock,
-    correct_all_incremental
-)
-
+from correct_ai.batch_correction_v2 import (correct_all_incremental,
+                                            correct_copy_incremental_mock)
+from correct_ai.database import (get_bareme, get_corrige, get_db,
+                                 get_previous_corrections, get_sujet, init_db,
+                                 load_all_extractions, load_bareme,
+                                 load_corrige, load_sujet, save_correction,
+                                 save_extraction)
 
 EXEMPLE_DIR = os.path.join(PROJECT_ROOT, "exemple")
 
