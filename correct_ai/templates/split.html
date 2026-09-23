@@ -72,6 +72,14 @@
         align-items: center;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
+
+    .header-slider {
+        min-width: 260px;
+    }
+
+    .header-slider input {
+        width: 100%;
+    }
 </style>
 {% endblock %}
 
@@ -81,6 +89,10 @@
         <h3>Découpage & Désanonymisation</h3>
         <p class="mb-0 text-muted">Par défaut, les pages sont des "Suites". Sélectionnez un étudiant pour créer une
             <b>Nouvelle Copie</b> (Verte).</p>
+    </div>
+    <div class="header-slider">
+        <label for="header-ratio" class="form-label mb-1">Hauteur du bandeau : <strong id="header-ratio-value">15 %</strong></label>
+        <input id="header-ratio" type="range" min="0" max="50" value="15" step="1" oninput="updateHeaderRatio(this.value)">
     </div>
     <button id="submitBtn" class="btn btn-success fw-bold" onclick="submitData()">Valider et Traiter</button>
 </div>
@@ -97,6 +109,16 @@
     const totalItems = Number(splitConfig.dataset.totalItems);
     const students = JSON.parse(splitConfig.dataset.students);
     const cardsData = [];
+    let headerRatio = 0.15;
+
+    function updateHeaderRatio(value) {
+        headerRatio = Number(value) / 100;
+        document.getElementById('header-ratio-value').innerText = `${value} %`;
+        document.querySelectorAll('.card-img').forEach((image) => {
+            const separator = image.src.includes('?') ? '&' : '?';
+            image.src = `${image.src.split('?')[0]}${separator}header_ratio=${headerRatio}&t=${Date.now()}`;
+        });
+    }
 
     function refreshStudentOptions() {
         const selectedIds = new Set();
@@ -147,7 +169,7 @@
 
             html += `
                 <div class="card continuation" id="card-${i}">
-                    <img src="/api/split/thumbnail/${pageNum}" class="card-img" alt="Page ${pageNum}" loading="lazy">
+                    <img src="/api/split/thumbnail/${pageNum}?header_ratio=${headerRatio}" class="card-img" alt="Page ${pageNum}" loading="lazy">
                     <div class="card-body">
                         <div class="card-title">
                             <span>Page ${pageNum}</span>
@@ -194,10 +216,11 @@
         showLoading();
 
         try {
+            const payload = cardsData.map((card) => ({ ...card, header_ratio: headerRatio }));
             const response = await fetch('/api/split/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(cardsData)
+                body: JSON.stringify(payload)
             });
             const result = await response.json();
             if (result.success) {

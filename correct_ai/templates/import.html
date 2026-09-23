@@ -70,17 +70,25 @@
             <div class="card-body">
                 <div class="alert alert-info small">
                     <i class="bi bi-info-circle"></i>
-                    Si vous avez scanné en A3 (2 pages par feuille), l'outil va découper en A4.
+                    Indiquez si le PDF contient déjà des pages A4. Sinon, l'outil découpera chaque page A3 en deux pages A4.
                 </div>
                 <form id="uploadForm">
                     <div class="mb-2">
                         <input class="form-control" type="file" id="pdfFile" accept=".pdf" required>
                     </div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="sortBooklet" checked>
-                        <label class="form-check-label small" for="sortBooklet">
-                            Réorganiser mode livret (4,1,2,3 → 1,2,3,4)
-                        </label>
+                    <div class="d-flex flex-wrap gap-3 mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="alreadyA4" checked>
+                            <label class="form-check-label small" for="alreadyA4">
+                                PDF déjà en A4 (ne pas découper)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="sortBooklet" checked>
+                            <label class="form-check-label small" for="sortBooklet">
+                                Réorganiser mode livret (4,1,2,3 → 1,2,3,4)
+                            </label>
+                        </div>
                     </div>
                     <button type="submit" class="btn btn-success w-100" id="btnUpload">
                         <i class="bi bi-upload"></i> Importer et découper
@@ -88,8 +96,7 @@
                 </form>
                 <div id="uploadProgress" class="mt-2" style="display:none;">
                     <div class="progress">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated"
-                             role="progressbar" style="width: 100%"></div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
                     </div>
                 </div>
             </div>
@@ -103,7 +110,15 @@
 // === Initialisation au chargement ===
 document.addEventListener('DOMContentLoaded', function() {
     checkStructure();
+    updatePdfOptions();
 });
+
+function updatePdfOptions() {
+    const alreadyA4 = document.getElementById('alreadyA4').checked;
+    document.getElementById('sortBooklet').disabled = alreadyA4;
+}
+
+document.getElementById('alreadyA4').addEventListener('change', updatePdfOptions);
 
 // === Section 1: Dossier projet ===
 document.getElementById('btnSetDir').addEventListener('click', function() {
@@ -119,6 +134,8 @@ document.getElementById('btnSetDir').addEventListener('click', function() {
         const fb = document.getElementById('dirFeedback');
         if (data.success) {
             fb.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Dossier défini : ' + data.project_dir + '</span>';
+            const currentProjectDir = document.getElementById('currentProjectDir');
+            currentProjectDir.textContent = data.project_dir;
             checkStructure();
         } else {
             fb.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> ' + data.error + '</span>';
@@ -242,6 +259,7 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
     }
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
+    formData.append('already_a4', document.getElementById('alreadyA4').checked);
     formData.append('sort_booklet', document.getElementById('sortBooklet').checked);
 
     document.getElementById('btnUpload').disabled = true;

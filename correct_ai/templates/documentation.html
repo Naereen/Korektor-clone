@@ -97,7 +97,7 @@
     <section id="fonctionnalites" class="documentation-section">
         <h2>Fonctionnalités</h2>
         <ol>
-            <li><strong>Numérisation et import</strong> : découpage intelligent de scans A3 vers A4 et regroupement par étudiant.</li>
+            <li><strong>Numérisation et import</strong> : import direct de scans A4 ou découpage intelligent de scans A3 vers A4, puis regroupement par étudiant.</li>
             <li><strong>Structuration du sujet</strong> : analyse du sujet et du corrigé pour générer un barème structuré avec questions, réponses attendues et points.</li>
             <li><strong>Extraction OCR</strong> : transcription du contenu manuscrit en Markdown avec structuration assistée par LLM.</li>
             <li><strong>Correction IA</strong> : notation assistée avec notes, commentaires, raisonnement et contexte des copies précédentes.</li>
@@ -139,8 +139,8 @@ uv run python correct_ai/app.py</code></pre>
 
         <h3>Parcours recommandé</h3>
         <ol>
-            <li><strong>Import</strong> : sélectionner le projet, vérifier les fichiers, générer le barème et importer le PDF.</li>
-            <li><strong>Découpage</strong> : valider le découpage A3 vers A4 et l'identification des étudiants.</li>
+            <li><strong>Import</strong> : sélectionner le projet, vérifier les fichiers, générer le barème et importer le PDF. Conserver l'option <strong>PDF déjà en A4</strong> pour un scan A4 ; la décocher pour découper des feuilles A3.</li>
+            <li><strong>Découpage</strong> : valider les pages importées ou découpées et l'identification des étudiants.</li>
             <li><strong>OCR</strong> : lancer l'extraction sur une plage de copies. La case <strong>Forcer</strong> permet de recalculer les extractions existantes.</li>
             <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page.</li>
             <li><strong>Correction</strong> : lancer la correction incrémentale. La case <strong>Forcer</strong> permet d'écraser les corrections existantes.</li>

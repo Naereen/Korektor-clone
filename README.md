@@ -6,7 +6,7 @@
       <p>Korektor est une application Web (Flask) conçue pour aider à la correction de copies d'examen manuscrites en utilisant des modèles de langage (LLM).</p>
       <p><strong>Fonctionnalités :</strong></p>
       <ol>
-        <li><strong>Numérisation et Import</strong> : Découpage intelligent de scans (A3 -> A4) et regroupement par étudiant.</li>
+        <li><strong>Numérisation et Import</strong> : Import direct de scans A4 ou découpage intelligent de scans (A3 -> A4), puis regroupement par étudiant.</li>
         <li><strong>Structuration du Sujet</strong> : Analyse du sujet et du corrigé pour générer un barème structuré (questions, réponses attendues, points).</li>
         <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration assistée (questions, réponses).</li>
         <li><strong>Correction IA</strong> : Notation assistée générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
@@ -49,7 +49,7 @@
 
 3.  **Procédure** :
     *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné.
-    *   **Découpage** : Validez le découpage A3→A4 et l'identification des étudiants.
+    *   **Découpage** : Choisissez l'import direct A4 ou le découpage A3→A4, puis validez les pages et l'identification des étudiants.
     *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
     *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page, avec aperçu LaTeX.
     *   **Correction** : Lancez la correction assistée incrémentale sur un lot de copies.

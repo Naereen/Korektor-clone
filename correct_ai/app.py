@@ -763,9 +763,10 @@ def verify_page():
 
 @app.route("/api/import", methods=["POST"])
 def api_import():
-    """Accept an uploaded booklet PDF and create the sorted PDF artifact."""
+    """Accept an uploaded PDF and create the PDF artifact used by the splitter."""
     try:
         file = request.files.get("file")
+        already_a4 = request.form.get("already_a4") == "true"
         sort_booklet = request.form.get("sort_booklet") == "true"
 
         if not file:
@@ -776,7 +777,10 @@ def api_import():
         file.save(temp_path)
 
         try:
-            process_a3_split(temp_path, config.get_sorted_pdf_path(), sort_booklet)
+            if already_a4:
+                shutil.copyfile(temp_path, config.get_sorted_pdf_path())
+            else:
+                process_a3_split(temp_path, config.get_sorted_pdf_path(), sort_booklet)
         finally:
             # Cleanup
             if os.path.exists(temp_path):
@@ -811,10 +815,22 @@ def split_thumbnail(page_num):
         if 0 <= page_idx < len(doc):
             page = doc[page_idx]
             rect = page.rect
-            # Header only
-            clip_rect = pymupdf.Rect(0, 0, rect.width, rect.height * 0.35)
-            pix = page.get_pixmap(clip=clip_rect, dpi=72)
+            try:
+                header_ratio = float(request.args.get("header_ratio", "0.15"))
+            except (TypeError, ValueError):
+                header_ratio = 0.15
+            header_ratio = max(0.0, min(0.5, header_ratio))
+
+            pix = page.get_pixmap(dpi=72)
             img_data = pix.tobytes("png")
+
+            image = pymupdf.Pixmap(pix)
+            line_y = round(image.height * header_ratio)
+            shape = pymupdf.Pixmap(image)
+            if 0 < line_y < shape.height:
+                for x in range(shape.width):
+                    shape.set_pixel(x, line_y, (255, 0, 0))
+            img_data = shape.tobytes("png")
             return send_file(io.BytesIO(img_data), mimetype="image/png")
         return "Page not found", 404
     except Exception as e:
@@ -829,6 +845,17 @@ def split_process():
         return jsonify({"success": False, "error": "No data"}), 400
 
     try:
+        if not isinstance(data, list):
+            return jsonify({"success": False, "error": "Format de données invalide"}), 400
+
+        header_ratio = data[0].get("header_ratio", 0.15) if data else 0.15
+        try:
+            header_ratio = float(header_ratio)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "Le pourcentage doit être numérique"}), 400
+        if not 0 <= header_ratio <= 0.5:
+            return jsonify({"success": False, "error": "Le pourcentage doit être compris entre 0 et 50 %"}), 400
+
         doc = get_splitter_doc()
         if not doc:
             return jsonify({"success": False, "error": "Doc not loaded"}), 500
@@ -910,7 +937,7 @@ def split_process():
                     # Header mask & Numbering
                     segment_first_page = new_doc[total_pages]
                     rect = segment_first_page.rect
-                    header_rect = pymupdf.Rect(0, 0, rect.width, rect.height * 0.35)
+                    header_rect = pymupdf.Rect(0, 0, rect.width, rect.height * header_ratio)
 
                     shape = segment_first_page.new_shape()
                     shape.draw_rect(header_rect)
