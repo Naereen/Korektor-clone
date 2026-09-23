@@ -20,6 +20,43 @@
         border-bottom: 1px solid #dee2e6;
     }
 
+    .student-summary {
+        min-width: 260px;
+        flex: 1;
+        margin: 0 20px;
+        text-align: center;
+    }
+
+    .student-name {
+        font-size: 1.35rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .student-score {
+        font-size: 0.9rem;
+        color: #495057;
+    }
+
+    .student-progress {
+        height: 7px;
+        max-width: 280px;
+        margin: 5px auto 0;
+    }
+
+    @media (max-width: 900px) {
+        .toolbar {
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .student-summary {
+            order: 3;
+            flex-basis: 100%;
+            margin: 0;
+        }
+    }
+
     .content-area {
         flex: 1;
         display: flex;
@@ -98,6 +135,13 @@
                 <option value="">Chargement...</option>
             </select>
         </div>
+        <div class="student-summary" aria-live="polite">
+            <div id="student-name" class="student-name">Sélectionnez une copie</div>
+            <div id="student-score" class="student-score">Note totale : -</div>
+            <div class="progress student-progress" role="progressbar" aria-label="Note totale">
+                <div id="student-progress-bar" class="progress-bar" style="width: 0%"></div>
+            </div>
+        </div>
         <div>
             <span id="save-status" class="badge bg-secondary status-badge">Prêt</span>
             <button id="save-btn" class="btn btn-primary btn-sm ms-2">Enregistrer Tout</button>
@@ -118,7 +162,7 @@
             <div class="d-flex align-items-center mb-3 p-2 bg-light border rounded">
                 <button id="prev-question-btn" class="btn btn-outline-secondary btn-sm me-2" title="Question Précédente"
                     disabled>◀</button>
-                <label for="question-select" class="fw-bold me-2">Question :</label>
+                <label for="question-select" class="fw-bold me-2 flex-grow-1">Question</label>
                 <select id="question-select" class="form-select form-select-sm flex-grow-1" disabled>
                     <option value="">Sélectionner une copie d'abord</option>
                 </select>
@@ -127,7 +171,7 @@
             </div>
 
             <!-- Correction Data from DB - 5 Clear Sections -->
-            
+
             <!-- 1. Student Answer -->
             <div class="mb-3">
                 <label class="form-label fw-bold">Réponse Étudiant</label>
@@ -159,7 +203,7 @@
                 <div class="row">
                     <div class="col-md-4">
                         <label class="form-label fw-bold">Note</label>
-                        <input type="number" step="0.25" id="field-note" 
+                        <input type="number" step="0.25" id="field-note"
                             class="form-control form-control-sm fw-bold">
                     </div>
                     <div class="col-md-8 qcm-field">
@@ -191,6 +235,7 @@
     let currentCopy = null;
     let currentCorrectionData = []; // Array of objects
     let currentBareme = []; // Array of objects
+    let currentCopyInfo = null;
 
     const copySelect = document.getElementById('copy-select');
     const questionSelect = document.getElementById('question-select');
@@ -210,6 +255,9 @@
     const fReponse = document.getElementById('field-reponse');
     const qDetails = document.getElementById('question-details');
     const qcmFields = document.querySelectorAll('.qcm-field');
+    const studentName = document.getElementById('student-name');
+    const studentScore = document.getElementById('student-score');
+    const studentProgressBar = document.getElementById('student-progress-bar');
 
     // Configuration: utiliser la DB ou le CSV
     const USE_DB = true; // Changer à false pour revenir au CSV
@@ -274,8 +322,9 @@
             copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
             copies.forEach(c => {
                 const opt = document.createElement('option');
-                opt.value = c;
-                opt.innerText = `Copie ${c}`;
+                opt.value = c.id;
+                opt.innerText = `Copie ${c.id}`;
+                opt.dataset.name = [c.prenom, c.nom].filter(Boolean).join(' ');
                 copySelect.appendChild(opt);
             });
         } catch (e) {
@@ -292,6 +341,7 @@
             return;
         }
         currentCopy = copyId;
+        currentCopyInfo = [...copySelect.options].find(option => option.value === copyId);
 
         // 1. PDF - formater copyId avec zéro devant (Copie_01, Copie_02, etc.)
         const copyIdFormatted = `Copie_${String(copyId).padStart(2, '0')}`;
@@ -304,6 +354,7 @@
 
         // Populate Questions
         populateQuestionsMap();
+        updateStudentSummary();
         questionSelect.disabled = false;
 
         setSaveStatus("Prêt", "secondary");
@@ -313,6 +364,7 @@
 
 
     function resetUI() {
+        currentCopyInfo = null;
         pdfViewer.src = "";
         questionSelect.innerHTML = '<option value="">Sélectionner une copie d\'abord</option>';
         questionSelect.disabled = true;
@@ -324,6 +376,32 @@
         fMauvaises.value = "";
         fRedaction.value = "";
         qDetails.innerText = "";
+        studentName.innerText = "Sélectionnez une copie";
+        studentScore.innerText = "Note totale : -";
+        studentProgressBar.style.width = "0%";
+        studentProgressBar.className = "progress-bar";
+    }
+
+    function updateStudentSummary() {
+        const copyLabel = currentCopy ? `Copie ${currentCopy}` : "Sélectionnez une copie";
+        const name = currentCopyInfo && currentCopyInfo.dataset.name;
+        studentName.innerText = name || copyLabel;
+
+        const total = currentCorrectionData.reduce((sum, row) => {
+            const note = Number(row.note);
+            return sum + (Number.isFinite(note) ? note : 0);
+        }, 0);
+        const maximum = currentBareme.reduce((sum, row) => {
+            const points = Number(row.points);
+            return sum + (Number.isFinite(points) ? points : 0);
+        }, 0);
+        const percentage = maximum > 0
+            ? Math.max(0, Math.min(100, total / maximum * 100))
+            : 0;
+        studentScore.innerText = `Note totale : ${total.toFixed(1)} / ${maximum.toFixed(1)}`;
+        studentProgressBar.style.width = `${percentage}%`;
+        studentProgressBar.className = `progress-bar ${percentage >= 50 ? 'bg-success' : percentage >= 25 ? 'bg-warning' : 'bg-danger'}`;
+        studentProgressBar.setAttribute('aria-valuenow', percentage.toFixed(0));
     }
 
     function populateQuestionsMap() {
@@ -369,6 +447,7 @@
         row['Redaction si QCM'] = fRedaction.value;
         row['raisonnement_llm'] = fRaisonnement.value;
 
+        updateStudentSummary();
         setSaveStatus("Modifié (non enregistré)", "warning");
     }
 
@@ -391,14 +470,14 @@
 
     /**
      * Analyse et découpe le texte Markdown complet d'une copie en segments par question.
-     * 
+     *
      * @param {string} text - Le contenu Markdown brut complet de la copie (entrée attendue).
-     * 
+     *
      * Éléments et variables modifiées :
      * - `markdownSegments` (Global Object) : Remplit cet objet avec { "ID_Question": "Contenu..." }.
      * - `segmentOrder` (Global Array) : Remplit cette liste avec l'ordre des IDs trouvés ["Q1", "Q2", ...].
      * - `markdownPreamble` (Global String) : Stocke le texte avant la première question.
-     * 
+     *
      * Résultat attendu :
      * - Le texte est normalisé (sauts de ligne ajoutés avant les en-têtes mal formés).
      * - Le texte est découpé par question.
@@ -527,7 +606,7 @@
             const answer = meta['reponse_attendue'] || '';
             const pts = meta['points'] || '';
             const isQCM = meta['type_qcm'] === 1 || meta['type_qcm'] === true;
-            
+
             if (isQCM) {
                 qDetails.innerHTML = `<strong>Question:</strong><br>${texte.replace(/\n/g, '<br>')}<br><br>` +
                     `<strong>Réponse correcte:</strong> ${answer}<br>` +
@@ -548,12 +627,24 @@
         setSaveStatus("Enregistrement...", "info");
 
         try {
-            // Save Correction to DB
-            await fetch(`/api/correction/${currentCopy}`, {
+            // Save professor corrections to the same SQLite source used by this page.
+            const response = await fetch(`/api/db/corrections/${currentCopy}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(currentCorrectionData)
             });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            const refreshed = await fetch(`/api/db/corrections/${currentCopy}`);
+            if (!refreshed.ok) {
+                throw new Error(await refreshed.text());
+            }
+            currentCorrectionData = await refreshed.json();
+            populateQuestionsMap();
+            updateStudentSummary();
 
             setSaveStatus("Enregistré !", "success");
             setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);

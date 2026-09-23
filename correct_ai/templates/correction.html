@@ -14,10 +14,10 @@
                     <label class="form-label fw-bold small">Plage de copies</label>
                     <div class="row g-2">
                         <div class="col">
-                            <input type="number" id="range-start" class="form-control form-control-sm" placeholder="Début" value="1">
+                            <input type="number" id="range-start" class="form-control form-control-sm" placeholder="Début" value="1" min="1">
                         </div>
                         <div class="col">
-                            <input type="number" id="range-end" class="form-control form-control-sm" placeholder="Fin">
+                            <input type="number" id="range-end" class="form-control form-control-sm" placeholder="Fin" min="1">
                         </div>
                     </div>
                 </div>
@@ -69,6 +69,49 @@
 {% block extra_js %}
 <script>
 let pollInterval = null;
+const rangeStart = document.getElementById('range-start');
+const rangeEnd = document.getElementById('range-end');
+
+function updateRangeLimits() {
+    const start = Number.parseInt(rangeStart.value, 10);
+    const end = Number.parseInt(rangeEnd.value, 10);
+    const total = Number.parseInt(rangeEnd.max, 10);
+
+    rangeStart.min = '1';
+    rangeEnd.min = '1';
+    if (Number.isFinite(total) && total > 0) {
+        rangeStart.max = String(total);
+        rangeEnd.max = String(total);
+    }
+    if (Number.isFinite(end)) {
+        rangeStart.max = String(end);
+    }
+    if (Number.isFinite(start)) {
+        rangeEnd.min = String(Math.max(1, start));
+    }
+
+    if (Number.isFinite(start) && Number.isFinite(end) && start > end) {
+        rangeStart.value = String(end);
+    }
+}
+
+async function loadRangeLimits() {
+    try {
+        const response = await fetch('/api/project/check');
+        const data = await response.json();
+        if (data.nb_copies_pdf > 0) {
+            rangeStart.max = String(data.nb_copies_pdf);
+            rangeEnd.max = String(data.nb_copies_pdf);
+        }
+        updateRangeLimits();
+    } catch (error) {
+        console.error('Erreur chargement du nombre de copies', error);
+    }
+}
+
+rangeStart.addEventListener('input', updateRangeLimits);
+rangeEnd.addEventListener('input', updateRangeLimits);
+loadRangeLimits();
 
 // Reprendre le polling si un job tourne déjà (survit au changement d'onglet)
 document.addEventListener('DOMContentLoaded', function() {
