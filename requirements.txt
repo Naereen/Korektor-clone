@@ -4,5 +4,6 @@ pypdf
 requests
 json_repair
 tiktoken
+pytest
 black
 isort
