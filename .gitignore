@@ -1,27 +1,30 @@
-# Python
+## Python
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual Environment
+## Virtual Environment
 .venv/
 venv/
 env/
 
-# IDEs
+## IDEs
 .vscode/
 .idea/
 
-# Project specific
+## Project specific
 
-# Artifacts
+## Artifacts
 .gemini/
 
-
-# Logs
+## Logs
 *.log
 
-# OS
+## OS
 .DS_Store
+*~
 
-# Temporary/throwaway scripts (plot iterations, one-off scripts)
+## Configuration for CorrectAI (Korektor)o
+.correctai_config.json
+
+## Temporary/throwaway scripts (plot iterations, one-off scripts)
