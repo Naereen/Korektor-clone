@@ -13,6 +13,12 @@
             max-width: 30%;
         }
     }
+
+    .class-stat-value {
+        font-size: 1.8rem;
+        font-weight: 600;
+        line-height: 1.1;
+    }
 </style>
 {% endblock %}
 
@@ -55,6 +61,49 @@
             <div class="card-body">
                 <h1 class="display-4 text-info" id="stat-max">-</h1>
                 <p class="text-muted small">Points max (barème)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4" id="class-statistics">
+    <div class="col-6 col-md">
+        <div class="card shadow-sm text-center">
+            <div class="card-body py-2">
+                <div class="class-stat-value" id="stat-average">-</div>
+                <div class="text-muted small">Moyenne / 20</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card shadow-sm text-center">
+            <div class="card-body py-2">
+                <div class="class-stat-value" id="stat-median">-</div>
+                <div class="text-muted small">Médiane / 20</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card shadow-sm text-center">
+            <div class="card-body py-2">
+                <div class="class-stat-value" id="stat-standard-deviation">-</div>
+                <div class="text-muted small">Écart-type / 20</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card shadow-sm text-center">
+            <div class="card-body py-2">
+                <div class="class-stat-value" id="stat-minimum">-</div>
+                <div class="text-muted small">Minimum / 20</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="card shadow-sm text-center">
+            <div class="card-body py-2">
+                <div class="class-stat-value" id="stat-maximum">-</div>
+                <div class="text-muted small">Maximum / 20</div>
             </div>
         </div>
     </div>
@@ -126,6 +175,8 @@ async function loadBilan() {
         document.getElementById('stat-max').innerText = data.max_points;
         document.getElementById('stat-max-header').innerText = data.max_points;
 
+        updateClassStatistics(data.notes, data.max_points);
+
         // Tableau des notes
         let rows = '';
         data.notes.forEach(n => {
@@ -171,6 +222,64 @@ async function loadBilan() {
         document.getElementById('stats-cards').innerHTML =
             '<div class="col-12"><div class="alert alert-danger">Erreur de chargement</div></div>';
     }
+}
+
+function updateClassStatistics(notes, maximumPoints) {
+    const scores = notes
+        .map(note => {
+            const total = Number(note.total);
+            return maximumPoints > 0 ? total / maximumPoints * 20 : NaN;
+        })
+        .filter(score => Number.isFinite(score))
+        .sort((a, b) => a - b);
+
+    const fields = [
+        'stat-average',
+        'stat-median',
+        'stat-standard-deviation',
+        'stat-minimum',
+        'stat-maximum'
+    ];
+
+    if (scores.length === 0) {
+        fields.forEach(id => document.getElementById(id).innerText = '-');
+        return;
+    }
+
+    const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+    const middle = Math.floor(scores.length / 2);
+    const median = scores.length % 2
+        ? scores[middle]
+        : (scores[middle - 1] + scores[middle]) / 2;
+    const variance = scores.reduce((sum, score) => sum + (score - average) ** 2, 0) / scores.length;
+    const standardDeviation = Math.sqrt(variance);
+    const format = value => value.toFixed(2);
+
+    document.getElementById('stat-average').innerText = format(average);
+    document.getElementById('stat-median').innerText = format(median);
+    document.getElementById('stat-standard-deviation').innerText = format(standardDeviation);
+    document.getElementById('stat-minimum').innerText = format(scores[0]);
+    document.getElementById('stat-maximum').innerText = format(scores[scores.length - 1]);
+
+    const scoreColor = value => interpolateColor('#8b1e2d', '#1f6f4a', value / 20);
+    const deviationColor = value => interpolateColor('#8b1e2d', '#1f6f4a', 1 - value / 10);
+    document.getElementById('stat-average').style.color = scoreColor(average);
+    document.getElementById('stat-median').style.color = scoreColor(median);
+    document.getElementById('stat-standard-deviation').style.color = deviationColor(standardDeviation);
+    document.getElementById('stat-minimum').style.color = '#8b1e2d';
+    document.getElementById('stat-maximum').style.color = '#1f6f4a';
+}
+
+function interpolateColor(start, end, ratio) {
+    const clamp = value => Math.max(0, Math.min(1, value));
+    const parse = color => color.match(/[\da-f]{2}/gi).map(component => parseInt(component, 16));
+    const startRgb = parse(start);
+    const endRgb = parse(end);
+    const amount = clamp(ratio);
+    const rgb = startRgb.map((component, index) =>
+        Math.round(component + (endRgb[index] - component) * amount)
+    );
+    return `rgb(${rgb.join(', ')})`;
 }
 </script>
 {% endblock %}
