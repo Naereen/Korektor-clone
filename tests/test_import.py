@@ -11,6 +11,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
+from pypdf import PdfWriter
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
@@ -82,6 +83,51 @@ class TestPdfImport:
         assert resp.status_code == 200
         assert (tmp_path / "copiesA4_sorted.pdf").read_bytes() == b"PDF already in A4"
         split.assert_not_called()
+
+    def test_two_page_a4_copies_create_three_split_cards(self, client, original_dir, tmp_path):
+        """Verify six A4 pages are presented as three two-page copies."""
+        from app import config
+
+        pdf = io.BytesIO()
+        writer = PdfWriter()
+        for _ in range(6):
+            writer.add_blank_page(width=595, height=842)
+        writer.write(pdf)
+        pdf.seek(0)
+
+        config.project_dir = str(tmp_path)
+        response = client.post(
+            "/api/import",
+            data={
+                "file": (pdf, "copies.pdf"),
+                "already_a4": "true",
+                "sort_booklet": "false",
+                "pages_per_copy": "2",
+            },
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 200
+        content = client.get("/split").data.decode("utf-8")
+        assert 'data-total-items="3"' in content
+        assert 'data-pages-per-copy="2"' in content
+        assert 'const pageNum = i * pagesPerCopy + 1;' in content
+
+        split_response = client.post(
+            "/api/split/process",
+            json=[
+                {"page_num": 1, "is_continuation": False, "student_id": None},
+                {"page_num": 3, "is_continuation": False, "student_id": None},
+                {"page_num": 5, "is_continuation": False, "student_id": None},
+            ],
+        )
+
+        assert split_response.status_code == 200
+        assert split_response.get_json()["message"] == "3 copies générées."
+        for copy_number in range(1, 4):
+            copy_path = tmp_path / "copies_anonymes_validees" / f"Copie_{copy_number:02d}.pdf"
+            with open(copy_path, "rb") as copy_file:
+                assert len(PdfWriter(clone_from=copy_file).pages) == 2
 
     def test_a3_pdf_still_uses_splitter(self, client, original_dir, tmp_path):
         """Verify disabling A4 mode preserves the existing A3 workflow."""

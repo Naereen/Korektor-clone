@@ -48,6 +48,19 @@ class TestOcrPage:
         assert "data.running" in content
 
 
+class TestVerifyOcrPage:
+    def test_markdown_editor_uses_codemirror(self, client):
+        """Ensure OCR text editing uses CodeMirror in Markdown mode."""
+        response = client.get("/verify_ocr")
+        content = response.data.decode("utf-8")
+
+        assert response.status_code == 200
+        assert "codemirror/5.65.16/codemirror.min.css" in content
+        assert "codemirror/5.65.16/codemirror.min.js" in content
+        assert "CodeMirror.fromTextArea(markdownEditor" in content
+        assert "mode: 'markdown'" in content
+
+
 class TestCorrectionPage:
     def test_page_loads(self, client):
         """Ensure the correction page renders successfully."""

@@ -39,6 +39,13 @@ class TestBilanPage:
         assert "Note / 20" in content
         assert "scoreOutOfTwenty" in content
 
+    def test_question_dispersion_reserves_space_for_title(self, client):
+        """Ensure the Plotly title is not clipped by the chart boundary."""
+        content = client.get("/bilan").data.decode("utf-8")
+
+        assert "margin: { t: 70, r: 10, b: 70, l: 45 }" in content
+        assert "y: 0.97" in content
+
 
 class TestBilanApi:
     def test_stats_returns_data(self, client):
