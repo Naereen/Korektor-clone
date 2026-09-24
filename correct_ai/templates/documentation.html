@@ -103,7 +103,7 @@
             <li><strong>Extraction OCR</strong> : transcription du contenu manuscrit en Markdown avec structuration assistée par LLM.</li>
             <li><strong>Correction IA</strong> : notation assistée avec notes, commentaires, raisonnement et contexte des copies précédentes.</li>
             <li><strong>Vérification professeur</strong> : relecture des copies, ajustement des notes et validation des corrections.</li>
-            <li><strong>Bilan</strong> : suivi des copies corrigées, des notes brutes et des notes reconverties sur 20.</li>
+            <li><strong>Bilan</strong> : suivi des copies corrigées, des notes brutes, des notes reconverties sur 20 et visualisations exportables en PNG.</li>
         </ol>
     </section>
 
@@ -146,8 +146,19 @@ uv run python correct_ai/app.py</code></pre>
             <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page.</li>
             <li><strong>Correction</strong> : lancer la correction incrémentale. La case <strong>Forcer</strong> permet d'écraser les corrections existantes.</li>
             <li><strong>Vérif Correction</strong> : contrôler les réponses, les commentaires, le raisonnement et les notes.</li>
-            <li><strong>Bilan</strong> : consulter l'état global, les notes et les copies incomplètes.</li>
+            <li><strong>Bilan</strong> : consulter l'état global, les notes, les copies incomplètes et les graphiques de l'évaluation.</li>
         </ol>
+
+        <h3>Graphiques du bilan</h3>
+        <p>La page <strong>Bilan</strong> affiche les visualisations suivantes :</p>
+        <ul>
+            <li><strong>Distribution des notes / 20</strong> : histogramme des notes finales par tranches de 1 point.</li>
+            <li><strong>Difficulté des questions</strong> : pourcentage moyen de points obtenus pour chaque question.</li>
+            <li><strong>Profil moyen de la classe</strong> : comparaison, question par question, entre le barème et la moyenne obtenue par la classe.</li>
+            <li><strong>Dispersion par question</strong> : distributions en violon avec points individuels, boîte à moustaches et moyenne.</li>
+            <li><strong>Résultats détaillés</strong> : comparaison du barème et des points obtenus par un étudiant sélectionné ou par la moyenne de la classe.</li>
+        </ul>
+        <p>Chaque graphique peut être téléchargé individuellement en PNG. Le bouton <strong>Exporter tous les graphiques en PNG</strong>, situé en haut de la page, sauvegarde l'ensemble des graphiques dans le sous-dossier <code>graphiques_notes/</code> du projet actif. Les images sont générées avec un fond blanc.</p>
     </section>
 
     <section id="donnees" class="documentation-section">
@@ -186,6 +197,7 @@ uv run python correct_ai/app.py</code></pre>
             <li><code>GET /api/db/corrections/&lt;copie_id&gt;</code> : récupérer les corrections d'une copie.</li>
             <li><code>POST /api/db/corrections/&lt;copie_id&gt;</code> : enregistrer les corrections professeur.</li>
             <li><code>GET /api/bilan/stats</code> : obtenir les statistiques globales.</li>
+            <li><code>POST /api/bilan/export-graphs</code> : sauvegarder les graphiques PNG exportés dans <code>graphiques_notes/</code>.</li>
             <li><code>GET /api/project/check</code> : vérifier les fichiers du projet et compter les copies.</li>
         </ul>
     </section>

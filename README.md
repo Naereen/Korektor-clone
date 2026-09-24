@@ -11,6 +11,7 @@
         <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration assistée (questions, réponses).</li>
         <li><strong>Correction IA</strong> : Notation assistée générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
         <li><strong>Vérification Professeur</strong> : Interface (relativement) ergonomique pour relire les copies, ajuster les notes et annoter.</li>
+        <li><strong>Bilan graphique</strong> : Affichage de plusieurs visualisations de l'évaluation, avec téléchargement individuel ou export global en PNG.</li>
       </ol>
     </td>
     <td width="30%" valign="middle">
@@ -54,7 +55,7 @@
     *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page, avec aperçu LaTeX.
     *   **Correction** : Lancez la correction assistée incrémentale sur un lot de copies.
     *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
-    *   **Bilan** : Dashboard avec l'état global : nombre de copies, notes, copies problématiques (relancer le scan et/ou la correction des copies problématiques).
+    *   **Bilan** : Dashboard avec l'état global, les statistiques de classe, les notes et les copies problématiques. La page affiche la distribution des notes sur 20, la difficulté des questions, le profil moyen de la classe, la dispersion par question et les résultats détaillés d'un étudiant ou de la moyenne de la classe. Chaque graphique peut être téléchargé séparément en PNG ou tous les graphiques peuvent être exportés en une fois dans `graphiques_notes/`.
 
 ## Structure des Données
 

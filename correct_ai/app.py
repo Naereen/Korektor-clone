@@ -1520,6 +1520,62 @@ def export_bilan_graphs():
     return jsonify({"success": True, "directory": output_dir, "files": saved_files})
 
 
+@app.route("/api/bilan/export-csv")
+def export_bilan_csv():
+    """Download the class scores as a UTF-8 CSV file."""
+    db = None
+    try:
+        db = get_db(config.project_dir)
+        question_count = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0]
+        rows = db.execute(
+            """
+            SELECT copies.id AS copie_id,
+                   copies.prenom,
+                   copies.nom,
+                   ROUND(SUM(CASE WHEN corrections.validee_par_prof
+                                  THEN corrections.note_prof
+                                  ELSE corrections.note_llm END), 2) AS total,
+                   COUNT(corrections.id) AS nb_corr
+            FROM copies
+            LEFT JOIN corrections ON corrections.copie_id = copies.id
+            GROUP BY copies.id
+            ORDER BY copies.id
+            """
+        ).fetchall()
+        max_points = db.execute("SELECT COALESCE(SUM(points), 0) FROM bareme").fetchone()[0]
+
+        output = io.StringIO(newline="")
+        writer = csv.writer(output)
+        writer.writerow([
+            "Copie_ID", "Prenom", "Nom", "Note_brute", "Note_sur_20",
+            "Questions_corrigees", "Nombre_questions", "Statut",
+        ])
+        for row in rows:
+            total = row["total"]
+            score_out_of_twenty = total / max_points * 20 if total is not None and max_points else ""
+            writer.writerow([
+                row["copie_id"],
+                row["prenom"] or "",
+                row["nom"] or "",
+                total if total is not None else "",
+                round(score_out_of_twenty, 2) if score_out_of_twenty != "" else "",
+                row["nb_corr"],
+                question_count,
+                "Complete" if row["nb_corr"] >= question_count else "Partielle",
+            ])
+
+        response = send_file(
+            io.BytesIO(output.getvalue().encode("utf-8-sig")),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name="notes-etudiants.csv",
+        )
+        return response
+    finally:
+        if db is not None:
+            db.close()
+
+
 @app.route("/api/bilan/stats")
 def api_bilan_stats():
     """Return aggregate correction statistics from SQLite as JSON."""
