@@ -70,11 +70,16 @@ def _format_note(value: Any) -> str:
         return "-"
 
 
+# Default scale for rendering reports to PDF, with strapdown2pdf
+DEFAULT_SCALE = 87
+
+
 def build_report_markdown(
     copie_info: Dict[str, Any],
     corrections: List[Dict[str, Any]],
     sujet_title: Optional[str] = None,
     sujet_date: Optional[str] = None,
+    scale: Optional[int] = DEFAULT_SCALE,
 ) -> str:
     """Build the Markdown feedback report shown to one student.
 
@@ -91,19 +96,21 @@ def build_report_markdown(
         lines.append(f"<!-- title: Rapport de correction -- {sujet_title} -->")
     if sujet_date:
         lines.append(f"<!-- date: {sujet_date} -->")
+    if scale:
+        lines.append(f"<!-- scale: {scale}% -->")
     lines.append("")
+    identite = f"{(prenom + ' ' + nom).strip() or 'Inconnu'}"
     if sujet_title:
         lines.append(f"# {sujet_title}")
-        lines.append("## Rapport de correction")
+        lines.append(f"## Rapport de correction {identite}")
     else:
-        lines.append("# Rapport de correction")
+        lines.append(f"# Rapport de correction {identite}")
     lines.append("")
-    lines.append(f"**Étudiant :** {(prenom + ' ' + nom).strip() or 'Inconnu'}")
-    if etudiant_id is not None:
-        lines.append(f"**N° étudiant :** {etudiant_id}")
-    lines.append("")
-    lines.append(f"**N° copie :** {copie_id}")
-    lines.append("")
+    # lines.append(f"**Étudiant :** {identite}")
+    # if etudiant_id is not None:
+    #     lines.append(f"**N° étudiant :** {etudiant_id}")
+    # lines.append(f"**N° copie :** {copie_id}")
+    # lines.append("")
 
     total_note = 0.0
     total_points = 0.0
@@ -135,24 +142,27 @@ def build_report_markdown(
         commentaire = (row.get("commentaires eventuels du correcteur") or "").strip()
 
         lines.append("")
-        lines.append(f"## {question}")
+        lines.append(f"### {question} - **Note : {note} / {points}**")
         lines.append("")
-        lines.append(f"**Note : {note} / {points}**")
-        lines.append("")
-        lines.append("**Votre réponse :**")
-        lines.append("")
-        lines.append(reponse or "*(non répondu)*")
-        lines.append("")
-        lines.append("**Commentaire :**")
-        lines.append("")
-        lines.append(commentaire or "*(aucun commentaire)*")
-        lines.append("")
-        lines.append("---")
+        # if reponse:
+        #     lines.append("**Votre réponse :**")
+        #     lines.append("")
+        #     lines.append(reponse or "*(non répondu)*")
+        #     lines.append("")
+        if commentaire:
+            # lines.append("**Commentaire :**")
+            # lines.append("")
+            lines.append(commentaire or "*(aucun commentaire)*")
+            lines.append("")
+        # lines.append("---")
 
     return "\n".join(lines).rstrip() + "\n"
 
 
-def compile_markdown_to_pdf(md_path: str, pdf_path: str) -> None:
+def compile_markdown_to_pdf(md_path: str,
+                            pdf_path: str,
+                            scale: Optional[int] = DEFAULT_SCALE
+                            ) -> None:
     """Compile a Markdown report to PDF using strapdown2pdf, or pandoc (with the xelatex engine).
 
     strapdown2pdf is tried first, and if it fails, pandoc with xelatex is used.
@@ -165,14 +175,18 @@ def compile_markdown_to_pdf(md_path: str, pdf_path: str) -> None:
         # FIXME: document this usage of my custom PDF compilation strategy
         # See strapdown2pdf (https://perso.crans.org/besson/bin/strapdown2pdf)
         # Try to compile using strapdown2pdf first, fallback to pandoc if it fails.
+        # strapdown2pdf only accepts a bare filename resolved in its cwd, not a path.
+        reports_dir = os.path.dirname(md_path)
         try:
             subprocess.run(
-                ["strapdown2pdf", md_path],
+                ["/home/lilian/bin/strapdown2pdf", f"-s{scale}%", os.path.basename(md_path)],
                 check=True,
                 capture_output=True,
                 text=True,
+                cwd=reports_dir,
             )
-        except:
+        except Exception as exc:
+            print(f"strapdown2pdf failed: {exc}")
             subprocess.run(
                 ["pandoc", md_path, "-o", pdf_path, "--pdf-engine=xelatex"],
                 check=True,
