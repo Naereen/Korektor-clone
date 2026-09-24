@@ -146,7 +146,7 @@
     <!-- Copies problématiques -->
     <div class="col-md-4 bilan-problematic-column">
         <div class="card shadow-sm">
-            <div class="card-header bg-danger text-white">
+            <div class="card-header bg-warning text-white">
                 <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Copies problématiques</h5>
             </div>
             <div class="card-body" id="problematic-list">
@@ -163,9 +163,10 @@
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-header d-flex align-items-center justify-content-between gap-3">
-                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Résultats détaillés par étudiant</h5>
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Résultats détaillés : par étudiant ou moyenne de la classe</h5>
                 <select id="student-chart-select" class="form-select form-select-sm" style="max-width: 280px;">
                     <option value="">Choisir un étudiant...</option>
+                    <option value="class-average" selected>Moyenne de la classe</option>
                 </select>
             </div>
             <div class="card-body">
@@ -187,6 +188,7 @@
 document.addEventListener('DOMContentLoaded', loadBilan);
 
 let studentChart = null;
+let bilanStats = null;
 
 async function loadBilan() {
     try {
@@ -197,6 +199,7 @@ async function loadBilan() {
                 '<div class="col-12"><div class="alert alert-danger">Erreur: ' + data.error + '</div></div>';
             return;
         }
+        bilanStats = data;
 
         // Mise à jour des cartes
         document.getElementById('stat-copies').innerText = data.nb_copies;
@@ -207,6 +210,7 @@ async function loadBilan() {
 
         updateClassStatistics(data.notes, data.max_points);
         await loadStudentChartSelector();
+        await loadStudentChart();
 
         // Tableau des notes
         let rows = '';
@@ -290,6 +294,17 @@ async function loadStudentChart() {
     }
 
     try {
+        if (copyId === 'class-average') {
+            const averages = bilanStats.question_averages || [];
+            renderStudentChart(
+                averages.map(row => row.question),
+                averages.map(row => Number(row.points) || 0),
+                averages.map(row => Number(row.moyenne) || 0),
+                'Moyenne de la classe'
+            );
+            return;
+        }
+
         const [baremeResponse, correctionsResponse] = await Promise.all([
             fetch('/api/db/bareme'),
             fetch(`/api/db/corrections/${copyId}`)
@@ -308,11 +323,23 @@ async function loadStudentChart() {
             return Number.isFinite(score) ? score : 0;
         });
 
-        emptyState.classList.add('d-none');
-        chartWrapper.classList.remove('d-none');
-        if (studentChart) studentChart.destroy();
+        renderStudentChart(labels, maximums, scores, 'Points obtenus');
+    } catch (error) {
+        console.error('Erreur chargement graphique étudiant', error);
+        chartWrapper.classList.add('d-none');
+        emptyState.innerText = 'Impossible de charger les résultats de cet étudiant.';
+        emptyState.classList.remove('d-none');
+    }
+}
 
-        studentChart = new Chart(document.getElementById('student-chart'), {
+function renderStudentChart(labels, maximums, scores, scoreLabel) {
+    const emptyState = document.getElementById('student-chart-empty');
+    const chartWrapper = document.getElementById('student-chart-wrapper');
+    emptyState.classList.add('d-none');
+    chartWrapper.classList.remove('d-none');
+    if (studentChart) studentChart.destroy();
+
+    studentChart = new Chart(document.getElementById('student-chart'), {
             type: 'bar',
             data: {
                 labels,
@@ -323,7 +350,7 @@ async function loadStudentChart() {
                         backgroundColor: '#1769aa'
                     },
                     {
-                        label: 'Points obtenus',
+                        label: scoreLabel,
                         data: scores,
                         backgroundColor: '#72b7e8'
                     }
@@ -343,12 +370,6 @@ async function loadStudentChart() {
                 }
             }
         });
-    } catch (error) {
-        console.error('Erreur chargement graphique étudiant', error);
-        chartWrapper.classList.add('d-none');
-        emptyState.innerText = 'Impossible de charger les résultats de cet étudiant.';
-        emptyState.classList.remove('d-none');
-    }
 }
 
 function updateClassStatistics(notes, maximumPoints) {

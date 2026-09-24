@@ -1522,6 +1522,19 @@ def api_bilan_stats():
         # Total points du barème
         max_points = db.execute("SELECT SUM(points) FROM bareme").fetchone()[0] or 0
 
+        # Moyenne des points obtenus par question, en utilisant la note finale.
+        question_averages = db.execute(
+            """
+            SELECT b.question,
+                   b.points,
+                   ROUND(AVG(CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END), 2) AS moyenne
+            FROM bareme b
+            LEFT JOIN corrections c ON c.bareme_id = b.id
+            GROUP BY b.id
+            ORDER BY b.id
+            """
+        ).fetchall()
+
         # Copies problématiques (moins de 100% des corrections)
         problematic = db.execute(
             """
@@ -1541,6 +1554,14 @@ def api_bilan_stats():
                 "nb_corrections": nb_corrections,
                 "nb_fully_corrected": nb_full,
                 "max_points": max_points,
+                "question_averages": [
+                    {
+                        "question": row["question"],
+                        "points": row["points"],
+                        "moyenne": row["moyenne"],
+                    }
+                    for row in question_averages
+                ],
                 "notes": [
                     {
                         "copie_id": n["copie_id"],

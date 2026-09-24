@@ -77,6 +77,15 @@
         background-color: #fff;
     }
 
+    .question-navigation {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        flex-shrink: 0;
+        background-color: #f8f9fa !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    }
+
     .section-header {
         font-weight: bold;
         margin-top: 15px;
@@ -159,7 +168,7 @@
         <div class="editor-panel">
 
             <!-- Question Selector Row -->
-            <div class="d-flex align-items-center mb-3 p-2 bg-light border rounded">
+            <div class="question-navigation d-flex align-items-center mb-3 p-2 bg-light border rounded">
                 <button id="prev-question-btn" class="btn btn-outline-secondary btn-sm me-2" title="Question Précédente"
                     disabled>◀</button>
                 <label for="question-select" class="fw-bold me-2 flex-grow-1">Question</label>
@@ -324,7 +333,10 @@
             copies.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
-                opt.innerText = `Copie ${c.id}`;
+                const studentName = [c.prenom, c.nom].filter(Boolean).join(' ');
+                opt.innerText = studentName
+                    ? `Copie ${c.id} - ${studentName}`
+                    : `Copie ${c.id}`;
                 opt.dataset.name = [c.prenom, c.nom].filter(Boolean).join(' ');
                 copySelect.appendChild(opt);
             });
@@ -421,7 +433,7 @@
             // Try to find if it's graded
             const corrRow = currentCorrectionData.find(r => r.question === qId);
             const score = corrRow ? corrRow.note : "-";
-            opt.innerText = `${qId} (Note: ${score})`;
+            opt.innerText = `${qId} (Note : ${score})`;
             questionSelect.appendChild(opt);
         });
 
