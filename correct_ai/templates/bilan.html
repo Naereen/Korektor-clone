@@ -1,5 +1,21 @@
 {% extends "layout.html" %}
 
+{% block extra_css %}
+<style>
+    @media (min-width: 768px) {
+        .bilan-notes-column {
+            flex: 0 0 70%;
+            max-width: 70%;
+        }
+
+        .bilan-problematic-column {
+            flex: 0 0 30%;
+            max-width: 30%;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row mb-3">
     <div class="col-12">
@@ -46,7 +62,7 @@
 
 <div class="row">
     <!-- Tableau des notes -->
-    <div class="col-md-8">
+    <div class="col-md-8 bilan-notes-column">
         <div class="card shadow-sm">
             <div class="card-header">
                 <h5 class="mb-0"><i class="bi bi-table"></i> Notes par copie</h5>
@@ -57,6 +73,7 @@
                         <thead class="table-dark">
                             <tr>
                                 <th>Copie</th>
+                                <th>Étudiant</th>
                                 <th>Note</th>
                                 <th>Note / 20</th>
                                 <th>/<span id="stat-max-header">-</span></th>
@@ -65,7 +82,7 @@
                             </tr>
                         </thead>
                         <tbody id="notes-table">
-                            <tr><td colspan="6" class="text-center text-muted">Chargement...</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted">Chargement...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -74,7 +91,7 @@
     </div>
 
     <!-- Copies problématiques -->
-    <div class="col-md-4">
+    <div class="col-md-4 bilan-problematic-column">
         <div class="card shadow-sm">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Copies problématiques</h5>
@@ -121,6 +138,8 @@ async function loadBilan() {
 
             rows += '<tr>';
             rows += '<td><strong>Copie ' + n.copie_id + '</strong></td>';
+            const studentName = [n.prenom, n.nom].filter(Boolean).join(' ');
+            rows += '<td>' + (studentName || '-') + '</td>';
             const scoreOutOfTwenty = data.max_points > 0
                 ? Number(n.total || 0) / data.max_points * 20
                 : 0;

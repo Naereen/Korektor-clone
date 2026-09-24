@@ -1508,10 +1508,13 @@ def api_bilan_stats():
 
         # Notes par copie
         notes = db.execute("""
-            SELECT c.copie_id,
+             SELECT c.copie_id,
+                 copies.prenom,
+                 copies.nom,
                    ROUND(SUM(CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END), 1) as total,
                    COUNT(*) as nb_corr
             FROM corrections c
+             LEFT JOIN copies ON copies.id = c.copie_id
             GROUP BY c.copie_id
             ORDER BY c.copie_id
         """).fetchall()
@@ -1541,6 +1544,8 @@ def api_bilan_stats():
                 "notes": [
                     {
                         "copie_id": n["copie_id"],
+                        "prenom": n["prenom"] or "",
+                        "nom": n["nom"] or "",
                         "total": n["total"],
                         "nb_corr": n["nb_corr"],
                     }
