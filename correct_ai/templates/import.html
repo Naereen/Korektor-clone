@@ -32,6 +32,33 @@
             </div>
         </div>
 
+        <!-- Modale: Sélecteur de dossier -->
+        <div class="modal fade" id="folderPickerModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-folder2-open"></i> Choisir un dossier</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="input-group input-group-sm mb-2">
+                            <button class="btn btn-outline-secondary" type="button" id="folderPickerUp" title="Dossier parent">
+                                <i class="bi bi-arrow-90deg-up"></i>
+                            </button>
+                            <input type="text" class="form-control font-monospace" id="folderPickerPath" readonly>
+                        </div>
+                        <div id="folderPickerList" class="list-group" style="max-height: 40vh; overflow-y: auto;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                        <button type="button" class="btn btn-primary" id="folderPickerSelect">
+                            <i class="bi bi-check-lg"></i> Sélectionner ce dossier
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Section 2: Structure du dossier -->
         <div class="card shadow-sm mb-3">
             <div class="card-header bg-info text-white">
@@ -144,13 +171,57 @@ document.getElementById('btnSetDir').addEventListener('click', function() {
     });
 });
 
+// === Sélecteur de dossier (modale) ===
+const folderPickerModalEl = document.getElementById('folderPickerModal');
+const folderPickerModal = new bootstrap.Modal(folderPickerModalEl);
+const folderPickerPath = document.getElementById('folderPickerPath');
+const folderPickerList = document.getElementById('folderPickerList');
+
+function browseFolder(path) {
+    const url = path ? '/api/fs/browse?path=' + encodeURIComponent(path) : '/api/fs/browse';
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                folderPickerList.innerHTML = '<div class="text-danger small p-2">' + data.error + '</div>';
+                return;
+            }
+            folderPickerPath.value = data.path;
+            document.getElementById('folderPickerUp').disabled = !data.parent;
+            if (data.dirs.length === 0) {
+                folderPickerList.innerHTML = '<div class="text-muted small p-2">(aucun sous-dossier)</div>';
+                return;
+            }
+            folderPickerList.innerHTML = data.dirs.map(name =>
+                '<button type="button" class="list-group-item list-group-item-action folder-picker-entry" data-name="' +
+                name.replace(/"/g, '&quot;') + '"><i class="bi bi-folder"></i> ' + name + '</button>'
+            ).join('');
+        })
+        .catch(err => {
+            folderPickerList.innerHTML = '<div class="text-danger small p-2">Erreur: ' + err + '</div>';
+        });
+}
+
+folderPickerList.addEventListener('click', function(e) {
+    const btn = e.target.closest('.folder-picker-entry');
+    if (!btn) return;
+    const base = folderPickerPath.value.replace(/\/+$/, '');
+    browseFolder(base + '/' + btn.dataset.name);
+});
+
+document.getElementById('folderPickerUp').addEventListener('click', function() {
+    browseFolder(folderPickerPath.value + '/..');
+});
+
+document.getElementById('folderPickerSelect').addEventListener('click', function() {
+    document.getElementById('projectDir').value = folderPickerPath.value;
+    folderPickerModal.hide();
+    document.getElementById('btnSetDir').click();
+});
+
 document.getElementById('btnBrowse').addEventListener('click', function() {
-    const current = document.getElementById('projectDir').value;
-    const newPath = prompt('Chemin du dossier projet :', current);
-    if (newPath) {
-        document.getElementById('projectDir').value = newPath;
-        document.getElementById('btnSetDir').click();
-    }
+    browseFolder(document.getElementById('projectDir').value.trim());
+    folderPickerModal.show();
 });
 
 // === Section 2: Vérification structure ===

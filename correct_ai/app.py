@@ -268,6 +268,46 @@ def api_project_check():
     )
 
 
+@app.route("/api/fs/browse")
+def api_fs_browse():
+    """List subdirectories of a server-side path, for the project folder picker."""
+    requested = request.args.get("path") or config.project_dir
+    path = os.path.abspath(os.path.expanduser(requested))
+
+    # Fall back to the closest existing readable ancestor directory.
+    while not os.path.isdir(path):
+        parent = os.path.dirname(path)
+        if parent == path:
+            path = os.path.expanduser("~")
+            break
+        path = parent
+
+    dirs = []
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                if entry.name.startswith("."):
+                    continue
+                try:
+                    if entry.is_dir():
+                        dirs.append(entry.name)
+                except OSError:
+                    continue
+    except OSError as e:
+        return jsonify({"error": str(e)}), 400
+
+    dirs.sort(key=str.lower)
+    parent = os.path.dirname(path)
+
+    return jsonify(
+        {
+            "path": path,
+            "parent": parent if parent != path else None,
+            "dirs": dirs,
+        }
+    )
+
+
 @app.route("/api/bareme/generate", methods=["POST"])
 def api_bareme_generate():
     """Run subject analysis and return the generated rubric as JSON."""
@@ -1369,6 +1409,105 @@ def _report_paths(copie_info):
     )
 
 
+def _corrections_total(corrections):
+    """Sum the 'note' field of a list of correction dicts, ignoring missing/invalid values."""
+    total = 0.0
+    for row in corrections:
+        try:
+            total += float(row.get("note") or 0)
+        except (TypeError, ValueError):
+            pass
+    return total
+
+
+def _get_class_totals(db):
+    """Return (list of per-copy totals across the class, max_points from the barème)."""
+    rows = db.execute(
+        """
+        SELECT SUM(CASE WHEN validee_par_prof THEN note_prof ELSE note_llm END) as total
+        FROM corrections
+        GROUP BY copie_id
+        """
+    ).fetchall()
+    max_points = db.execute("SELECT COALESCE(SUM(points), 0) FROM bareme").fetchone()[0] or 0
+    totals = [row["total"] for row in rows if row["total"] is not None]
+    return totals, max_points
+
+
+def _get_question_class_stats(db):
+    """Return {question: {points, min, max, moyenne}} across the class, from the bareme order."""
+    rows = db.execute(
+        """
+        SELECT b.id, b.question, b.points,
+               CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END AS note
+        FROM bareme b
+        LEFT JOIN corrections c ON c.bareme_id = b.id
+        ORDER BY b.id
+        """
+    ).fetchall()
+
+    by_id = {}
+    order = []
+    for row in rows:
+        qid = row["id"]
+        if qid not in by_id:
+            by_id[qid] = {"question": row["question"], "points": row["points"], "notes": []}
+            order.append(qid)
+        if row["note"] is not None:
+            by_id[qid]["notes"].append(row["note"])
+
+    stats = {}
+    for qid in order:
+        entry = by_id[qid]
+        notes = entry["notes"]
+        stats[entry["question"]] = {
+            "points": entry["points"],
+            "min": min(notes) if notes else None,
+            "max": max(notes) if notes else None,
+            "moyenne": (sum(notes) / len(notes)) if notes else None,
+        }
+    return stats
+
+
+def _build_report_content(db, copie_info, corrections, md_path):
+    """Build the report Markdown, generating the class-comparison charts PNGs alongside it."""
+    sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
+
+    charts = []
+
+    class_totals, max_points = _get_class_totals(db)
+    if len(class_totals) >= 1:  # FIXME: bring this back to 2
+        student_total = _corrections_total(corrections)
+        candidate_name = f"graphique_{os.path.splitext(os.path.basename(md_path))[0]}.png"
+        candidate_path = os.path.join(os.path.dirname(md_path), candidate_name)
+        if report_builder.generate_grade_chart(student_total, class_totals, max_points, candidate_path):
+            charts.append({"path": candidate_path, "legend": "Répartition des notes de la classe"})
+
+    if corrections:
+        question_stats = _get_question_class_stats(db)
+        profile_rows = [
+            {
+                "question": row.get("question"),
+                "points": row.get("points"),
+                "note": row.get("note"),
+                **{
+                    k: v
+                    for k, v in question_stats.get(row.get("question"), {}).items()
+                    if k in ("min", "max", "moyenne")
+                },
+            }
+            for row in corrections
+        ]
+        profile_name = f"profil_{os.path.splitext(os.path.basename(md_path))[0]}.png"
+        profile_path = os.path.join(os.path.dirname(md_path), profile_name)
+        if report_builder.generate_question_profile_chart(profile_rows, profile_path):
+            charts.append({"path": profile_path, "legend": "Profil par question, comparé à la classe"})
+
+    return report_builder.build_report_markdown(
+        copie_info, corrections, sujet_title, sujet_date, charts=charts, nom_examen=config.project_name
+    )
+
+
 @app.route("/api/rapports/<int:copie_id>", methods=["GET", "POST"])
 def api_rapport_content(copie_id):
     """Read the saved report Markdown (generating it on the fly if absent), or save edits."""
@@ -1393,10 +1532,7 @@ def api_rapport_content(copie_id):
                 content = f.read()
             exists = True
         else:
-            sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
-            content = report_builder.build_report_markdown(
-                copie_info, corrections, sujet_title, sujet_date
-            )
+            content = _build_report_content(db, copie_info, corrections, md_path)
             exists = False
 
         return jsonify({"content": content, "filename": filename, "exists": exists})
@@ -1418,12 +1554,8 @@ def api_rapport_generate(copie_id):
         if copie_info is None:
             return jsonify({"error": "Copie introuvable"}), 404
 
-        sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
-        content = report_builder.build_report_markdown(
-            copie_info, corrections, sujet_title, sujet_date
-        )
-
         md_path, _ = _report_paths(copie_info)
+        content = _build_report_content(db, copie_info, corrections, md_path)
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(content)
 

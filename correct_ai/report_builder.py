@@ -70,8 +70,109 @@ def _format_note(value: Any) -> str:
         return "-"
 
 
+def generate_grade_chart(
+    student_total: float,
+    class_totals: List[float],
+    max_points: float,
+    output_path: str,
+) -> bool:
+    """Render a compact PNG chart comparing one student's grade to the class distribution.
+
+    The chart is sized to fit within roughly half a page once embedded in the report.
+
+    Returns:
+        bool: False (and no file written) when there isn't enough data to plot.
+    """
+    if max_points <= 0 or not class_totals:
+        return False
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    scores_20 = [total / max_points * 20 for total in class_totals]
+    student_20 = student_total / max_points * 20
+    moyenne_20 = sum(scores_20) / len(scores_20)
+
+    fig, ax = plt.subplots(figsize=(6, 3), dpi=150)
+    ax.hist(scores_20, bins=range(0, 21), color="#c7d2fe", edgecolor="#4f46e5")
+    ax.axvline(
+        moyenne_20, color="#f59e0b", linestyle="--", linewidth=2,
+        label=f"Moyenne classe ({moyenne_20:.1f}/20)",
+    )
+    ax.axvline(
+        student_20, color="#16a34a", linestyle="-", linewidth=2,
+        label=f"Votre note ({student_20:.1f}/20)",
+    )
+    ax.set_xlim(0, 20)
+    ax.set_xlabel("Note / 20")
+    ax.set_ylabel("Nombre de copies")
+    ax.set_title("Répartition des notes de la classe")
+    ax.legend(fontsize=8, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(output_path)
+    fig.savefig(os.path.join("/", "tmp", f"{os.path.basename(output_path)}"))
+    plt.close(fig)
+    return True
+
+
+def generate_question_profile_chart(
+    rows: List[Dict[str, Any]],
+    output_path: str,
+) -> bool:
+    """Render a per-question chart comparing barème, class min/max/average and the student's note.
+
+    Each entry in ``rows`` is a dict with keys ``question``, ``points``, ``note``
+    (this student's), and the class-wide ``min``, ``max``, ``moyenne`` (any of the
+    latter three may be ``None`` when no correction data is available yet).
+
+    Returns:
+        bool: False (and no file written) when there are no questions to plot.
+    """
+    if not rows:
+        return False
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    def _nan_if_none(value):
+        """Substitute NaN for missing values so matplotlib draws a gap instead of erroring."""
+        return float("nan") if value is None else value
+
+    labels = [r.get("question") or "" for r in rows]
+    x = list(range(len(labels)))
+    points = [_nan_if_none(r.get("points")) for r in rows]
+    moyenne = [_nan_if_none(r.get("moyenne")) for r in rows]
+    mini = [_nan_if_none(r.get("min")) for r in rows]
+    maxi = [_nan_if_none(r.get("max")) for r in rows]
+    student = [_nan_if_none(r.get("note")) for r in rows]
+
+    fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
+
+    if any(mn == mn and mx == mx for mn, mx in zip(mini, maxi)):  # skip if all-NaN
+        ax.fill_between(x, mini, maxi, color="#b0b0b0", alpha=0.7, label="Min-max classe")
+
+    ax.plot(x, points, marker="+", color="#2563eb", linewidth=2, label="Barème")
+    ax.plot(x, moyenne, marker="d", color="#89a316", linewidth=2, label="Moyenne classe")
+    ax.plot(x, student, marker="o", color="#b826dc", linewidth=2, linestyle="--", label="Votre note")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+    ax.set_ylabel("Points")
+    ax.set_title("Votre profil par question, comparé à la classe")
+    ax.legend(fontsize=7, loc="upper left", ncol=2)
+    fig.tight_layout()
+    fig.savefig(output_path)
+    fig.savefig(os.path.join("/", "tmp", f"{os.path.basename(output_path)}"))
+    plt.close(fig)
+    return True
+
+
 # Default scale for rendering reports to PDF, with strapdown2pdf
-DEFAULT_SCALE = 87
+DEFAULT_SCALE = 85
 
 
 def build_report_markdown(
@@ -80,6 +181,8 @@ def build_report_markdown(
     sujet_title: Optional[str] = None,
     sujet_date: Optional[str] = None,
     scale: Optional[int] = DEFAULT_SCALE,
+    charts: Optional[list[dict[str, str]]] = None,
+    nom_examen: Optional[str] = None,
 ) -> str:
     """Build the Markdown feedback report shown to one student.
 
@@ -92,19 +195,21 @@ def build_report_markdown(
     copie_id = copie_info.get("id")
 
     lines = []
+    identite = f"{(prenom + ' ' + nom).strip() or 'Inconnu'}"
+    if sujet_title is None:
+        sujet_title = f"Rapport de correction -- {nom_examen or 'Examen inconnu'}"
     if sujet_title:
-        lines.append(f"<!-- title: Rapport de correction -- {sujet_title} -->")
+        lines.append(f"<!-- title: {sujet_title} -->")
     if sujet_date:
         lines.append(f"<!-- date: {sujet_date} -->")
     if scale:
         lines.append(f"<!-- scale: {scale}% -->")
     lines.append("")
-    identite = f"{(prenom + ' ' + nom).strip() or 'Inconnu'}"
     if sujet_title:
         lines.append(f"# {sujet_title}")
-        lines.append(f"## Rapport de correction {identite}")
+        lines.append(f"## Pour {identite}")
     else:
-        lines.append(f"# Rapport de correction {identite}")
+        lines.append(f"# Rapport de correction -- {identite}")
     lines.append("")
     # lines.append(f"**Étudiant :** {identite}")
     # if etudiant_id is not None:
@@ -156,6 +261,17 @@ def build_report_markdown(
             lines.append("")
         # lines.append("---")
 
+    if charts:
+        for chart in charts:
+            # Relative path: resolved from the reports directory at compile time.
+            lines.append(f"\\begin{{figure}}[!h]")
+            lines.append(f"\\centering")
+            lines.append(f"\\includegraphics[width=1.05\\textwidth]{{{chart['path']}}}")
+            lines.append(f"\\caption{{{chart['legend']}}}")
+            lines.append(f"\\end{{figure}}")
+            lines.append("")
+        lines.append("---")
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -187,11 +303,19 @@ def compile_markdown_to_pdf(md_path: str,
             )
         except Exception as exc:
             print(f"strapdown2pdf failed: {exc}")
+            # Same cwd trick: keeps relative image references (e.g. the grade chart) resolvable.
             subprocess.run(
-                ["pandoc", md_path, "-o", pdf_path, "--pdf-engine=xelatex"],
+                [
+                    "pandoc",
+                    os.path.basename(md_path),
+                    "-o",
+                    os.path.basename(pdf_path),
+                    "--pdf-engine=xelatex",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
+                cwd=reports_dir,
             )
     except FileNotFoundError as exc:
         raise RuntimeError(

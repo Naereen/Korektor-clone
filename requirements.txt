@@ -5,6 +5,7 @@ requests
 json_repair
 tiktoken
 pandocfilters
+matplotlib
 pytest
 black
 isort
