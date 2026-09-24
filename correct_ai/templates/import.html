@@ -134,8 +134,9 @@ document.getElementById('btnSetDir').addEventListener('click', function() {
         const fb = document.getElementById('dirFeedback');
         if (data.success) {
             fb.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Dossier défini : ' + data.project_dir + '</span>';
-            const currentProjectDir = document.getElementById('currentProjectDir');
-            currentProjectDir.textContent = data.project_dir;
+            const currentProjectName = document.getElementById('currentProjectName');
+            currentProjectName.textContent = data.project_name;
+            currentProjectName.parentElement.title = data.project_dir;
             checkStructure();
         } else {
             fb.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> ' + data.error + '</span>';

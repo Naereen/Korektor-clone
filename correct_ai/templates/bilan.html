@@ -285,9 +285,15 @@
 <script>
 document.addEventListener('DOMContentLoaded', loadBilan);
 
+const projectName = {{ current_project_name|tojson }};
 let studentChart = null;
 let bilanStats = null;
 const bilanCharts = {};
+
+function graphTitle(context, filename) {
+    // return `${context} | graphiques_notes/${filename} | ${projectName}`;
+    return `${context} | ${projectName}`;
+}
 
 async function loadBilan() {
     try {
@@ -386,6 +392,8 @@ function renderScoreDistribution(notes, maximumPoints) {
         options: { maintainAspectRatio: false, scales: {
             x: { title: { display: true, text: 'Note / 20 (tranches de 1 point)' } },
             y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Nombre de copies' } }
+        }, plugins: {
+            title: { display: true, text: graphTitle('Distribution des notes / 20', 'distribution-des-notes.png') }
         } }
     });
 }
@@ -402,7 +410,10 @@ function renderQuestionDifficulty(averages) {
         }] },
         options: { indexAxis: 'y', maintainAspectRatio: false, scales: {
             x: { beginAtZero: true, max: 100, title: { display: true, text: 'Pourcentage des points obtenus' } }
-        }, plugins: { legend: { display: false } } }
+        }, plugins: {
+            legend: { display: false },
+            title: { display: true, text: graphTitle('Difficulté des questions', 'difficulte-des-questions.png') }
+        } }
     });
 }
 
@@ -413,7 +424,9 @@ function renderClassProfile(averages) {
             { label: 'Barème', data: averages.map(row => row.points), borderColor: '#1769aa', backgroundColor: '#1769aa', tension: 0.25 },
             { label: 'Moyenne classe', data: averages.map(row => row.moyenne || 0), borderColor: '#1f6f4a', backgroundColor: '#1f6f4a', tension: 0.25 }
         ] },
-        options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } } }
+        options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } }, plugins: {
+            title: { display: true, text: graphTitle('Profil moyen de la classe', 'profil-moyen-de-la-classe.png') }
+        } }
     });
 }
 
@@ -424,6 +437,7 @@ function renderQuestionViolins(distributions) {
     }));
     Plotly.newPlot('question-violin-chart', traces, {
         margin: { t: 10, r: 10, b: 70, l: 45 },
+        title: { text: graphTitle('Dispersion par question', 'dispersion-par-question.png'), x: 0.5 },
         yaxis: { title: 'Points obtenus' },
         showlegend: false,
         paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff'
@@ -595,6 +609,9 @@ function renderStudentChart(labels, maximums, scores, scoreLabel) {
     chartWrapper.classList.remove('d-none');
     if (studentChart) studentChart.destroy();
 
+    const chartContext = scoreLabel === 'Moyenne de la classe'
+        ? 'Résultats détaillés - moyenne de la classe'
+        : 'Résultats détaillés - points obtenus par étudiant';
     studentChart = new Chart(document.getElementById('student-chart'), {
             type: 'bar',
             data: {
@@ -623,6 +640,9 @@ function renderStudentChart(labels, maximums, scores, scoreLabel) {
                     x: {
                         ticks: { maxRotation: 90, minRotation: 45 }
                     }
+                },
+                plugins: {
+                    title: { display: true, text: graphTitle(chartContext, 'resultats-detailes.png') }
                 }
             }
         });

@@ -21,6 +21,7 @@ import csv
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -56,7 +57,34 @@ class ProjectConfig:
     def __init__(self):
         """Initialize paths and load persisted project configuration."""
         self.project_dir = os.path.join(APP_ROOT, "exemple")
+        self.project_name = "exemple"
         self.load()
+
+    @staticmethod
+    def infer_project_name(project_dir):
+        """Infer a display name from sujet.md or the project directory name."""
+        sujet_path = os.path.join(project_dir, "sujet.md")
+        try:
+            with open(sujet_path, "r", encoding="utf-8") as sujet_file:
+                first_lines = []
+                for _ in range(10):
+                    line = sujet_file.readline()
+                    if not line:
+                        break
+                    first_lines.append(line)
+        except (FileNotFoundError, OSError, UnicodeError):
+            first_lines = []
+
+        title_pattern = re.compile(r"^.*[Tt]it[lr]e\s*:([^$]*)")
+        markdown_pattern = re.compile(r"^#\s+([^$]*)")
+        for line in first_lines:
+            match = title_pattern.match(line.strip()) or markdown_pattern.match(line.strip())
+            if match:
+                title = re.sub(r"\s*-->\s*$", "", match.group(1)).strip()
+                if title:
+                    return title
+
+        return os.path.basename(os.path.normpath(project_dir)) or project_dir
 
     def load(self):
         """Load the project directory from the JSON configuration file."""
@@ -65,13 +93,20 @@ class ProjectConfig:
                 with open(CONFIG_FILE, "r") as f:
                     data = json.load(f)
                     self.project_dir = data.get("project_dir", APP_ROOT)
+                    self.project_name = data.get(
+                        "project_name", self.infer_project_name(self.project_dir)
+                    )
             except:
                 pass
 
     def save(self):
         """Persist the current project directory to the JSON configuration file."""
         with open(CONFIG_FILE, "w") as f:
-            json.dump({"project_dir": self.project_dir}, f)
+            json.dump(
+                {"project_dir": self.project_dir, "project_name": self.project_name},
+                f,
+                ensure_ascii=False,
+            )
 
     def get_path(self, *args):
         """Return a path formed by joining the project directory and components."""
@@ -99,7 +134,10 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 @app.context_processor
 def inject_project_context():
     """Expose the active project directory to every rendered template."""
-    return {"current_project_dir": config.project_dir}
+    return {
+        "current_project_dir": config.project_dir,
+        "current_project_name": config.project_name,
+    }
 
 APP_ICON_PATH = os.path.join(APP_ROOT, "favicon-512x512.png")
 
@@ -133,6 +171,7 @@ def settings():
         new_dir = request.form.get("project_dir")
         if new_dir and os.path.isdir(new_dir):
             config.project_dir = new_dir
+            config.project_name = config.infer_project_name(new_dir)
             config.save()
             # Reset global state
             global splitter_doc
@@ -175,12 +214,19 @@ def api_project_set():
     new_dir = data.get("project_dir", "")
     if new_dir and os.path.isdir(new_dir):
         config.project_dir = new_dir
+        config.project_name = config.infer_project_name(new_dir)
         config.save()
         global splitter_doc
         if splitter_doc:
             splitter_doc.close()
         splitter_doc = None
-        return jsonify({"success": True, "project_dir": config.project_dir})
+        return jsonify(
+            {
+                "success": True,
+                "project_dir": config.project_dir,
+                "project_name": config.project_name,
+            }
+        )
     return jsonify({"success": False, "error": "Dossier invalide"}), 400
 
 
