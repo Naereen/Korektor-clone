@@ -23,13 +23,34 @@
     .student-chart-container {
         height: 380px;
     }
+
+    .bilan-chart-container {
+        height: 340px;
+    }
+
+    .bilan-chart-container.tall {
+        height: 500px;
+    }
+
+    .chart-download-button {
+        white-space: nowrap;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="row mb-3">
     <div class="col-12">
-        <h3><i class="bi bi-bar-chart-fill"></i> Bilan - État de la correction</h3>
+        <div class="d-flex align-items-center justify-content-between gap-3">
+            <h3><i class="bi bi-bar-chart-fill"></i> Bilan - État de la correction</h3>
+            <div class="text-end">
+                <button type="button" id="export-all-charts-button" class="btn btn-primary"
+                    onclick="exportAllCharts()">
+                    <i class="bi bi-folder-symlink"></i> Exporter tous les graphiques en PNG
+                </button>
+                <div id="export-all-charts-status" class="small text-muted mt-1"></div>
+            </div>
+        </div>
         <hr>
     </div>
 </div>
@@ -113,6 +134,73 @@
     </div>
 </div>
 
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart-steps"></i> Distribution des notes / 20</h5>
+                    <button type="button" class="btn btn-outline-secondary btn-sm chart-download-button"
+                        onclick="downloadChart('distribution')" title="Télécharger le graphique PNG">
+                        <i class="bi bi-download"></i> PNG
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="bilan-chart-container"><canvas id="score-distribution-chart"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                    <h5 class="mb-0"><i class="bi bi-sort-down"></i> Difficulté des questions</h5>
+                    <button type="button" class="btn btn-outline-secondary btn-sm chart-download-button"
+                        onclick="downloadChart('difficulty')" title="Télécharger le graphique PNG">
+                        <i class="bi bi-download"></i> PNG
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="bilan-chart-container"><canvas id="question-difficulty-chart"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Profil moyen de la classe</h5>
+                    <button type="button" class="btn btn-outline-secondary btn-sm chart-download-button"
+                        onclick="downloadChart('profile')" title="Télécharger le graphique PNG">
+                        <i class="bi bi-download"></i> PNG
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="bilan-chart-container"><canvas id="class-profile-chart"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                    <h5 class="mb-0"><i class="bi bi-distribute-vertical"></i> Dispersion par question</h5>
+                    <button type="button" class="btn btn-outline-secondary btn-sm chart-download-button"
+                        onclick="downloadChart('violins')" title="Télécharger le graphique PNG">
+                        <i class="bi bi-download"></i> PNG
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="bilan-chart-container tall" id="question-violin-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <!-- Tableau des notes -->
     <div class="col-md-8 bilan-notes-column">
@@ -164,10 +252,16 @@
         <div class="card shadow-sm">
             <div class="card-header d-flex align-items-center justify-content-between gap-3">
                 <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Résultats détaillés : par étudiant ou moyenne de la classe</h5>
-                <select id="student-chart-select" class="form-select form-select-sm" style="max-width: 280px;">
-                    <option value="">Choisir un étudiant...</option>
-                    <option value="class-average" selected>Moyenne de la classe</option>
-                </select>
+                <div class="d-flex align-items-center gap-2">
+                    <select id="student-chart-select" class="form-select form-select-sm" style="max-width: 280px;">
+                        <option value="">Choisir un étudiant...</option>
+                        <option value="class-average" selected>Moyenne de la classe</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-secondary btn-sm chart-download-button"
+                        onclick="downloadChart('student')" title="Télécharger le graphique PNG">
+                        <i class="bi bi-download"></i> PNG
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div id="student-chart-empty" class="text-center text-muted py-5">
@@ -184,11 +278,13 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', loadBilan);
 
 let studentChart = null;
 let bilanStats = null;
+const bilanCharts = {};
 
 async function loadBilan() {
     try {
@@ -209,6 +305,7 @@ async function loadBilan() {
         document.getElementById('stat-max-header').innerText = data.max_points;
 
         updateClassStatistics(data.notes, data.max_points);
+        renderBilanCharts(data);
         await loadStudentChartSelector();
         await loadStudentChart();
 
@@ -256,6 +353,162 @@ async function loadBilan() {
         console.error(e);
         document.getElementById('stats-cards').innerHTML =
             '<div class="col-12"><div class="alert alert-danger">Erreur de chargement</div></div>';
+    }
+}
+
+function renderBilanCharts(data) {
+    const distributions = data.question_distributions || [];
+    const averages = data.question_averages || [];
+    renderScoreDistribution(data.notes, data.max_points);
+    renderQuestionDifficulty(averages);
+    renderClassProfile(averages);
+    renderQuestionViolins(distributions);
+}
+
+function replaceChart(name, canvasId, config) {
+    if (bilanCharts[name]) bilanCharts[name].destroy();
+    bilanCharts[name] = new Chart(document.getElementById(canvasId), config);
+}
+
+function renderScoreDistribution(notes, maximumPoints) {
+    const scores = notes.map(note => Number(note.total) / maximumPoints * 20)
+        .filter(score => Number.isFinite(score));
+    const labels = Array.from({ length: 21 }, (_, index) => `${index}`);
+    const counts = labels.map((_, index) => scores.filter(score =>
+        score >= index && (index === 20 ? score <= 20 : score < index + 1)
+    ).length);
+    replaceChart('distribution', 'score-distribution-chart', {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Copies', data: counts, backgroundColor: '#355c7d' }] },
+        options: { maintainAspectRatio: false, scales: {
+            x: { title: { display: true, text: 'Note / 20 (tranches de 1 point)' } },
+            y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Nombre de copies' } }
+        } }
+    });
+}
+
+function renderQuestionDifficulty(averages) {
+    const sorted = averages.map(row => ({
+        question: row.question,
+        rate: row.points > 0 ? Number(row.moyenne) / Number(row.points) * 100 : 0
+    })).sort((a, b) => a.rate - b.rate);
+    replaceChart('difficulty', 'question-difficulty-chart', {
+        type: 'bar',
+        data: { labels: sorted.map(row => row.question), datasets: [{
+            label: 'Réussite moyenne (%)', data: sorted.map(row => row.rate), backgroundColor: '#8b1e2d'
+        }] },
+        options: { indexAxis: 'y', maintainAspectRatio: false, scales: {
+            x: { beginAtZero: true, max: 100, title: { display: true, text: 'Pourcentage des points obtenus' } }
+        }, plugins: { legend: { display: false } } }
+    });
+}
+
+function renderClassProfile(averages) {
+    replaceChart('profile', 'class-profile-chart', {
+        type: 'line',
+        data: { labels: averages.map(row => row.question), datasets: [
+            { label: 'Barème', data: averages.map(row => row.points), borderColor: '#1769aa', backgroundColor: '#1769aa', tension: 0.25 },
+            { label: 'Moyenne classe', data: averages.map(row => row.moyenne || 0), borderColor: '#1f6f4a', backgroundColor: '#1f6f4a', tension: 0.25 }
+        ] },
+        options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } } }
+    });
+}
+
+function renderQuestionViolins(distributions) {
+    const traces = distributions.filter(row => row.notes.length).map(row => ({
+        type: 'violin', name: row.question, y: row.notes, box: { visible: true }, meanline: { visible: true },
+        points: 'all', jitter: 0.25, marker: { size: 4 }, line: { color: '#355c7d' }
+    }));
+    Plotly.newPlot('question-violin-chart', traces, {
+        margin: { t: 10, r: 10, b: 70, l: 45 },
+        yaxis: { title: 'Points obtenus' },
+        showlegend: false,
+        paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff'
+    }, { responsive: true, displayModeBar: false });
+}
+
+function downloadChart(chartName) {
+    const filenames = {
+        distribution: 'distribution-des-notes.png',
+        difficulty: 'difficulte-des-questions.png',
+        profile: 'profil-moyen-de-la-classe.png',
+        violins: 'dispersion-par-question.png',
+        student: 'resultats-detailes.png'
+    };
+
+    if (chartName === 'violins') {
+        if (document.getElementById('question-violin-chart').data) {
+            Plotly.downloadImage('question-violin-chart', {
+                format: 'png',
+                filename: filenames[chartName],
+                width: 1400,
+                height: 900,
+                scale: 2
+            });
+        }
+        return;
+    }
+
+    const chart = chartName === 'student' ? studentChart : bilanCharts[chartName];
+    if (!chart) return;
+
+    const link = document.createElement('a');
+    link.download = filenames[chartName];
+    link.href = chartToWhitePng(chart);
+    link.click();
+}
+
+function chartToWhitePng(chart) {
+    const source = chart.canvas;
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(source, 0, 0);
+    return canvas.toDataURL('image/png');
+}
+
+async function exportAllCharts() {
+    const button = document.getElementById('export-all-charts-button');
+    const status = document.getElementById('export-all-charts-status');
+    const chartFiles = [];
+    button.disabled = true;
+    status.innerText = 'Préparation des PNG...';
+
+    try {
+        Object.entries({
+            distribution: 'distribution-des-notes.png',
+            difficulty: 'difficulte-des-questions.png',
+            profile: 'profil-moyen-de-la-classe.png'
+        }).forEach(([name, filename]) => {
+            const chart = bilanCharts[name];
+            if (chart) chartFiles.push({ filename, data: chartToWhitePng(chart) });
+        });
+
+        const violinData = await Plotly.toImage('question-violin-chart', {
+            format: 'png', width: 1400, height: 900, scale: 2
+        });
+        chartFiles.push({ filename: 'dispersion-par-question.png', data: violinData });
+
+        if (studentChart) {
+            chartFiles.push({ filename: 'resultats-detailes.png', data: chartToWhitePng(studentChart) });
+        }
+
+        const response = await fetch('/api/bilan/export-graphs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ graphs: chartFiles })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'Échec de la sauvegarde');
+        status.innerText = `${result.files.length} PNG sauvegardés dans graphiques_notes/`;
+    } catch (error) {
+        console.error('Erreur export des graphiques', error);
+        status.innerText = `Erreur : ${error.message}`;
+    } finally {
+        button.disabled = false;
     }
 }
 

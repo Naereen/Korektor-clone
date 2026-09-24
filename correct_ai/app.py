@@ -15,6 +15,7 @@ with ``uv run python correct_ai/app.py``.
 """
 
 import collections
+import base64
 import copy
 import csv
 import io
@@ -1478,6 +1479,47 @@ def documentation_page():
     return render_template("documentation.html", active_page="documentation")
 
 
+@app.route("/api/bilan/export-graphs", methods=["POST"])
+def export_bilan_graphs():
+    """Save exported bilan PNG images in the active project directory."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("graphs"), list):
+        return jsonify({"success": False, "error": "Format d'export invalide."}), 400
+
+    allowed_names = {
+        "distribution-des-notes.png",
+        "difficulte-des-questions.png",
+        "profil-moyen-de-la-classe.png",
+        "dispersion-par-question.png",
+        "resultats-detailes.png",
+    }
+    output_dir = config.get_path("graphiques_notes")
+    os.makedirs(output_dir, exist_ok=True)
+    saved_files = []
+
+    try:
+        for graph in data["graphs"]:
+            if not isinstance(graph, dict):
+                continue
+            filename = graph.get("filename")
+            image_data = graph.get("data")
+            if filename not in allowed_names or not isinstance(image_data, str):
+                continue
+            if "," not in image_data:
+                continue
+            encoded = image_data.split(",", 1)[1]
+            image_bytes = base64.b64decode(encoded, validate=True)
+            if not image_bytes:
+                continue
+            with open(os.path.join(output_dir, filename), "wb") as image_file:
+                image_file.write(image_bytes)
+            saved_files.append(filename)
+    except (ValueError, base64.binascii.Error) as error:
+        return jsonify({"success": False, "error": f"PNG invalide : {error}"}), 400
+
+    return jsonify({"success": True, "directory": output_dir, "files": saved_files})
+
+
 @app.route("/api/bilan/stats")
 def api_bilan_stats():
     """Return aggregate correction statistics from SQLite as JSON."""
@@ -1535,6 +1577,27 @@ def api_bilan_stats():
             """
         ).fetchall()
 
+        question_distributions = db.execute(
+            """
+            SELECT b.question,
+                   b.points,
+                   c.copie_id,
+                   CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END AS note
+            FROM bareme b
+            LEFT JOIN corrections c ON c.bareme_id = b.id
+            ORDER BY b.id, c.copie_id
+            """
+        ).fetchall()
+        distributions = {}
+        for row in question_distributions:
+            question = row["question"]
+            distributions.setdefault(
+                question,
+                {"question": question, "points": row["points"], "notes": []},
+            )
+            if row["note"] is not None:
+                distributions[question]["notes"].append(row["note"])
+
         # Copies problématiques (moins de 100% des corrections)
         problematic = db.execute(
             """
@@ -1562,6 +1625,7 @@ def api_bilan_stats():
                     }
                     for row in question_averages
                 ],
+                "question_distributions": list(distributions.values()),
                 "notes": [
                     {
                         "copie_id": n["copie_id"],
