@@ -14,7 +14,7 @@
         <!-- Section 1: Dossier du projet -->
         <div class="card shadow-sm mb-3">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="bi bi-folder2-open"></i> Dossier du projet</h5>
+                <h5 class="mb-0"><i class="bi bi-folder2-open"></i> Dossier du projet (chemin absolu)</h5>
             </div>
             <div class="card-body">
                 <div class="input-group mb-2">
@@ -178,7 +178,7 @@ function checkStructure() {
             }
             html += '</ul>';
             html += '<div class="mt-2 small">';
-            html += '<span class="badge bg-primary me-1">' + data.nb_copies_pdf + ' PDFs copie</span>';
+            html += '<span class="badge bg-primary me-1">' + data.nb_copies_pdf + ' copies PDF</span>';
             html += '<span class="badge bg-info">' + data.nb_extractions + ' extractions OCR</span>';
             html += '</div>';
             document.getElementById('structureCheck').innerHTML = html;

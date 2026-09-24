@@ -255,7 +255,7 @@ async function doSwitchCopy(copyId) {
         populatePageSelector();
         const firstPage = Object.keys(pagesData).sort((a, b) => a - b)[0] || "1";
         if (firstPage) await loadPage(firstPage);
-        setSaveStatus("Pret", "secondary");
+        setSaveStatus("Prêt", "secondary");
     } catch(e) { console.error(e); setSaveStatus("Erreur", "danger"); }
 }
 
@@ -285,7 +285,7 @@ async function doSwitchPage(pageNum) {
         originalPagesData[pageNum] = content;
         updatePageButton(pageNum, !!content, false);
         if (isPreviewMode) togglePreview();
-        setSaveStatus("Pret", "secondary");
+        setSaveStatus("Prêt", "secondary");
     } catch(e) { console.error(e); setSaveStatus("Erreur", "danger"); }
 }
 
@@ -337,7 +337,7 @@ async function saveCurrentPage() {
         markDirty(false);
         updatePageButton(currentPage, !!content, false);
         setSaveStatus("Sauvegarde !", "success");
-        setTimeout(() => setSaveStatus("Pret", "secondary"), 2000);
+        setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
     } catch(e) {
         console.error(e);
         setSaveStatus("Erreur sauvegarde", "danger");
@@ -366,7 +366,7 @@ async function doRebuild() {
         const data = await res.json();
         if (data.success) {
             setSaveStatus("extraction.md reconstruit !", "success");
-            setTimeout(() => setSaveStatus("Pret", "secondary"), 2000);
+            setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
         } else {
             throw new Error(data.error || "Erreur");
         }
@@ -389,7 +389,7 @@ function cancelCurrentPage() {
     markDirty(false);
     updatePageButton(currentPage, !!originalContent, false);
     setSaveStatus("Modifications annulees", "success");
-    setTimeout(() => setSaveStatus("Pret", "secondary"), 2000);
+    setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
 }
 
 // === Editor Change ===

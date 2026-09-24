@@ -393,7 +393,11 @@ function renderScoreDistribution(notes, maximumPoints) {
             x: { title: { display: true, text: 'Note / 20 (tranches de 1 point)' } },
             y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Nombre de copies' } }
         }, plugins: {
-            title: { display: true, text: graphTitle('Distribution des notes / 20', 'distribution-des-notes.png') }
+            title: {
+                display: true,
+                text: graphTitle('Distribution des notes / 20', 'distribution-des-notes.png'),
+                font: { size: 18, weight: 'bold' }
+            }
         } }
     });
 }
@@ -412,7 +416,11 @@ function renderQuestionDifficulty(averages) {
             x: { beginAtZero: true, max: 100, title: { display: true, text: 'Pourcentage des points obtenus' } }
         }, plugins: {
             legend: { display: false },
-            title: { display: true, text: graphTitle('Difficulté des questions', 'difficulte-des-questions.png') }
+            title: {
+                display: true,
+                text: graphTitle('Difficulté des questions', 'difficulte-des-questions.png'),
+                font: { size: 18, weight: 'bold' }
+            }
         } }
     });
 }
@@ -425,7 +433,11 @@ function renderClassProfile(averages) {
             { label: 'Moyenne classe', data: averages.map(row => row.moyenne || 0), borderColor: '#1f6f4a', backgroundColor: '#1f6f4a', tension: 0.25 }
         ] },
         options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } }, plugins: {
-            title: { display: true, text: graphTitle('Profil moyen de la classe', 'profil-moyen-de-la-classe.png') }
+            title: {
+                display: true,
+                text: graphTitle('Profil moyen de la classe', 'profil-moyen-de-la-classe.png'),
+                font: { size: 18, weight: 'bold' }
+            }
         } }
     });
 }
@@ -437,7 +449,11 @@ function renderQuestionViolins(distributions) {
     }));
     Plotly.newPlot('question-violin-chart', traces, {
         margin: { t: 10, r: 10, b: 70, l: 45 },
-        title: { text: graphTitle('Dispersion par question', 'dispersion-par-question.png'), x: 0.5 },
+        title: {
+            text: graphTitle('Dispersion par question', 'dispersion-par-question.png'),
+            x: 0.5,
+            font: { size: 20, family: 'Arial, sans-serif' }
+        },
         yaxis: { title: 'Points obtenus' },
         showlegend: false,
         paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff'
@@ -642,7 +658,11 @@ function renderStudentChart(labels, maximums, scores, scoreLabel) {
                     }
                 },
                 plugins: {
-                    title: { display: true, text: graphTitle(chartContext, 'resultats-detailes.png') }
+                    title: {
+                        display: true,
+                        text: graphTitle(chartContext, 'resultats-detailes.png'),
+                        font: { size: 18, weight: 'bold' }
+                    }
                 }
             }
         });

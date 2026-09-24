@@ -41,9 +41,12 @@ sys.path.insert(0, PROJECT_ROOT)
 # import batch_correction
 import batch_correction_v2
 import batch_extraction
+import report_builder
 from database import get_all_extractions
 from database import get_bareme as db_get_bareme
+from database import get_corrige as db_get_corrige
 from database import get_db
+from database import get_sujet as db_get_sujet
 from llm_providers import get_provider
 
 # --- Configuration & Path Management ---
@@ -805,6 +808,12 @@ def verify_page():
     return render_template("verify.html", active_page="verify")
 
 
+@app.route("/rapports")
+def rapports_page():
+    """Render the per-student Markdown/PDF feedback report page."""
+    return render_template("rapports.html", active_page="rapports")
+
+
 # --- ROUTES: API Import ---
 
 
@@ -1303,6 +1312,151 @@ def get_db_corrections(copie_id):
 
         traceback.print_exc()
         return jsonify([])
+    finally:
+        if db is not None:
+            db.close()
+
+
+# --- ROUTES: Rapports PDF (feedback étudiant) ---
+
+
+def _load_copie_and_corrections(db, copie_id):
+    """Return (copie_info dict, corrections list) for one copy, or (None, []) if missing."""
+    copie_row = db.execute(
+        "SELECT id, etudiant_id, nom, prenom FROM copies WHERE id = ?", [copie_id]
+    ).fetchone()
+    if not copie_row:
+        return None, []
+
+    corrections = db.execute(
+        """
+        SELECT
+            b.question,
+            b.points,
+            c.reponse_etudiant,
+            CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END as note,
+            CASE WHEN c.validee_par_prof THEN c.commentaire_prof ELSE c.commentaire_llm END as commentaire
+        FROM corrections c
+        JOIN bareme b ON c.bareme_id = b.id
+        WHERE c.copie_id = ?
+        ORDER BY b.id
+    """,
+        [copie_id],
+    ).fetchall()
+
+    result = [
+        {
+            "question": row["question"],
+            "points": row["points"],
+            "note": row["note"],
+            "reponses etudiant": row["reponse_etudiant"],
+            "commentaires eventuels du correcteur": row["commentaire"],
+        }
+        for row in corrections
+    ]
+    return dict(copie_row), result
+
+
+def _report_paths(copie_info):
+    """Return (md_path, pdf_path) for the report of one student, creating the dir."""
+    reports_dir = report_builder.get_reports_dir(config.project_dir)
+    basename = report_builder.report_basename(
+        copie_info["id"], copie_info.get("etudiant_id"), copie_info.get("nom"), copie_info.get("prenom")
+    )
+    return (
+        os.path.join(reports_dir, f"{basename}.md"),
+        os.path.join(reports_dir, f"{basename}.pdf"),
+    )
+
+
+@app.route("/api/rapports/<int:copie_id>", methods=["GET", "POST"])
+def api_rapport_content(copie_id):
+    """Read the saved report Markdown (generating it on the fly if absent), or save edits."""
+    db = None
+    try:
+        db = get_db(config.project_dir)
+        copie_info, corrections = _load_copie_and_corrections(db, copie_id)
+        if copie_info is None:
+            return jsonify({"error": "Copie introuvable"}), 404
+
+        md_path, _ = _report_paths(copie_info)
+        filename = os.path.basename(md_path)
+
+        if request.method == "POST":
+            content = (request.get_json(silent=True) or {}).get("content", "")
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return jsonify({"success": True, "filename": filename})
+
+        if os.path.exists(md_path):
+            with open(md_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            exists = True
+        else:
+            sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
+            content = report_builder.build_report_markdown(
+                copie_info, corrections, sujet_title, sujet_date
+            )
+            exists = False
+
+        return jsonify({"content": content, "filename": filename, "exists": exists})
+    except Exception as e:
+        print(f"Error handling report for copy {copie_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+@app.route("/api/rapports/<int:copie_id>/generate", methods=["POST"])
+def api_rapport_generate(copie_id):
+    """Regenerate the report Markdown from the database, overwriting the saved file."""
+    db = None
+    try:
+        db = get_db(config.project_dir)
+        copie_info, corrections = _load_copie_and_corrections(db, copie_id)
+        if copie_info is None:
+            return jsonify({"error": "Copie introuvable"}), 404
+
+        sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
+        content = report_builder.build_report_markdown(
+            copie_info, corrections, sujet_title, sujet_date
+        )
+
+        md_path, _ = _report_paths(copie_info)
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        return jsonify({"content": content, "filename": os.path.basename(md_path)})
+    except Exception as e:
+        print(f"Error generating report for copy {copie_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+@app.route("/api/rapports/<int:copie_id>/pdf", methods=["POST"])
+def api_rapport_pdf(copie_id):
+    """Compile the saved report Markdown to PDF and return it as a download."""
+    db = None
+    try:
+        db = get_db(config.project_dir)
+        copie_info, _ = _load_copie_and_corrections(db, copie_id)
+        if copie_info is None:
+            return jsonify({"error": "Copie introuvable"}), 404
+
+        md_path, pdf_path = _report_paths(copie_info)
+        if not os.path.exists(md_path):
+            return jsonify({"error": "Le rapport Markdown doit d'abord être enregistré"}), 400
+
+        report_builder.compile_markdown_to_pdf(md_path, pdf_path)
+        return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        print(f"Error compiling report to PDF for copy {copie_id}: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
         if db is not None:
             db.close()

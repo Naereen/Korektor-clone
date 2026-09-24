@@ -118,6 +118,38 @@
         font-family: system-ui, -apple-system, sans-serif;
         /* Normal font */
     }
+
+    .markdown-preview {
+        min-height: 96px;
+        padding: 0.375rem 0.75rem;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        background-color: #f8f9fa;
+        overflow-y: auto;
+    }
+
+    .markdown-preview pre {
+        padding: 0.75rem;
+        background-color: #212529;
+        color: #f8f9fa;
+        border-radius: 0.25rem;
+        overflow-x: auto;
+    }
+
+    .markdown-preview code {
+        padding: 0.1rem 0.25rem;
+        background-color: #e9ecef;
+        border-radius: 0.2rem;
+    }
+
+    .markdown-preview pre code {
+        padding: 0;
+        background-color: transparent;
+    }
+
+    .question-markdown {
+        margin-top: 0.35rem;
+    }
 </style>
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -190,8 +222,8 @@
             <!-- 2. Bareme/Expected Answer -->
             <div class="mb-3">
                 <label class="form-label fw-bold">Barème / Réponse Attendue</label>
-                <div class="p-2 bg-light border rounded" style="white-space: pre-wrap; font-size: 0.9em; min-height: 60px;">
-                    <small id="question-details">Consignes...</small>
+                <div class="bg-light border rounded" style="font-size: 0.9em; min-height: 60px;">
+                    <div id="question-details">Consignes...</div>
                 </div>
             </div>
 
@@ -204,7 +236,7 @@
             <!-- 4. Raisonnement LLM (Read-only) -->
             <div class="mb-3">
                 <label class="form-label fw-bold">Raisonnement LLM</label>
-                <textarea id="field-raisonnement" class="form-control form-control-sm" rows="4" readonly style="background-color: #f8f9fa; font-size: 0.85em;"></textarea>
+                <div id="field-raisonnement" class="markdown-preview" aria-readonly="true"></div>
             </div>
 
             <!-- 5. Note and QCM Fields -->
@@ -212,7 +244,7 @@
                 <div class="row">
                     <div class="col-md-4">
                         <label id="note-label" class="form-label fw-bold">Note</label>
-                        <input type="number" step="0.25" id="field-note"
+                        <input type="number" min="0" step="0.25" id="field-note"
                             class="form-control form-control-sm fw-bold">
                     </div>
                     <div class="col-md-8 qcm-field">
@@ -271,6 +303,13 @@
 
     // Configuration: utiliser la DB ou le CSV
     const USE_DB = true; // Changer à false pour revenir au CSV
+
+    function renderMarkdown(target, text) {
+        target.innerHTML = marked.parse(text || '', { breaks: true });
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise([target]).catch(error => console.error(error));
+        }
+    }
 
     // Init
     document.addEventListener('DOMContentLoaded', async () => {
@@ -383,8 +422,10 @@
         questionSelect.disabled = true;
         fReponse.value = "";
         fCommentaire.value = "";
-        fRaisonnement.value = "";
+        fRaisonnement.innerHTML = "";
         fNote.value = "";
+        fNote.min = "0";
+        fNote.removeAttribute("max");
         noteLabel.innerText = "Note";
         fBonnes.value = "";
         fMauvaises.value = "";
@@ -433,7 +474,8 @@
             // Try to find if it's graded
             const corrRow = currentCorrectionData.find(r => r.question === qId);
             const score = corrRow ? corrRow.note : "-";
-            opt.innerText = `${qId} (Note : ${score})`;
+            const maximumPoints = bRow['points'] ?? '-';
+            opt.innerText = `${qId} (Note : ${score} / ${maximumPoints})`;
             questionSelect.appendChild(opt);
         });
 
@@ -462,7 +504,6 @@
         row['nbre de bonnes reponses si QCM'] = fBonnes.value;
         row['nbre de mauvaises reponses si QCM'] = fMauvaises.value;
         row['Redaction si QCM'] = fRedaction.value;
-        row['raisonnement_llm'] = fRaisonnement.value;
 
         updateStudentSummary();
         setSaveStatus("Modifié (non enregistré)", "warning");
@@ -604,6 +645,12 @@
         if (!row) row = {};
 
         const possiblePoints = meta ? meta['points'] : '';
+        fNote.min = "0";
+        if (possiblePoints !== '' && possiblePoints != null && Number.isFinite(Number(possiblePoints))) {
+            fNote.max = possiblePoints;
+        } else {
+            fNote.removeAttribute("max");
+        }
         noteLabel.innerText = possiblePoints !== '' && possiblePoints != null
             ? `Note / ${possiblePoints}`
             : "Note";
@@ -614,7 +661,7 @@
         fNote.value = row['note'] || "";
         fCommentaire.value = row['commentaires eventuels du correcteur'] || "";
         fReponse.value = row['reponses etudiant'] || "";
-        fRaisonnement.value = row['raisonnement_llm'] || "";
+        renderMarkdown(fRaisonnement, row['raisonnement_llm'] || "");
 
         if (isQCM) {
             fBonnes.value = row['nbre de bonnes reponses si QCM'] || "";
@@ -624,20 +671,18 @@
 
         if (meta) {
             // Afficher le texte complet de la question + réponse attendue + points
-            const texte = meta['texte_question'] || '';
-            const answer = meta['reponse_attendue'] || '';
+            const texte = (meta['texte_question'] || '').trim();
+            const answer = (meta['reponse_attendue'] || '').trim();
             const pts = meta['points'] || '';
             const isQCM = meta['type_qcm'] === 1 || meta['type_qcm'] === true;
 
-            if (isQCM) {
-                qDetails.innerHTML = `<strong>Question:</strong><br>${texte.replace(/\n/g, '<br>')}<br><br>` +
-                    `<strong>Réponse correcte:</strong> ${answer}<br>` +
-                    `<strong>Points:</strong> ${pts} | Barème QCM (+1/-0.5/+1)`;
-            } else {
-                qDetails.innerHTML = `<strong>Question:</strong><br>${texte.replace(/\n/g, '<br>')}<br><br>` +
-                    `<strong>Réponse attendue:</strong> ${answer}<br>` +
-                    `<strong>Points:</strong> ${pts}`;
-            }
+            const answerLabel = isQCM ? "Réponse correcte" : "Réponse attendue";
+            qDetails.innerHTML =
+                `<strong>Question :</strong><div class="question-markdown"></div>` +
+                `<br><strong>${answerLabel} :</strong><div class="answer-markdown"></div>` +
+                `<br><strong>Points :</strong> ${pts}${isQCM ? " | Barème QCM (+1/-0.5/+1)" : ""}`;
+            renderMarkdown(qDetails.querySelector('.question-markdown'), texte);
+            renderMarkdown(qDetails.querySelector('.answer-markdown'), answer);
         } else {
             qDetails.innerHTML = "";
         }

@@ -1,0 +1,207 @@
+{% extends "layout.html" %}
+
+{% block extra_css %}
+<style>
+    .rapports-container {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .toolbar {
+        padding: 10px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+
+    #rapport-editor {
+        width: 100%;
+        height: 65vh;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+
+    .status-badge {
+        margin-left: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rapports-container">
+    <h2 class="mb-0"><i class="bi bi-file-earmark-pdf"></i> Rapports PDF</h2>
+    <p class="text-muted mb-0">
+        Génère, à partir des corrections validées, un rapport Markdown de feedback individuel par étudiant
+        (réponses, commentaires, notes -- sans le raisonnement interne du LLM), modifiable ci-dessous avant
+        d'être compilé en PDF. Les rapports sont enregistrés dans le dossier <code>rapports_etudiants/</code>
+        du projet.
+    </p>
+
+    <div class="toolbar d-flex flex-wrap align-items-center gap-2">
+        <select id="copy-select" class="form-select form-select-sm" style="width: 260px;">
+            <option value="">Chargement...</option>
+        </select>
+        <button id="regenerate-btn" class="btn btn-outline-secondary btn-sm" disabled>
+            <i class="bi bi-arrow-repeat"></i> Régénérer depuis les corrections
+        </button>
+        <button id="save-btn" class="btn btn-primary btn-sm" disabled>
+            <i class="bi bi-save"></i> Enregistrer
+        </button>
+        <button id="pdf-btn" class="btn btn-success btn-sm" disabled>
+            <i class="bi bi-file-earmark-pdf"></i> Compiler en PDF
+        </button>
+        <span id="save-status" class="badge bg-secondary status-badge">Prêt</span>
+        <span id="filename-label" class="text-muted small ms-auto"></span>
+    </div>
+
+    <textarea id="rapport-editor" class="form-control" spellcheck="false" disabled
+        placeholder="Sélectionnez une copie pour afficher ou générer son rapport..."></textarea>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentCopyId = null;
+
+    const copySelect = document.getElementById('copy-select');
+    const editor = document.getElementById('rapport-editor');
+    const regenerateBtn = document.getElementById('regenerate-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const pdfBtn = document.getElementById('pdf-btn');
+    const saveStatus = document.getElementById('save-status');
+    const filenameLabel = document.getElementById('filename-label');
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadCopies();
+        copySelect.addEventListener('change', loadReport);
+        regenerateBtn.addEventListener('click', regenerateReport);
+        saveBtn.addEventListener('click', saveReport);
+        pdfBtn.addEventListener('click', compileToPdf);
+        editor.addEventListener('input', () => setStatus('Modifié (non enregistré)', 'warning'));
+    });
+
+    function setStatus(text, colorClass) {
+        saveStatus.innerText = text;
+        saveStatus.className = `badge bg-${colorClass} status-badge`;
+    }
+
+    function setControlsEnabled(enabled) {
+        editor.disabled = !enabled;
+        regenerateBtn.disabled = !enabled;
+        saveBtn.disabled = !enabled;
+        pdfBtn.disabled = !enabled;
+    }
+
+    async function loadCopies() {
+        try {
+            const res = await fetch('/api/db/copies');
+            const copies = await res.json();
+            copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
+            copies.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                const name = [c.prenom, c.nom].filter(Boolean).join(' ');
+                opt.innerText = name ? `Copie ${c.id} - ${name}` : `Copie ${c.id}`;
+                copySelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Erreur chargement copies', e);
+        }
+    }
+
+    async function loadReport() {
+        const copyId = copySelect.value;
+        if (!copyId) {
+            currentCopyId = null;
+            editor.value = '';
+            filenameLabel.innerText = '';
+            setControlsEnabled(false);
+            setStatus('Prêt', 'secondary');
+            return;
+        }
+        currentCopyId = copyId;
+        setStatus('Chargement...', 'info');
+        try {
+            const res = await fetch(`/api/rapports/${copyId}`);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            editor.value = data.content || '';
+            filenameLabel.innerText = data.filename || '';
+            setControlsEnabled(true);
+            setStatus(data.exists ? 'Rapport enregistré chargé' : 'Rapport généré (non enregistré)', data.exists ? 'secondary' : 'warning');
+        } catch (e) {
+            console.error(e);
+            setStatus('Erreur de chargement', 'danger');
+        }
+    }
+
+    async function regenerateReport() {
+        if (!currentCopyId) return;
+        if (!confirm("Régénérer le rapport depuis les corrections actuelles ? Les modifications manuelles non enregistrées seront perdues, et le fichier déjà enregistré sera écrasé.")) {
+            return;
+        }
+        setStatus('Génération...', 'info');
+        try {
+            const res = await fetch(`/api/rapports/${currentCopyId}/generate`, { method: 'POST' });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            editor.value = data.content || '';
+            filenameLabel.innerText = data.filename || '';
+            setStatus('Rapport régénéré et enregistré', 'success');
+        } catch (e) {
+            console.error(e);
+            setStatus('Erreur de génération', 'danger');
+        }
+    }
+
+    async function saveReport() {
+        if (!currentCopyId) return;
+        setStatus('Enregistrement...', 'info');
+        try {
+            const res = await fetch(`/api/rapports/${currentCopyId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: editor.value })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            setStatus('Enregistré !', 'success');
+            setTimeout(() => setStatus('Prêt', 'secondary'), 2000);
+        } catch (e) {
+            console.error(e);
+            setStatus('Erreur Sauvegarde', 'danger');
+        }
+    }
+
+    async function compileToPdf() {
+        if (!currentCopyId) return;
+        setStatus('Enregistrement puis compilation PDF...', 'info');
+        try {
+            await saveReport();
+            const res = await fetch(`/api/rapports/${currentCopyId}/pdf`, { method: 'POST' });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || await res.text());
+            }
+            const blob = await res.blob();
+            const disposition = res.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename="?([^"]+)"?/);
+            const filename = match ? match[1] : `rapport_${currentCopyId}.pdf`;
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+
+            setStatus('PDF généré', 'success');
+        } catch (e) {
+            console.error(e);
+            setStatus(`Erreur PDF : ${e.message}`, 'danger');
+        }
+    }
+</script>
+{% endblock %}
