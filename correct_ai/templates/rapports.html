@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <style>
     .rapports-container {
         display: flex;
@@ -15,11 +16,13 @@
         border-radius: 4px;
     }
 
-    #rapport-editor {
+    .CodeMirror {
         width: 100%;
         height: 65vh;
         font-family: monospace;
         font-size: 0.9rem;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
     }
 
     .status-badge {
@@ -30,9 +33,10 @@
 
 {% block content %}
 <div class="rapports-container">
+    <h2 class="mb-0"><i class="bi bi-file-earmark-pdf"></i> Rapports PDF</h2>
 
     <div class="batch-panel">
-        <h5 class="mb-0"><i class="bi bi-collection-play"></i> Génération en lot</h5>
+        <h3 class="mb-0"><i class="bi bi-collection-play"></i> Génération en lot</h3>
         <p class="text-muted mb-2">
             Régénère le Markdown de <strong>toutes</strong> les copies depuis les corrections actuelles, puis
             compile chaque rapport en PDF, un par un. Un échec sur une copie n'interrompt pas les suivantes.
@@ -49,6 +53,7 @@
         <div class="progress mb-2" style="height: 8px;">
             <div id="batch-progress-bar" class="progress-bar" style="width: 0%"></div>
         </div>
+        <div id="batch-merged-result" class="mb-2"></div>
         <div class="table-responsive" style="max-height: 30vh; overflow-y: auto;">
             <table class="table table-sm table-striped">
                 <thead>
@@ -66,7 +71,7 @@
 
     <hr>
 
-    <h2 class="mb-0"><i class="bi bi-file-earmark-pdf"></i> Rapports PDF</h2>
+    <h3 class="mb-0"><i class="bi bi-file-earmark-pdf"></i> Rapports PDF individuels</h3>
     <p class="text-muted mb-0">
         Génère, à partir des corrections validées, un rapport Markdown de feedback individuel par étudiant
         (réponses, commentaires, notes -- sans le raisonnement interne du LLM), modifiable ci-dessous avant
@@ -97,11 +102,19 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
 <script>
     let currentCopyId = null;
 
     const copySelect = document.getElementById('copy-select');
-    const editor = document.getElementById('rapport-editor');
+    const editorTextarea = document.getElementById('rapport-editor');
+    const editor = CodeMirror.fromTextArea(editorTextarea, {
+        mode: 'markdown',
+        lineNumbers: true,
+        lineWrapping: true,
+        readOnly: true,
+    });
     const regenerateBtn = document.getElementById('regenerate-btn');
     const saveBtn = document.getElementById('save-btn');
     const pdfBtn = document.getElementById('pdf-btn');
@@ -114,7 +127,7 @@
         regenerateBtn.addEventListener('click', regenerateReport);
         saveBtn.addEventListener('click', saveReport);
         pdfBtn.addEventListener('click', compileToPdf);
-        editor.addEventListener('input', () => setStatus('Modifié (non enregistré)', 'warning'));
+        editor.on('change', () => setStatus('Modifié (non enregistré)', 'warning'));
         document.getElementById('batch-start-btn').addEventListener('click', startBatchGeneration);
         document.getElementById('batch-stop-btn').addEventListener('click', stopBatchGeneration);
         updateBatchStatus();
@@ -126,7 +139,7 @@
     }
 
     function setControlsEnabled(enabled) {
-        editor.disabled = !enabled;
+        editor.setOption('readOnly', !enabled);
         regenerateBtn.disabled = !enabled;
         saveBtn.disabled = !enabled;
         pdfBtn.disabled = !enabled;
@@ -153,7 +166,7 @@
         const copyId = copySelect.value;
         if (!copyId) {
             currentCopyId = null;
-            editor.value = '';
+            editor.setValue('');
             filenameLabel.innerText = '';
             setControlsEnabled(false);
             setStatus('Prêt', 'secondary');
@@ -165,7 +178,7 @@
             const res = await fetch(`/api/rapports/${copyId}`);
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
-            editor.value = data.content || '';
+            editor.setValue(data.content || '');
             filenameLabel.innerText = data.filename || '';
             setControlsEnabled(true);
             setStatus(data.exists ? 'Rapport enregistré chargé' : 'Rapport généré (non enregistré)', data.exists ? 'secondary' : 'warning');
@@ -185,7 +198,7 @@
             const res = await fetch(`/api/rapports/${currentCopyId}/generate`, { method: 'POST' });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
-            editor.value = data.content || '';
+            editor.setValue(data.content || '');
             filenameLabel.innerText = data.filename || '';
             setStatus('Rapport régénéré et enregistré', 'success');
         } catch (e) {
@@ -201,7 +214,7 @@
             const res = await fetch(`/api/rapports/${currentCopyId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: editor.value })
+                body: JSON.stringify({ content: editor.getValue() })
             });
             if (!res.ok) throw new Error(await res.text());
             setStatus('Enregistré !', 'success');
@@ -297,6 +310,16 @@
                 const pdfCell = r.pdf_ok ? `<a href="/api/rapports/${r.copie_id}/file/pdf" target="_blank" rel="noopener">${pdfIcon}</a>` : pdfIcon;
                 return `<tr><td>Copie ${r.copie_id}</td><td>${mdCell}</td><td>${pdfCell}</td><td class="small text-danger">${r.error || ''}</td></tr>`;
             }).join('');
+
+            const mergedResult = document.getElementById('batch-merged-result');
+            if (!data.running && data.merged_pdf) {
+                mergedResult.innerHTML = `<a href="/api/rapports/batch/merged" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm">` +
+                    `<i class="bi bi-file-earmark-pdf-fill"></i> Ouvrir le rapport fusionné (${data.merged_pdf})</a>`;
+            } else if (!data.running && data.merge_error) {
+                mergedResult.innerHTML = `<span class="text-danger small"><i class="bi bi-exclamation-triangle-fill"></i> Fusion PDF échouée : ${data.merge_error}</span>`;
+            } else if (!data.running) {
+                mergedResult.innerHTML = '';
+            }
 
             if (!data.running) {
                 if (batchPollInterval) {

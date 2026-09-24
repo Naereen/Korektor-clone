@@ -98,7 +98,7 @@
     <section id="fonctionnalites" class="documentation-section">
         <h2>Fonctionnalités</h2>
         <ol>
-            <li><strong>Numérisation et import</strong> : import direct de scans A4 ou découpage intelligent de scans A3 vers A4, puis regroupement par étudiant.</li>
+            <li><strong>Numérisation et import</strong> : import direct de scans A4 ou découpage intelligent de scans A3 vers A4, avec nombre de pages par copie configurable, puis regroupement par étudiant.</li>
             <li><strong>Structuration du sujet</strong> : analyse du sujet et du corrigé pour générer un barème structuré avec questions, réponses attendues et points.</li>
             <li><strong>Extraction OCR</strong> : transcription du contenu manuscrit en Markdown avec structuration assistée par LLM.</li>
             <li><strong>Correction IA</strong> : notation assistée avec notes, commentaires, raisonnement et contexte des copies précédentes.</li>
@@ -140,10 +140,10 @@ uv run python correct_ai/app.py</code></pre>
 
         <h3>Parcours recommandé</h3>
         <ol>
-            <li><strong>Import</strong> : sélectionner le projet, vérifier les fichiers, générer le barème et importer le PDF. Conserver l'option <strong>PDF déjà en A4</strong> pour un scan A4 ; la décocher pour découper des feuilles A3.</li>
-            <li><strong>Découpage</strong> : valider les pages importées ou découpées et l'identification des étudiants.</li>
+            <li><strong>Import</strong> : sélectionner le projet, vérifier les fichiers, générer le barème et importer le PDF. Conserver l'option <strong>PDF déjà en A4</strong> pour un scan A4 ; la décocher pour découper des feuilles A3. Indiquer aussi le nombre de pages A4 par copie : la valeur proposée est 2 en import A4 et 4 en mode livret.</li>
+            <li><strong>Découpage</strong> : valider les débuts de copie et l'identification des étudiants. La taille choisie à l'import détermine les aperçus affichés et le nombre de pages incluses dans chaque PDF individuel.</li>
             <li><strong>OCR</strong> : lancer l'extraction sur une plage de copies. La case <strong>Forcer</strong> permet de recalculer les extractions existantes.</li>
-            <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page.</li>
+            <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page dans l'éditeur CodeMirror Markdown, avec numéros de ligne.</li>
             <li><strong>Correction</strong> : lancer la correction incrémentale. La case <strong>Forcer</strong> permet d'écraser les corrections existantes.</li>
             <li><strong>Vérif Correction</strong> : contrôler les réponses, les commentaires, le raisonnement et les notes.</li>
             <li><strong>Bilan</strong> : consulter l'état global, les notes, les copies incomplètes et les graphiques de l'évaluation.</li>
@@ -155,7 +155,7 @@ uv run python correct_ai/app.py</code></pre>
             <li><strong>Distribution des notes / 20</strong> : histogramme des notes finales par tranches de 1 point.</li>
             <li><strong>Difficulté des questions</strong> : pourcentage moyen de points obtenus pour chaque question.</li>
             <li><strong>Profil moyen de la classe</strong> : comparaison, question par question, entre le barème et la moyenne obtenue par la classe.</li>
-            <li><strong>Dispersion par question</strong> : distributions en violon avec points individuels, boîte à moustaches et moyenne.</li>
+            <li><strong>Dispersion par question</strong> : distributions en violon avec points individuels, boîte à moustaches et moyenne, dans une zone dimensionnée pour garder le titre entièrement visible.</li>
             <li><strong>Résultats détaillés</strong> : comparaison du barème et des points obtenus par un étudiant sélectionné ou par la moyenne de la classe.</li>
         </ul>
         <p>Chaque graphique peut être téléchargé individuellement en PNG. Le bouton <strong>Exporter tous les graphiques en PNG</strong>, situé en haut de la page, sauvegarde l'ensemble des graphiques dans le sous-dossier <code>graphiques_notes/</code> du projet actif. Les images sont générées avec un fond blanc.</p>
@@ -183,6 +183,7 @@ uv run python correct_ai/app.py</code></pre>
             <li><code>pageXX.md</code> : transcription indépendante de chaque page.</li>
             <li><code>correction.csv</code> ou les données SQLite : résultat de correction selon le workflow utilisé.</li>
         </ul>
+        <p>Le fichier <code>.korektor_split.json</code>, placé à la racine du projet, mémorise le nombre de pages A4 par copie choisi lors du dernier import. Pour assurer la compatibilité, un projet qui ne possède pas encore ce fichier utilise 4 pages par copie.</p>
     </section>
 
     <section id="api" class="documentation-section">
@@ -236,7 +237,7 @@ uv run python correct_ai/batch_correction_v2.py \
         <p>L'onglet <strong>Vérif OCR</strong> permet de vérifier et corriger manuellement l'extraction :</p>
         <ul>
             <li>visualisation page par page des PDF ;</li>
-            <li>édition du Markdown extrait ;</li>
+            <li>édition du Markdown extrait avec CodeMirror, coloration Markdown, numéros de ligne et retour automatique à la ligne ;</li>
             <li>prévisualisation avec rendu LaTeX par MathJax ;</li>
             <li>sauvegarde et annulation des modifications ;</li>
             <li>détection des erreurs courantes de LaTeX ;</li>

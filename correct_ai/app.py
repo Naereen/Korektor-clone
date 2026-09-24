@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from datetime import datetime
 
 import pymupdf
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
@@ -54,6 +55,7 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.dirname(APP_ROOT)  # Go up to project root (where code is)
 
 CONFIG_FILE = os.path.join(APP_ROOT, ".correctai_config.json")
+SPLIT_SETTINGS_FILENAME = ".korektor_split.json"
 
 
 class ProjectConfig:
@@ -127,6 +129,22 @@ class ProjectConfig:
     def get_sorted_pdf_path(self):
         """Return the sorted booklet PDF path used by the splitter."""
         return self.get_path("copiesA4_sorted.pdf")
+
+    def get_pages_per_copy(self):
+        """Return the page count used for each split-view segment."""
+        try:
+            with open(self.get_path(SPLIT_SETTINGS_FILENAME), encoding="utf-8") as settings_file:
+                pages_per_copy = int(json.load(settings_file)["pages_per_copy"])
+                if pages_per_copy > 0:
+                    return pages_per_copy
+        except (FileNotFoundError, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            pass
+        return 4
+
+    def set_pages_per_copy(self, pages_per_copy):
+        """Persist the page count used for each split-view segment."""
+        with open(self.get_path(SPLIT_SETTINGS_FILENAME), "w", encoding="utf-8") as settings_file:
+            json.dump({"pages_per_copy": pages_per_copy}, settings_file)
 
 
 config = ProjectConfig()
@@ -478,10 +496,15 @@ def split_page():
     if not doc:
         return "Veuillez d'abord importer un document (Étape 1).", 404
 
-    total_items = (len(doc) + 3) // 4
+    pages_per_copy = config.get_pages_per_copy()
+    total_items = (len(doc) + pages_per_copy - 1) // pages_per_copy
     students = load_students()
     return render_template(
-        "split.html", active_page="split", total_items=total_items, students=students
+        "split.html",
+        active_page="split",
+        total_items=total_items,
+        pages_per_copy=pages_per_copy,
+        students=students,
     )
 
 
@@ -865,6 +888,13 @@ def api_import():
         already_a4 = request.form.get("already_a4") == "true"
         sort_booklet = request.form.get("sort_booklet") == "true"
 
+        try:
+            pages_per_copy = int(request.form.get("pages_per_copy", 2 if already_a4 else 4))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "Le nombre de pages par copie doit être un entier"}), 400
+        if pages_per_copy < 1:
+            return jsonify({"success": False, "error": "Le nombre de pages par copie doit être positif"}), 400
+
         if not file:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
 
@@ -877,6 +907,7 @@ def api_import():
                 shutil.copyfile(temp_path, config.get_sorted_pdf_path())
             else:
                 process_a3_split(temp_path, config.get_sorted_pdf_path(), sort_booklet)
+            config.set_pages_per_copy(pages_per_copy)
         finally:
             # Cleanup
             if os.path.exists(temp_path):
@@ -952,6 +983,7 @@ def split_process():
         doc = get_splitter_doc()
         if not doc:
             return jsonify({"success": False, "error": "Doc not loaded"}), 500
+        pages_per_copy = config.get_pages_per_copy()
 
         # Logic from split_copies.py
         copy_segments = []
@@ -1018,13 +1050,13 @@ def split_process():
                 if segments:
                     min_p = segments[0] + 1
                     last_start = segments[-1]
-                    max_p = min(last_start + 4, len(doc))
+                    max_p = min(last_start + pages_per_copy, len(doc))
                     page_range_str = f"{min_p}--{max_p}"
                 else:
                     page_range_str = ""
 
                 for start_idx in segments:
-                    end_idx = min(start_idx + 4, len(doc))
+                    end_idx = min(start_idx + pages_per_copy, len(doc))
                     new_doc.insert_pdf(doc, from_page=start_idx, to_page=end_idx - 1)
 
                     # Header mask & Numbering
@@ -1630,6 +1662,8 @@ class ReportBatchJob:
         self.total = 0
         self.current_action = "Inactif"
         self.results = []
+        self.merged_pdf = None
+        self.merge_error = None
 
     def start(self, project_dir):
         """Start the background thread iterating over every copy, unless already running."""
@@ -1640,6 +1674,8 @@ class ReportBatchJob:
         self.progress = 0
         self.total = 0
         self.results = []
+        self.merged_pdf = None
+        self.merge_error = None
         self.current_action = "Démarrage..."
 
         def run():
@@ -1649,6 +1685,7 @@ class ReportBatchJob:
                 db = get_db(project_dir)
                 copies = db.execute("SELECT id FROM copies ORDER BY id").fetchall()
                 self.total = len(copies)
+                merged_pdf_paths = []
 
                 for index, row in enumerate(copies, start=1):
                     if self.stop_requested:
@@ -1679,6 +1716,7 @@ class ReportBatchJob:
                         try:
                             report_builder.compile_markdown_to_pdf(md_path, pdf_path)
                             entry["pdf_ok"] = True
+                            merged_pdf_paths.append(pdf_path)
                         except Exception as pdf_exc:
                             entry["error"] = f"Échec PDF : {pdf_exc}"
                     except Exception as exc:
@@ -1686,6 +1724,16 @@ class ReportBatchJob:
 
                     self.results.append(entry)
                     self.progress = int(index / self.total * 100) if self.total else 100
+
+                if not self.stop_requested and merged_pdf_paths:
+                    self.current_action = "Fusion des PDF (pdftk)..."
+                    merged_name = f"rapport_total_date-{datetime.now():%d-%m-%Y}.pdf"
+                    merged_path = os.path.join(report_builder.get_reports_dir(project_dir), merged_name)
+                    try:
+                        report_builder.merge_pdfs(merged_pdf_paths, merged_path)
+                        self.merged_pdf = merged_name
+                    except RuntimeError as merge_exc:
+                        self.merge_error = str(merge_exc)
             except Exception as exc:
                 self.current_action = f"Erreur : {exc}"
             finally:
@@ -1736,7 +1784,27 @@ def api_rapport_batch_status():
             "total": report_batch_job.total,
             "action": report_batch_job.current_action,
             "results": report_batch_job.results,
+            "merged_pdf": report_batch_job.merged_pdf,
+            "merge_error": report_batch_job.merge_error,
         }
+    )
+
+
+@app.route("/api/rapports/batch/merged")
+def api_rapport_batch_merged():
+    """Serve the all-in-one PDF produced by concatenating the last batch's reports (pdftk)."""
+    if not report_batch_job.merged_pdf:
+        return "Aucun PDF fusionné disponible", 404
+
+    path = os.path.join(report_builder.get_reports_dir(config.project_dir), report_batch_job.merged_pdf)
+    if not os.path.exists(path):
+        return "Fichier introuvable", 404
+
+    return send_file(
+        path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=report_batch_job.merged_pdf,
     )
 
 

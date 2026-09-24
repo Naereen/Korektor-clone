@@ -117,6 +117,10 @@
                             </label>
                         </div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label small" for="pagesPerCopy">Nombre de pages A4 par copie</label>
+                        <input class="form-control" type="number" id="pagesPerCopy" min="1" value="2" required>
+                    </div>
                     <button type="submit" class="btn btn-success w-100" id="btnUpload">
                         <i class="bi bi-upload"></i> Importer et découper
                     </button>
@@ -143,6 +147,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function updatePdfOptions() {
     const alreadyA4 = document.getElementById('alreadyA4').checked;
     document.getElementById('sortBooklet').disabled = alreadyA4;
+    document.getElementById('pagesPerCopy').value = alreadyA4 ? 2 : 4;
 }
 
 document.getElementById('alreadyA4').addEventListener('change', updatePdfOptions);
@@ -333,6 +338,7 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
     formData.append('file', fileInput.files[0]);
     formData.append('already_a4', document.getElementById('alreadyA4').checked);
     formData.append('sort_booklet', document.getElementById('sortBooklet').checked);
+    formData.append('pages_per_copy', document.getElementById('pagesPerCopy').value);
 
     document.getElementById('btnUpload').disabled = true;
     document.getElementById('uploadProgress').style.display = 'block';

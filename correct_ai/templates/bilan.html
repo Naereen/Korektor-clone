@@ -181,6 +181,8 @@
     </div>
 </div>
 
+<br>
+
 <div class="row g-4 mb-4">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
@@ -231,7 +233,7 @@
         </div>
     </div>
     <div class="col-lg-5">
-        <div class="card shadow-sm h-100">
+        <div class="card shadow-sm h-110">
             <div class="card-header">
                 <div class="d-flex align-items-center justify-content-between gap-2">
                     <h5 class="mb-0"><i class="bi bi-distribute-vertical"></i> Dispersion par question</h5>
@@ -446,11 +448,12 @@ function renderQuestionViolins(distributions) {
         points: 'all', jitter: 0.25, marker: { size: 4 }, line: { color: '#355c7d' }
     }));
     Plotly.newPlot('question-violin-chart', traces, {
-        margin: { t: 10, r: 10, b: 70, l: 45 },
+        margin: { t: 70, r: 10, b: 70, l: 45 },
         title: {
             text: graphTitle('Dispersion par question', 'dispersion-par-question.png'),
             x: 0.5,
-            font: { size: 20, family: 'Arial, sans-serif' }
+            y: 0.97,
+            font: { size: 16, family: 'Arial, sans-serif', weight: 'bold' }
         },
         yaxis: { title: 'Points obtenus' },
         showlegend: false,

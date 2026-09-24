@@ -100,6 +100,7 @@
 <div id="grid" class="grid"></div>
 <div id="split-config"
     data-total-items="{{ total_items }}"
+    data-pages-per-copy="{{ pages_per_copy }}"
     data-students="{{ students | tojson | forceescape }}"></div>
 {% endblock %}
 
@@ -107,6 +108,7 @@
 <script>
     const splitConfig = document.getElementById('split-config');
     const totalItems = Number(splitConfig.dataset.totalItems);
+    const pagesPerCopy = Number(splitConfig.dataset.pagesPerCopy);
     const students = JSON.parse(splitConfig.dataset.students);
     const cardsData = [];
     let headerRatio = 0.15;
@@ -160,7 +162,7 @@
         });
 
         for (let i = 0; i < totalItems; i++) {
-            const pageNum = i * 4 + 1;
+            const pageNum = i * pagesPerCopy + 1;
             cardsData.push({
                 page_num: pageNum,
                 is_continuation: true,

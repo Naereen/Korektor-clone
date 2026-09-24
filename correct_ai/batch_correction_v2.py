@@ -274,7 +274,7 @@ def correct_copy_incremental(
                         provider=p,
                         pdf_path=pdf_abs_path,
                         prompt_text=prompt,
-                        system_prompt="Tu es un correcteur expert. Nota selon le barème et maintain uniformité.",
+                        system_prompt="Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France. Nota selon le barème et maintain uniformité.",
                     )
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'appel LLM pour la copie {copy_id}: {e}")
@@ -294,7 +294,7 @@ def correct_copy_incremental(
                             response = ask_llm_with_progress(
                                 provider=p,
                                 prompt_text=prompt,
-                                system_prompt="Tu es un correcteur expert. Nota selon le barème et maintain uniformité.",
+                                system_prompt="Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France. Nota selon le barème et maintain uniformité.",
                                 progress_callback=progress_callback,
                             )
                         except Exception as e2:
@@ -312,7 +312,7 @@ def correct_copy_incremental(
                                 response = ask_llm_with_progress(
                                     provider=p,
                                     prompt_text=prompt_simple,
-                                    system_prompt="Tu es un correcteur expert.",
+                                    system_prompt="Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France.",
                                     progress_callback=progress_callback,
                                 )
                             except Exception as e3:

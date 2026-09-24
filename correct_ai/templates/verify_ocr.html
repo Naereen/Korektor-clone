@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <style>
     .main-container-ocr {
         height: calc(100vh - 80px);
@@ -64,16 +65,14 @@
     .page-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; }
     .page-btn.has-content { font-weight: bold; }
     .page-btn.unsaved { border-color: #ffc107; background: #fff3cd; }
-    #markdown-editor {
+    .editor-panel .CodeMirror {
         flex: 1;
         width: 100%;
+        min-height: 0;
         font-family: monospace;
         font-size: 0.85rem;
         border: 1px solid #ced4da;
         border-radius: 0.25rem;
-        padding: 10px;
-        resize: none;
-        overflow-y: auto;
     }
     #markdown-preview {
         flex: 1;
@@ -164,6 +163,8 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
 <script>
 let currentCopy = null;
 let currentPage = null;
@@ -179,6 +180,11 @@ const copySelect = document.getElementById('copy-select');
 const pageSelector = document.getElementById('page-selector');
 const pdfViewer = document.getElementById('pdf-viewer');
 const markdownEditor = document.getElementById('markdown-editor');
+const editor = CodeMirror.fromTextArea(markdownEditor, {
+    mode: 'markdown',
+    lineNumbers: true,
+    lineWrapping: true,
+});
 const markdownPreview = document.getElementById('markdown-preview');
 const togglePreviewBtn = document.getElementById('toggle-preview-btn');
 const cancelBtn = document.getElementById('cancel-btn');
@@ -197,7 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     cancelBtn.addEventListener('click', confirmCancel);
     saveBtn.addEventListener('click', saveCurrentPage);
     rebuildBtn.addEventListener('click', rebuildExtraction);
-    markdownEditor.addEventListener('input', onEditorChange);
+    editor.on('change', onEditorChange);
 
     // Modal buttons
     document.querySelector('[data-action="save"]').addEventListener('click', () => {
@@ -280,7 +286,7 @@ async function doSwitchPage(pageNum) {
         const res = await fetch(`/api/ocr/content/${currentCopy}/${pageNum}`);
         const data = await res.json();
         const content = data.content || "";
-        markdownEditor.value = content;
+        editor.setValue(content);
         pagesData[pageNum] = content;
         originalPagesData[pageNum] = content;
         updatePageButton(pageNum, !!content, false);
@@ -323,7 +329,7 @@ function updatePageButton(pageNum, hasContent, isDirty) {
 // === Save ===
 async function saveCurrentPage() {
     if (!currentCopy || !currentPage) return;
-    const content = markdownEditor.value;
+    const content = editor.getValue();
     pagesData[currentPage] = content;
     setSaveStatus("Enregistrement...", "info");
     try {
@@ -383,7 +389,7 @@ function confirmCancel() {
 
 function cancelCurrentPage() {
     const originalContent = originalPagesData[currentPage] || "";
-    markdownEditor.value = originalContent;
+    editor.setValue(originalContent);
     pagesData[currentPage] = originalContent;
     hasUnsavedChanges = false;
     markDirty(false);
@@ -393,7 +399,8 @@ function cancelCurrentPage() {
 }
 
 // === Editor Change ===
-function onEditorChange() {
+function onEditorChange(instance, change) {
+    if (change.origin === 'setValue') return;
     if (!currentCopy || !currentPage) return;
     hasUnsavedChanges = true;
     markDirty(true);
@@ -413,19 +420,20 @@ function markDirty(dirty) {
 function togglePreview() {
     isPreviewMode = !isPreviewMode;
     if (isPreviewMode) {
-        const md = markdownEditor.value;
+        const md = editor.getValue();
         markdownPreview.innerHTML = marked.parse(md);
         if (window.MathJax) {
             MathJax.typesetPromise([markdownPreview]).then(() => {
                 checkLatexErrors();
             }).catch(() => checkLatexErrors());
         }
-        markdownEditor.style.display = 'none';
+        editor.getWrapperElement().style.display = 'none';
         markdownPreview.style.display = 'block';
         togglePreviewBtn.innerHTML = "Editer";
         togglePreviewBtn.classList.replace('btn-outline-secondary', 'btn-secondary');
     } else {
-        markdownEditor.style.display = 'block';
+        editor.getWrapperElement().style.display = '';
+        editor.refresh();
         markdownPreview.style.display = 'none';
         latexErrors.style.display = 'none';
         togglePreviewBtn.innerHTML = "Apercu";
@@ -440,7 +448,7 @@ function checkLatexErrors() {
     // Check for [Math Processing Error] which MathJax inserts on failure
     if (html.includes('Math Processing Error')) issues.push('Erreur de rendu LaTeX detectee');
     // Check for unbalanced $ signs (simple heuristic)
-    const text = markdownEditor.value;
+    const text = editor.getValue();
     const dollars = (text.match(/\$/g) || []).length;
     if (dollars % 2 !== 0) issues.push('Nombre impair de $ - verifier les formules LaTeX');
     // Check for unescaped backslashes that might cause issues
@@ -454,7 +462,7 @@ function checkLatexErrors() {
 // === UI Helpers ===
 function resetUI() {
     pdfViewer.src = "";
-    markdownEditor.value = "";
+    editor.setValue("");
     markdownPreview.innerHTML = "";
     pageSelector.innerHTML = "";
     currentPageNum.innerText = "-";

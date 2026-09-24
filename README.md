@@ -6,7 +6,7 @@
       <p>Korektor est une application Web (Flask) conçue pour aider à la correction de copies d'examen manuscrites en utilisant des modèles de langage (LLM).</p>
       <p><strong>Fonctionnalités :</strong></p>
       <ol>
-        <li><strong>Numérisation et Import</strong> : Import direct de scans A4 ou découpage intelligent de scans (A3 -> A4), puis regroupement par étudiant.</li>
+        <li><strong>Numérisation et Import</strong> : Import direct de scans A4 ou découpage intelligent de scans (A3 -> A4), avec nombre de pages par copie configurable, puis regroupement par étudiant.</li>
         <li><strong>Structuration du Sujet</strong> : Analyse du sujet et du corrigé pour générer un barème structuré (questions, réponses attendues, points).</li>
         <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration assistée (questions, réponses).</li>
         <li><strong>Correction IA</strong> : Notation assistée générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
@@ -49,10 +49,10 @@
     *   Le `bareme.csv` est **généré automatiquement** depuis l'onglet Import (via `subject_analysis.py`). Il sert de format intermédiaire : l'enseignant peut le vérifier et l'ajuster (Excel, tableur) avant qu'il soit chargé dans la base `korektor.db` pour la correction.
 
 3.  **Procédure** :
-    *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné.
-    *   **Découpage** : Choisissez l'import direct A4 ou le découpage A3→A4, puis validez les pages et l'identification des étudiants.
+    *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné et indiquez le nombre de pages A4 constituant une copie. La valeur proposée est 2 pour un PDF déjà en A4 et 4 pour un livret A3.
+    *   **Découpage** : Choisissez l'import direct A4 ou le découpage A3→A4, puis validez les débuts de copie et l'identification des étudiants. Le nombre de pages choisi à l'import détermine les aperçus et les PDF individuels générés.
     *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
-    *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page, avec aperçu LaTeX.
+    *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page dans un éditeur CodeMirror Markdown avec numéros de ligne, puis contrôlez le rendu LaTeX dans l'aperçu.
     *   **Correction** : Lancez la correction assistée incrémentale sur un lot de copies.
     *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
     *   **Bilan** : Dashboard avec l'état global, les statistiques de classe, les notes et les copies problématiques. La page affiche la distribution des notes sur 20, la difficulté des questions, le profil moyen de la classe, la dispersion par question et les résultats détaillés d'un étudiant ou de la moyenne de la classe. Chaque graphique peut être téléchargé séparément en PNG ou tous les graphiques peuvent être exportés en une fois dans `graphiques_notes/`.
@@ -74,6 +74,7 @@ Le système conserve aussi :
 *   `Copie_01.pdf` : Le scan individuel.
 *   `extraction.md` : Le contenu transcrit (vérifiable via l'onglet "Vérification OCR").
 *   `page<xx>.md` : Chaque page du scan est sauvegardée séparément pour faciliter la vérification.
+*   `.korektor_split.json` : Le nombre de pages A4 par copie retenu lors du dernier import du projet. Les anciens projets sans ce fichier utilisent 4 pages par copie.
 
 ## Configuration API
 
@@ -166,7 +167,7 @@ python correct_ai/batch_correction_v2.py --random-context 10
 L'onglet **Vérif OCR** permet de vérifier et corriger manuellement l'extraction :
 
 - Visualisation page par page des PDF
-- Édition du contenu Markdown extrait
+- Édition du contenu Markdown extrait avec CodeMirror, coloration Markdown, numéros de ligne et retour automatique à la ligne
 - Prévisualisation en temps réel avec rendu LaTeX (MathJax)
 - **Bouton Sauvegarder** pour enregistrer la page courante
 - **Bouton Annuler** pour revenir à la dernière version sauvegardée

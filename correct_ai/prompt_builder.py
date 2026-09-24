@@ -52,8 +52,7 @@ def build_incremental_prompt(
         str: Prompt complet prêt à être envoyé au LLM
     """
     # Section 1: Introduction et contexte global
-    prompt = """Tu es un correcteur expert. Ton rôle est de noter les copies d'examen 
-avec JUSTICE et UNIFORMITÉ.
+    prompt = """Tu es un correcteur expert, en informatique et en mathématiques, en CPGE filière MP2I en France. Ton rôle est de noter les copies d'examen avec JUSTICE et UNIFORMITÉ.
 
 ---
 # CONTEXTE GLOBAL (à utiliser pour référence uniquement)
@@ -132,7 +131,7 @@ Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudi
 1. Pour CHAQUE question du template, remplace les valeurs par défaut par ta correction réelle.
 2. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
 3. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
-4. Le commentaire doit être concis (pour l'étudiant), le raisonnement doit être plus détaillé que le commentaire.
+4. Le commentaire doit être pas trop long (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement doit être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
 5. Si l'étudiant n'a pas répondu à une question, laisse les valeurs par défaut (note=0.0, commentaire="Non répondu.") et explique dans le raisonnement ce qui était attendu.
 6. NE SUPPRIME AUCUNE CLÉ du template. Ne modifie pas les noms des questions.
 """
@@ -220,7 +219,8 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
 # INSTRUCTIONS:
 1. Pour chaque question du template, remplace les valeurs par défaut.
 2. Si l'étudiant n'a pas répondu, laisse les valeurs par défaut et explique dans le raisonnement ce qui était attendu.
-3. NE SUPPRIME AUCUNE CLÉ du template.
+3. Le commentaire doit être pas trop long (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement doit être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
+4. NE SUPPRIME AUCUNE CLÉ du template.
 """
 
     return prompt

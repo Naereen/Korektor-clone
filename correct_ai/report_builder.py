@@ -96,7 +96,7 @@ def generate_grade_chart(
     student_20 = student_total / max_points * 20
     moyenne_20 = sum(scores_20) / len(scores_20)
 
-    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    fig, ax = plt.subplots(figsize=(6, 3.5), dpi=150)
 
     ax.hist(scores_20, bins=range(0, 21), color="#c7d2fe", edgecolor="#4f46e5")
     ax.axvline(
@@ -137,13 +137,14 @@ def generate_question_profile_chart(
 
     import matplotlib
     matplotlib.use("Agg")
-    font = {
-        'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 18,
-    }
 
-    matplotlib.rc('font', **font)
+    # TODO: improve this
+    # font = {
+    #     'family' : 'normal',
+    #     'weight' : 'bold',
+    #     'size'   : 18,
+    # }
+    # matplotlib.rc('font', **font)
 
     import matplotlib.pyplot as plt
 
@@ -159,7 +160,7 @@ def generate_question_profile_chart(
     maxi = [_nan_if_none(r.get("max")) for r in rows]
     student = [_nan_if_none(r.get("note")) for r in rows]
 
-    fig, ax = plt.subplots(figsize=(10, 7), dpi=100)
+    fig, ax = plt.subplots(figsize=(6, 3.5), dpi=150)
 
     if any(mn == mn and mx == mx for mn, mx in zip(mini, maxi)):  # skip if all-NaN
         ax.fill_between(x, mini, maxi, color="#b0b0b0", alpha=0.7, label="Min-max classe")
@@ -273,9 +274,10 @@ def build_report_markdown(
 
     if charts:
         for chart in charts:
-            # Relative path: resolved from the reports directory at compile time.
+            lines.append("")
             lines.append(f"\\begin{{figure}}[!h]")
             lines.append(f"\\centering")
+            # Relative path: resolved from the reports directory at compile time.
             lines.append(f"\\includegraphics[width=1.00\\textwidth]{{{chart['path']}}}")
             lines.append(f"\\caption{{{chart['legend']}}}")
             lines.append(f"\\end{{figure}}")
@@ -283,6 +285,29 @@ def build_report_markdown(
         lines.append("---")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def merge_pdfs(pdf_paths: List[str], output_path: str) -> None:
+    """Concatenate several PDF files, in order, into a single PDF using pdftk.
+
+    Raises:
+        RuntimeError: if pdftk is missing, there is nothing to merge, or the merge fails.
+    """
+    if not pdf_paths:
+        raise RuntimeError("Aucun PDF à concaténer.")
+    try:
+        subprocess.run(
+            ["pdftk", *pdf_paths, "cat", "output", output_path],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "pdftk est introuvable : installez pdftk pour fusionner les PDF."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Échec de la fusion PDF (pdftk) : {exc.stderr}") from exc
 
 
 def compile_markdown_to_pdf(md_path: str,
