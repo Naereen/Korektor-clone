@@ -1481,7 +1481,7 @@ def _build_report_content(db, copie_info, corrections, md_path):
         candidate_name = f"graphique_{os.path.splitext(os.path.basename(md_path))[0]}.png"
         candidate_path = os.path.join(os.path.dirname(md_path), candidate_name)
         if report_builder.generate_grade_chart(student_total, class_totals, max_points, candidate_path):
-            charts.append({"path": candidate_path, "legend": "Répartition des notes de la classe"})
+            charts.append({"path": candidate_path, "legend": "Répartition des notes de la classe, et de votre note"})
 
     if corrections:
         question_stats = _get_question_class_stats(db)
@@ -1592,6 +1592,152 @@ def api_rapport_pdf(copie_id):
     finally:
         if db is not None:
             db.close()
+
+
+@app.route("/api/rapports/<int:copie_id>/file/<file_type>")
+def api_rapport_file(copie_id, file_type):
+    """Serve a previously generated report file (Markdown or PDF) inline, for viewing in a new tab."""
+    if file_type not in ("md", "pdf"):
+        return "Type de fichier invalide", 400
+
+    db = None
+    try:
+        db = get_db(config.project_dir)
+        copie_info, _ = _load_copie_and_corrections(db, copie_id)
+        if copie_info is None:
+            return "Copie introuvable", 404
+
+        md_path, pdf_path = _report_paths(copie_info)
+        path = md_path if file_type == "md" else pdf_path
+        if not os.path.exists(path):
+            return "Fichier introuvable", 404
+
+        mimetype = "text/markdown; charset=utf-8" if file_type == "md" else "application/pdf"
+        return send_file(path, mimetype=mimetype, as_attachment=False)
+    finally:
+        if db is not None:
+            db.close()
+
+
+class ReportBatchJob:
+    """Background job regenerating every student's Markdown report then compiling it to PDF."""
+
+    def __init__(self):
+        """Initialize the idle state shared by the batch report job."""
+        self.running = False
+        self.stop_requested = False
+        self.progress = 0
+        self.total = 0
+        self.current_action = "Inactif"
+        self.results = []
+
+    def start(self, project_dir):
+        """Start the background thread iterating over every copy, unless already running."""
+        if self.running:
+            return False
+        self.running = True
+        self.stop_requested = False
+        self.progress = 0
+        self.total = 0
+        self.results = []
+        self.current_action = "Démarrage..."
+
+        def run():
+            """Regenerate and compile one report at a time, isolating failures per copy."""
+            db = None
+            try:
+                db = get_db(project_dir)
+                copies = db.execute("SELECT id FROM copies ORDER BY id").fetchall()
+                self.total = len(copies)
+
+                for index, row in enumerate(copies, start=1):
+                    if self.stop_requested:
+                        self.current_action = "Arrêté"
+                        break
+
+                    copie_id = row["id"]
+                    self.current_action = f"Copie {copie_id} ({index}/{self.total})"
+                    entry = {
+                        "copie_id": copie_id,
+                        "filename": None,
+                        "md_ok": False,
+                        "pdf_ok": False,
+                        "error": None,
+                    }
+                    try:
+                        copie_info, corrections = _load_copie_and_corrections(db, copie_id)
+                        if copie_info is None:
+                            raise RuntimeError("Copie introuvable")
+
+                        md_path, pdf_path = _report_paths(copie_info)
+                        content = _build_report_content(db, copie_info, corrections, md_path)
+                        with open(md_path, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        entry["md_ok"] = True
+                        entry["filename"] = os.path.basename(md_path)
+
+                        try:
+                            report_builder.compile_markdown_to_pdf(md_path, pdf_path)
+                            entry["pdf_ok"] = True
+                        except Exception as pdf_exc:
+                            entry["error"] = f"Échec PDF : {pdf_exc}"
+                    except Exception as exc:
+                        entry["error"] = str(exc)
+
+                    self.results.append(entry)
+                    self.progress = int(index / self.total * 100) if self.total else 100
+            except Exception as exc:
+                self.current_action = f"Erreur : {exc}"
+            finally:
+                if db is not None:
+                    db.close()
+                if not self.stop_requested:
+                    self.progress = 100
+                    self.current_action = "Terminé"
+                self.running = False
+
+        threading.Thread(target=run).start()
+        return True
+
+    def stop(self):
+        """Request cooperative cancellation of the running batch."""
+        if self.running:
+            self.stop_requested = True
+            return True
+        return False
+
+
+report_batch_job = ReportBatchJob()
+
+
+@app.route("/api/rapports/batch/start", methods=["POST"])
+def api_rapport_batch_start():
+    """Start the background job regenerating and compiling every student's report."""
+    if report_batch_job.start(config.project_dir):
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Un batch de rapports est déjà en cours"}), 409
+
+
+@app.route("/api/rapports/batch/stop", methods=["POST"])
+def api_rapport_batch_stop():
+    """Request cancellation of the running batch report job."""
+    if report_batch_job.stop():
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Aucun batch actif"}), 400
+
+
+@app.route("/api/rapports/batch/status")
+def api_rapport_batch_status():
+    """Return the batch report job's progress and per-copy results as JSON."""
+    return jsonify(
+        {
+            "running": report_batch_job.running,
+            "progress": report_batch_job.progress,
+            "total": report_batch_job.total,
+            "action": report_batch_job.current_action,
+            "results": report_batch_job.results,
+        }
+    )
 
 
 # --- ROUTES: OCR Verification ---
@@ -1893,7 +2039,7 @@ def export_bilan_csv():
                 round(score_out_of_twenty, 2) if score_out_of_twenty != "" else "",
                 row["nb_corr"],
                 question_count,
-                "Complete" if row["nb_corr"] >= question_count else "Partielle",
+                "Complète" if row["nb_corr"] >= question_count else "Partielle",
             ])
 
         response = send_file(

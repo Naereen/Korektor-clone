@@ -25,7 +25,8 @@ _DATE_PATTERN = re.compile(r"^.*[Dd]ate\s*:([^$]*)")
 
 def get_reports_dir(project_dir: str) -> str:
     """Return (and create) the directory holding student feedback reports."""
-    path = os.path.join(project_dir, REPORTS_DIRNAME)
+    # Absolute: Flask's send_file resolves relative paths against app.root_path, not cwd.
+    path = os.path.abspath(os.path.join(project_dir, REPORTS_DIRNAME))
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -95,7 +96,8 @@ def generate_grade_chart(
     student_20 = student_total / max_points * 20
     moyenne_20 = sum(scores_20) / len(scores_20)
 
-    fig, ax = plt.subplots(figsize=(6, 3), dpi=150)
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+
     ax.hist(scores_20, bins=range(0, 21), color="#c7d2fe", edgecolor="#4f46e5")
     ax.axvline(
         moyenne_20, color="#f59e0b", linestyle="--", linewidth=2,
@@ -134,8 +136,15 @@ def generate_question_profile_chart(
         return False
 
     import matplotlib
-
     matplotlib.use("Agg")
+    font = {
+        'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 18,
+    }
+
+    matplotlib.rc('font', **font)
+
     import matplotlib.pyplot as plt
 
     def _nan_if_none(value):
@@ -155,7 +164,7 @@ def generate_question_profile_chart(
     if any(mn == mn and mx == mx for mn, mx in zip(mini, maxi)):  # skip if all-NaN
         ax.fill_between(x, mini, maxi, color="#b0b0b0", alpha=0.7, label="Min-max classe")
 
-    ax.plot(x, points, marker="+", color="#2563eb", linewidth=2, label="Barème")
+    ax.plot(x, points, marker="*", color="#2563eb", linewidth=2, label="Barème")
     ax.plot(x, moyenne, marker="d", color="#89a316", linewidth=2, label="Moyenne classe")
     ax.plot(x, student, marker="o", color="#b826dc", linewidth=2, linestyle="--", label="Votre note")
 
@@ -234,6 +243,7 @@ def build_report_markdown(
         lines.append(
             f"**Note totale : {total_note:g} / {total_points:g} ({sur_20:.2f} / 20)**"
         )
+        # TODO: calcule aussi le rang ? Non, c'est un peu humiliant, ça risque d'être mal perçu.
     else:
         lines.append(f"**Note totale : {total_note:g}**")
     lines.append("")
@@ -247,8 +257,8 @@ def build_report_markdown(
         commentaire = (row.get("commentaires eventuels du correcteur") or "").strip()
 
         lines.append("")
-        lines.append(f"### {question} - **Note : {note} / {points}**")
-        lines.append("")
+        lines.append(f"- **{question}** - **Note : {note} / {points}**")
+        # lines.append("")
         # if reponse:
         #     lines.append("**Votre réponse :**")
         #     lines.append("")
@@ -257,8 +267,8 @@ def build_report_markdown(
         if commentaire:
             # lines.append("**Commentaire :**")
             # lines.append("")
-            lines.append(commentaire or "*(aucun commentaire)*")
-            lines.append("")
+            lines.append(f"  {commentaire}" or "  *(aucun commentaire)*")
+            # lines.append("")
         # lines.append("---")
 
     if charts:
@@ -266,7 +276,7 @@ def build_report_markdown(
             # Relative path: resolved from the reports directory at compile time.
             lines.append(f"\\begin{{figure}}[!h]")
             lines.append(f"\\centering")
-            lines.append(f"\\includegraphics[width=1.05\\textwidth]{{{chart['path']}}}")
+            lines.append(f"\\includegraphics[width=1.00\\textwidth]{{{chart['path']}}}")
             lines.append(f"\\caption{{{chart['legend']}}}")
             lines.append(f"\\end{{figure}}")
             lines.append("")
@@ -295,7 +305,7 @@ def compile_markdown_to_pdf(md_path: str,
         reports_dir = os.path.dirname(md_path)
         try:
             subprocess.run(
-                ["/home/lilian/bin/strapdown2pdf", f"-s{scale}%", os.path.basename(md_path)],
+                ["/home/lilian/bin/strapdown2pdf", "--no-open", f"-s{scale}%", os.path.basename(md_path)],
                 check=True,
                 capture_output=True,
                 text=True,

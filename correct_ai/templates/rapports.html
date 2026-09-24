@@ -30,6 +30,42 @@
 
 {% block content %}
 <div class="rapports-container">
+
+    <div class="batch-panel">
+        <h5 class="mb-0"><i class="bi bi-collection-play"></i> Génération en lot</h5>
+        <p class="text-muted mb-2">
+            Régénère le Markdown de <strong>toutes</strong> les copies depuis les corrections actuelles, puis
+            compile chaque rapport en PDF, un par un. Un échec sur une copie n'interrompt pas les suivantes.
+        </p>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <button id="batch-start-btn" class="btn btn-primary btn-sm">
+                <i class="bi bi-play-fill"></i> Générer tous les rapports (Markdown + PDF)
+            </button>
+            <button id="batch-stop-btn" class="btn btn-outline-danger btn-sm" disabled>
+                <i class="bi bi-stop-fill"></i> Arrêter
+            </button>
+            <span id="batch-status-badge" class="badge bg-secondary">Inactif</span>
+        </div>
+        <div class="progress mb-2" style="height: 8px;">
+            <div id="batch-progress-bar" class="progress-bar" style="width: 0%"></div>
+        </div>
+        <div class="table-responsive" style="max-height: 30vh; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Copie</th>
+                        <th>Markdown</th>
+                        <th>PDF</th>
+                        <th>Erreur</th>
+                    </tr>
+                </thead>
+                <tbody id="batch-results-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <hr>
+
     <h2 class="mb-0"><i class="bi bi-file-earmark-pdf"></i> Rapports PDF</h2>
     <p class="text-muted mb-0">
         Génère, à partir des corrections validées, un rapport Markdown de feedback individuel par étudiant
@@ -79,6 +115,9 @@
         saveBtn.addEventListener('click', saveReport);
         pdfBtn.addEventListener('click', compileToPdf);
         editor.addEventListener('input', () => setStatus('Modifié (non enregistré)', 'warning'));
+        document.getElementById('batch-start-btn').addEventListener('click', startBatchGeneration);
+        document.getElementById('batch-stop-btn').addEventListener('click', stopBatchGeneration);
+        updateBatchStatus();
     });
 
     function setStatus(text, colorClass) {
@@ -201,6 +240,74 @@
         } catch (e) {
             console.error(e);
             setStatus(`Erreur PDF : ${e.message}`, 'danger');
+        }
+    }
+
+    // === Génération en lot ===
+    let batchPollInterval = null;
+
+    async function startBatchGeneration() {
+        if (!confirm("Générer et compiler tous les rapports en lot ? Les fichiers Markdown déjà enregistrés seront écrasés.")) {
+            return;
+        }
+        try {
+            const res = await fetch('/api/rapports/batch/start', { method: 'POST' });
+            const data = await res.json();
+            if (!data.success) {
+                alert('Erreur : ' + data.error);
+                return;
+            }
+            startBatchPolling();
+        } catch (e) {
+            alert('Erreur réseau : ' + e);
+        }
+    }
+
+    async function stopBatchGeneration() {
+        if (!confirm("Arrêter la génération en lot ?")) return;
+        await fetch('/api/rapports/batch/stop', { method: 'POST' });
+    }
+
+    function startBatchPolling() {
+        if (batchPollInterval) clearInterval(batchPollInterval);
+        document.getElementById('batch-start-btn').disabled = true;
+        document.getElementById('batch-stop-btn').disabled = false;
+        batchPollInterval = setInterval(updateBatchStatus, 1000);
+        updateBatchStatus();
+    }
+
+    async function updateBatchStatus() {
+        try {
+            const res = await fetch('/api/rapports/batch/status');
+            const data = await res.json();
+
+            document.getElementById('batch-progress-bar').style.width = data.progress + '%';
+            const badge = document.getElementById('batch-status-badge');
+            badge.innerText = data.action;
+            badge.className = data.running ? 'badge bg-primary' : 'badge bg-secondary';
+            if (!data.running && data.progress >= 100) {
+                badge.className = 'badge bg-success';
+            }
+
+            const body = document.getElementById('batch-results-body');
+            body.innerHTML = data.results.map(r => {
+                const mdIcon = r.md_ok ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>';
+                const pdfIcon = r.pdf_ok ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>';
+                const mdCell = r.md_ok ? `<a href="/api/rapports/${r.copie_id}/file/md" target="_blank" rel="noopener">${mdIcon}</a>` : mdIcon;
+                const pdfCell = r.pdf_ok ? `<a href="/api/rapports/${r.copie_id}/file/pdf" target="_blank" rel="noopener">${pdfIcon}</a>` : pdfIcon;
+                return `<tr><td>Copie ${r.copie_id}</td><td>${mdCell}</td><td>${pdfCell}</td><td class="small text-danger">${r.error || ''}</td></tr>`;
+            }).join('');
+
+            if (!data.running) {
+                if (batchPollInterval) {
+                    clearInterval(batchPollInterval);
+                    batchPollInterval = null;
+                }
+                document.getElementById('batch-start-btn').disabled = false;
+                document.getElementById('batch-stop-btn').disabled = true;
+            }
+        } catch (e) {
+            console.error('Erreur de polling du batch', e);
         }
     }
 </script>
