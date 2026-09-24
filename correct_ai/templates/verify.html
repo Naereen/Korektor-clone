@@ -202,7 +202,7 @@
             <div class="mb-3 p-2 bg-light border rounded">
                 <div class="row">
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">Note</label>
+                        <label id="note-label" class="form-label fw-bold">Note</label>
                         <input type="number" step="0.25" id="field-note"
                             class="form-control form-control-sm fw-bold">
                     </div>
@@ -254,6 +254,7 @@
     const fRaisonnement = document.getElementById('field-raisonnement');
     const fReponse = document.getElementById('field-reponse');
     const qDetails = document.getElementById('question-details');
+    const noteLabel = document.getElementById('note-label');
     const qcmFields = document.querySelectorAll('.qcm-field');
     const studentName = document.getElementById('student-name');
     const studentScore = document.getElementById('student-score');
@@ -372,6 +373,7 @@
         fCommentaire.value = "";
         fRaisonnement.value = "";
         fNote.value = "";
+        noteLabel.innerText = "Note";
         fBonnes.value = "";
         fMauvaises.value = "";
         fRedaction.value = "";
@@ -588,6 +590,11 @@
         let row = currentCorrectionData.find(r => r.question === qId);
         const meta = currentBareme.find(r => r.question === qId);
         if (!row) row = {};
+
+        const possiblePoints = meta ? meta['points'] : '';
+        noteLabel.innerText = possiblePoints !== '' && possiblePoints != null
+            ? `Note / ${possiblePoints}`
+            : "Note";
 
         const isQCM = meta ? meta['type_qcm'] : false;
         qcmFields.forEach(el => el.style.display = isQCM ? 'block' : 'none');
