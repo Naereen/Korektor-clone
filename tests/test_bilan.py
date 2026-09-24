@@ -38,6 +38,7 @@ class TestBilanPage:
         assert "Copies problématiques" in content
         assert "Note / 20" in content
         assert "scoreOutOfTwenty" in content
+        assert 'href="/rapports"' in content
 
     def test_question_dispersion_reserves_space_for_title(self, client):
         """Ensure the Plotly title is not clipped by the chart boundary."""

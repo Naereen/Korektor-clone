@@ -57,6 +57,8 @@
     *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
     *   **Bilan** : Dashboard avec l'état global, les statistiques de classe, les notes et les copies problématiques. La page affiche la distribution des notes sur 20, la difficulté des questions, le profil moyen de la classe, la dispersion par question et les résultats détaillés d'un étudiant ou de la moyenne de la classe. Chaque graphique peut être téléchargé séparément en PNG ou tous les graphiques peuvent être exportés en une fois dans `graphiques_notes/`.
 
+    Le parcours est accéléré entre les étapes : un import, un découpage ou un traitement batch terminé avec succès ouvre automatiquement l'étape suivante. Les pages de relecture **Vérif OCR** et **Vérif Correction** proposent un bouton explicite de fin qui sauvegarde les modifications avant de continuer. Le **Bilan** fournit enfin un accès direct aux **Rapports**. Une annulation ou une erreur de traitement ne déclenche aucune redirection.
+
 ## Structure des Données
 
 ### Base de Données SQLite (`korektor.db`)

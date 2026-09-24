@@ -138,6 +138,9 @@
             <button id="cancel-btn" class="btn btn-outline-danger btn-sm">Annuler</button>
             <button id="save-btn" class="btn btn-primary btn-sm">Sauvegarder</button>
             <button id="rebuild-btn" class="btn btn-success btn-sm">Reconstruire extraction.md</button>
+            <button id="finish-btn" class="btn btn-dark btn-sm">
+                Terminer et lancer la correction <i class="bi bi-arrow-right"></i>
+            </button>
         </div>
     </div>
 
@@ -190,6 +193,7 @@ const togglePreviewBtn = document.getElementById('toggle-preview-btn');
 const cancelBtn = document.getElementById('cancel-btn');
 const saveBtn = document.getElementById('save-btn');
 const rebuildBtn = document.getElementById('rebuild-btn');
+const finishBtn = document.getElementById('finish-btn');
 const currentPageNum = document.getElementById('current-page-num');
 const saveStatus = document.getElementById('save-status');
 const latexErrors = document.getElementById('latex-errors');
@@ -203,12 +207,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     cancelBtn.addEventListener('click', confirmCancel);
     saveBtn.addEventListener('click', saveCurrentPage);
     rebuildBtn.addEventListener('click', rebuildExtraction);
+    finishBtn.addEventListener('click', finishVerification);
     editor.on('change', onEditorChange);
 
     // Modal buttons
     document.querySelector('[data-action="save"]').addEventListener('click', () => {
         unsavedModal.hide();
-        saveCurrentPage().then(() => executePendingAction());
+        saveCurrentPage().then(saved => {
+            if (saved) executePendingAction();
+        });
     });
     document.querySelector('[data-action="discard"]').addEventListener('click', () => {
         unsavedModal.hide();
@@ -298,9 +305,11 @@ async function doSwitchPage(pageNum) {
 function executePendingAction() {
     if (!pendingAction) return;
     const action = pendingAction;
+    const callback = afterSaveCallback;
     pendingAction = null;
     afterSaveCallback = null;
-    if (action.type === 'copy') doSwitchCopy(action.target);
+    if (callback) callback();
+    else if (action.type === 'copy') doSwitchCopy(action.target);
     else if (action.type === 'page') doSwitchPage(action.target);
 }
 
@@ -328,25 +337,28 @@ function updatePageButton(pageNum, hasContent, isDirty) {
 
 // === Save ===
 async function saveCurrentPage() {
-    if (!currentCopy || !currentPage) return;
+    if (!currentCopy || !currentPage) return true;
     const content = editor.getValue();
     pagesData[currentPage] = content;
     setSaveStatus("Enregistrement...", "info");
     try {
-        await fetch(`/api/ocr/content/${currentCopy}/${currentPage}`, {
+        const response = await fetch(`/api/ocr/content/${currentCopy}/${currentPage}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({content})
         });
+        if (!response.ok) throw new Error(await response.text());
         originalPagesData[currentPage] = content;
         hasUnsavedChanges = false;
         markDirty(false);
         updatePageButton(currentPage, !!content, false);
         setSaveStatus("Sauvegarde !", "success");
         setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
+        return true;
     } catch(e) {
         console.error(e);
         setSaveStatus("Erreur sauvegarde", "danger");
+        return false;
     }
 }
 
@@ -373,10 +385,28 @@ async function doRebuild() {
         if (data.success) {
             setSaveStatus("extraction.md reconstruit !", "success");
             setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
+            return true;
         } else {
             throw new Error(data.error || "Erreur");
         }
-    } catch(e) { console.error(e); setSaveStatus("Erreur", "danger"); }
+    } catch(e) {
+        console.error(e);
+        setSaveStatus("Erreur", "danger");
+        return false;
+    }
+}
+
+async function finishVerification() {
+    finishBtn.disabled = true;
+    if (hasUnsavedChanges && !await saveCurrentPage()) {
+        finishBtn.disabled = false;
+        return;
+    }
+    if (currentCopy && !await doRebuild()) {
+        finishBtn.disabled = false;
+        return;
+    }
+    window.location.href = '/correction';
 }
 
 // === Cancel (Annuler) ===

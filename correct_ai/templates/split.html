@@ -228,7 +228,7 @@
             if (result.success) {
                 alert("Traitement terminé ! " + result.message);
                 btn.innerText = "Terminé";
-                // Redirect or update UI?
+                window.location.href = '/ocr';
             } else {
                 alert("Erreur: " + result.error);
                 btn.disabled = false;

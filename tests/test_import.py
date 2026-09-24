@@ -112,6 +112,7 @@ class TestPdfImport:
         assert 'data-total-items="3"' in content
         assert 'data-pages-per-copy="2"' in content
         assert "const pageNum = i * pagesPerCopy + 1;" in content
+        assert "window.location.href = '/ocr';" in content
 
         split_response = client.post(
             "/api/split/process",

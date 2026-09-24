@@ -69,6 +69,7 @@
 {% block extra_js %}
 <script>
 let pollInterval = null;
+let advanceWhenComplete = false;
 const rangeStart = document.getElementById('range-start');
 const rangeEnd = document.getElementById('range-end');
 
@@ -119,6 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(r => r.json())
         .then(data => {
             if (data.running) {
+                advanceWhenComplete = true;
                 document.getElementById('log-console').innerText = data.logs.join('');
                 document.getElementById('progress-bar').style.width = data.progress + '%';
                 document.getElementById('progress-text').innerText = data.progress + '%';
@@ -148,7 +150,10 @@ async function startJob() {
             })
         });
         const data = await res.json();
-        if (data.success) startPolling();
+        if (data.success) {
+            advanceWhenComplete = true;
+            startPolling();
+        }
         else alert('Erreur: ' + data.error);
     } catch(e) { alert('Erreur réseau'); }
 }
@@ -186,6 +191,9 @@ async function updateStatus() {
             document.getElementById('btn-stop').disabled = true;
             document.getElementById('jobInfo').innerHTML = data.progress >= 100 ?
                 '<span class="text-success"><i class="bi bi-check-circle"></i> Correction terminée</span>' : '';
+            if (advanceWhenComplete && data.progress >= 100 && data.action === 'Terminé') {
+                window.location.href = '/verify';
+            }
         }
     } catch(e) { console.error(e); }
 }

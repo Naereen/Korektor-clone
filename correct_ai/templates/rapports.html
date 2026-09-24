@@ -306,8 +306,8 @@
             body.innerHTML = data.results.map(r => {
                 const mdIcon = r.md_ok ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>';
                 const pdfIcon = r.pdf_ok ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>';
-                const mdCell = r.md_ok ? `<a href="/api/rapports/${r.copie_id}/file/md" target="_blank" rel="noopener">${mdIcon}</a>` : mdIcon;
-                const pdfCell = r.pdf_ok ? `<a href="/api/rapports/${r.copie_id}/file/pdf" target="_blank" rel="noopener">${pdfIcon}</a>` : pdfIcon;
+                const mdCell = r.md_ok ? `<a href="/api/rapports/${r.copie_id}/file/md" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text-fill"></i> ${mdIcon}</a>` : mdIcon;
+                const pdfCell = r.pdf_ok ? `<a href="/api/rapports/${r.copie_id}/file/pdf" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf-fill"></i> ${pdfIcon}</a>` : pdfIcon;
                 return `<tr><td>Copie ${r.copie_id}</td><td>${mdCell}</td><td>${pdfCell}</td><td class="small text-danger">${r.error || ''}</td></tr>`;
             }).join('');
 

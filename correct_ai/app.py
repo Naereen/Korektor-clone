@@ -544,6 +544,7 @@ class BatchJob:
 
             korektor_logger = logging.getLogger("korektor")
             original_handler = korektor_logger.handlers[0] if korektor_logger.handlers else None
+            failed = False
 
             try:
                 # Capture standard output/error to self.logs
@@ -741,6 +742,7 @@ class BatchJob:
 
                             db.close()
                 except Exception as e:
+                    failed = True
                     print(f"Error in batch loop: {e}")
                     import traceback
 
@@ -749,6 +751,9 @@ class BatchJob:
                 if self.stop_requested:
                     self.current_action = "Arrêté"
                     self.logs.append("=== Traitement interrompu ===\n")
+                elif failed:
+                    self.current_action = "Erreur"
+                    self.logs.append("=== Échec du traitement ===\n")
                 else:
                     self.progress = 100
                     self.current_action = "Terminé"

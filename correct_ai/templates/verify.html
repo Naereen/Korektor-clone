@@ -186,6 +186,9 @@
         <div>
             <span id="save-status" class="badge bg-secondary status-badge">Prêt</span>
             <button id="save-btn" class="btn btn-primary btn-sm ms-2">Enregistrer Tout</button>
+            <button id="finish-btn" class="btn btn-dark btn-sm ms-2">
+                Terminer et voir le bilan <i class="bi bi-arrow-right"></i>
+            </button>
         </div>
     </div>
 
@@ -283,6 +286,7 @@
     const pdfViewer = document.getElementById('pdf-viewer');
     const saveStatus = document.getElementById('save-status');
     const saveBtn = document.getElementById('save-btn');
+    const finishBtn = document.getElementById('finish-btn');
     const prevQuestionBtn = document.getElementById('prev-question-btn');
     const nextQuestionBtn = document.getElementById('next-question-btn');
 
@@ -325,6 +329,7 @@
         });
 
         saveBtn.addEventListener('click', saveAll);
+        finishBtn.addEventListener('click', finishValidation);
         prevQuestionBtn.addEventListener('click', () => navigateQuestion(-1));
         nextQuestionBtn.addEventListener('click', () => navigateQuestion(1));
     });
@@ -690,7 +695,7 @@
 
     // saveAll - Save corrections to DB
     async function saveAll() {
-        if (!currentCopy) return;
+        if (!currentCopy) return true;
         setSaveStatus("Enregistrement...", "info");
 
         try {
@@ -715,10 +720,21 @@
 
             setSaveStatus("Enregistré !", "success");
             setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
+            return true;
         } catch (e) {
             console.error(e);
             setSaveStatus("Erreur Sauvegarde", "danger");
+            return false;
         }
+    }
+
+    async function finishValidation() {
+        finishBtn.disabled = true;
+        if (await saveAll()) {
+            window.location.href = '/bilan';
+            return;
+        }
+        finishBtn.disabled = false;
     }
 
     // Cleanup old scrollToQuestion

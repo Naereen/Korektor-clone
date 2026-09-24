@@ -47,6 +47,13 @@ class TestOcrPage:
         assert "/api/batch/status" in content
         assert "data.running" in content
 
+    def test_successful_batch_advances_to_ocr_verification(self, client):
+        """Ensure only a completed OCR batch advances to verification."""
+        content = client.get("/ocr").data.decode("utf-8")
+
+        assert "data.action === 'Terminé'" in content
+        assert "window.location.href = '/verify_ocr';" in content
+
 
 class TestVerifyOcrPage:
     def test_markdown_editor_uses_codemirror(self, client):
@@ -59,6 +66,13 @@ class TestVerifyOcrPage:
         assert "codemirror/5.65.16/codemirror.min.js" in content
         assert "CodeMirror.fromTextArea(markdownEditor" in content
         assert "mode: 'markdown'" in content
+
+    def test_finish_action_advances_to_correction(self, client):
+        """Ensure OCR review has an explicit save-aware next action."""
+        content = client.get("/verify_ocr").data.decode("utf-8")
+
+        assert 'id="finish-btn"' in content
+        assert "window.location.href = '/correction';" in content
 
 
 class TestCorrectionPage:
@@ -90,6 +104,24 @@ class TestCorrectionPage:
         content = resp.data.decode("utf-8")
         assert "/api/batch/status" in content
         assert "data.running" in content
+
+    def test_successful_batch_advances_to_validation(self, client):
+        """Ensure only a completed correction batch advances to validation."""
+        content = client.get("/correction").data.decode("utf-8")
+
+        assert "data.action === 'Terminé'" in content
+        assert "window.location.href = '/verify';" in content
+
+
+class TestVerifyCorrectionPage:
+    def test_finish_action_advances_to_bilan(self, client):
+        """Ensure correction review saves before advancing to the dashboard."""
+        response = client.get("/verify")
+        content = response.data.decode("utf-8")
+
+        assert response.status_code == 200
+        assert 'id="finish-btn"' in content
+        assert "window.location.href = '/bilan';" in content
 
 
 class TestDocumentationPage:
