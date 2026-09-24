@@ -19,6 +19,10 @@
         font-weight: 600;
         line-height: 1.1;
     }
+
+    .student-chart-container {
+        height: 380px;
+    }
 </style>
 {% endblock %}
 
@@ -152,11 +156,37 @@
         </div>
     </div>
 </div>
+
+<br>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between gap-3">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Résultats détaillés par étudiant</h5>
+                <select id="student-chart-select" class="form-select form-select-sm" style="max-width: 280px;">
+                    <option value="">Choisir un étudiant...</option>
+                </select>
+            </div>
+            <div class="card-body">
+                <div id="student-chart-empty" class="text-center text-muted py-5">
+                    Sélectionnez un étudiant pour afficher ses points par question.
+                </div>
+                <div class="student-chart-container d-none" id="student-chart-wrapper">
+                    <canvas id="student-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', loadBilan);
+
+let studentChart = null;
 
 async function loadBilan() {
     try {
@@ -176,6 +206,7 @@ async function loadBilan() {
         document.getElementById('stat-max-header').innerText = data.max_points;
 
         updateClassStatistics(data.notes, data.max_points);
+        await loadStudentChartSelector();
 
         // Tableau des notes
         let rows = '';
@@ -221,6 +252,102 @@ async function loadBilan() {
         console.error(e);
         document.getElementById('stats-cards').innerHTML =
             '<div class="col-12"><div class="alert alert-danger">Erreur de chargement</div></div>';
+    }
+}
+
+async function loadStudentChartSelector() {
+    const select = document.getElementById('student-chart-select');
+    try {
+        const response = await fetch('/api/db/copies');
+        if (!response.ok) throw new Error('Impossible de charger les étudiants');
+        const copies = await response.json();
+        copies.forEach(copy => {
+            const option = document.createElement('option');
+            option.value = copy.id;
+            const name = [copy.prenom, copy.nom].filter(Boolean).join(' ');
+            option.innerText = name ? `Copie ${copy.id} - ${name}` : `Copie ${copy.id}`;
+            select.appendChild(option);
+        });
+        select.addEventListener('change', loadStudentChart);
+    } catch (error) {
+        console.error('Erreur chargement étudiants', error);
+    }
+}
+
+async function loadStudentChart() {
+    const copyId = document.getElementById('student-chart-select').value;
+    const emptyState = document.getElementById('student-chart-empty');
+    const chartWrapper = document.getElementById('student-chart-wrapper');
+
+    if (!copyId) {
+        chartWrapper.classList.add('d-none');
+        emptyState.classList.remove('d-none');
+        if (studentChart) {
+            studentChart.destroy();
+            studentChart = null;
+        }
+        return;
+    }
+
+    try {
+        const [baremeResponse, correctionsResponse] = await Promise.all([
+            fetch('/api/db/bareme'),
+            fetch(`/api/db/corrections/${copyId}`)
+        ]);
+        if (!baremeResponse.ok || !correctionsResponse.ok) {
+            throw new Error('Impossible de charger les données de l’étudiant');
+        }
+
+        const bareme = await baremeResponse.json();
+        const corrections = await correctionsResponse.json();
+        const correctionMap = new Map(corrections.map(row => [row.question, Number(row.note)]));
+        const labels = bareme.map(row => row.question);
+        const maximums = bareme.map(row => Number(row.points) || 0);
+        const scores = bareme.map(row => {
+            const score = correctionMap.get(row.question);
+            return Number.isFinite(score) ? score : 0;
+        });
+
+        emptyState.classList.add('d-none');
+        chartWrapper.classList.remove('d-none');
+        if (studentChart) studentChart.destroy();
+
+        studentChart = new Chart(document.getElementById('student-chart'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Barème',
+                        data: maximums,
+                        backgroundColor: '#1769aa'
+                    },
+                    {
+                        label: 'Points obtenus',
+                        data: scores,
+                        backgroundColor: '#72b7e8'
+                    }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Points' }
+                    },
+                    x: {
+                        ticks: { maxRotation: 90, minRotation: 45 }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Erreur chargement graphique étudiant', error);
+        chartWrapper.classList.add('d-none');
+        emptyState.innerText = 'Impossible de charger les résultats de cet étudiant.';
+        emptyState.classList.remove('d-none');
     }
 }
 
