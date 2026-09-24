@@ -4,8 +4,8 @@ The Flask client is used to verify JSON API contracts for project discovery,
 directory selection, and generated rubric output without starting a server.
 """
 
-import json
 import io
+import json
 import os
 import sys
 from unittest.mock import patch
@@ -111,7 +111,7 @@ class TestPdfImport:
         content = client.get("/split").data.decode("utf-8")
         assert 'data-total-items="3"' in content
         assert 'data-pages-per-copy="2"' in content
-        assert 'const pageNum = i * pagesPerCopy + 1;' in content
+        assert "const pageNum = i * pagesPerCopy + 1;" in content
 
         split_response = client.post(
             "/api/split/process",

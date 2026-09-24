@@ -100,11 +100,17 @@ def generate_grade_chart(
 
     ax.hist(scores_20, bins=range(0, 21), color="#c7d2fe", edgecolor="#4f46e5")
     ax.axvline(
-        moyenne_20, color="#f59e0b", linestyle="--", linewidth=2,
+        moyenne_20,
+        color="#f59e0b",
+        linestyle="--",
+        linewidth=2,
         label=f"Moyenne classe ({moyenne_20:.1f}/20)",
     )
     ax.axvline(
-        student_20, color="#16a34a", linestyle="-", linewidth=2,
+        student_20,
+        color="#16a34a",
+        linestyle="-",
+        linewidth=2,
         label=f"Votre note ({student_20:.1f}/20)",
     )
     ax.set_xlim(0, 20)
@@ -136,6 +142,7 @@ def generate_question_profile_chart(
         return False
 
     import matplotlib
+
     matplotlib.use("Agg")
 
     # TODO: improve this
@@ -167,7 +174,9 @@ def generate_question_profile_chart(
 
     ax.plot(x, points, marker="*", color="#2563eb", linewidth=2, label="Barème")
     ax.plot(x, moyenne, marker="d", color="#89a316", linewidth=2, label="Moyenne classe")
-    ax.plot(x, student, marker="o", color="#b826dc", linewidth=2, linestyle="--", label="Votre note")
+    ax.plot(
+        x, student, marker="o", color="#b826dc", linewidth=2, linestyle="--", label="Votre note"
+    )
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
@@ -241,9 +250,7 @@ def build_report_markdown(
 
     if total_points > 0:
         sur_20 = total_note / total_points * 20
-        lines.append(
-            f"**Note totale : {total_note:g} / {total_points:g} ({sur_20:.2f} / 20)**"
-        )
+        lines.append(f"**Note totale : {total_note:g} / {total_points:g} ({sur_20:.2f} / 20)**")
         # TODO: calcule aussi le rang ? Non, c'est un peu humiliant, ça risque d'être mal perçu.
     else:
         lines.append(f"**Note totale : {total_note:g}**")
@@ -310,10 +317,9 @@ def merge_pdfs(pdf_paths: List[str], output_path: str) -> None:
         raise RuntimeError(f"Échec de la fusion PDF (pdftk) : {exc.stderr}") from exc
 
 
-def compile_markdown_to_pdf(md_path: str,
-                            pdf_path: str,
-                            scale: Optional[int] = DEFAULT_SCALE
-                            ) -> None:
+def compile_markdown_to_pdf(
+    md_path: str, pdf_path: str, scale: Optional[int] = DEFAULT_SCALE
+) -> None:
     """Compile a Markdown report to PDF using strapdown2pdf, or pandoc (with the xelatex engine).
 
     strapdown2pdf is tried first, and if it fails, pandoc with xelatex is used.
@@ -330,7 +336,12 @@ def compile_markdown_to_pdf(md_path: str,
         reports_dir = os.path.dirname(md_path)
         try:
             subprocess.run(
-                ["/home/lilian/bin/strapdown2pdf", "--no-open", f"-s{scale}%", os.path.basename(md_path)],
+                [
+                    "/home/lilian/bin/strapdown2pdf",
+                    "--no-open",
+                    f"-s{scale}%",
+                    os.path.basename(md_path),
+                ],
                 check=True,
                 capture_output=True,
                 text=True,

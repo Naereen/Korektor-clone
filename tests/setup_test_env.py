@@ -5,6 +5,7 @@ integration tests can build controlled project directories.  It creates the
 schema, loads source files and OCR data, and resolves student metadata from
 the project CSV files.
 """
+
 #!/usr/bin/env python3
 """
 Script de setup pour l'environnement de test.

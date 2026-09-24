@@ -4,6 +4,7 @@ The functions in this module deliberately protect repository-like directories
 from accidental deletion.  They are used by setup/teardown scripts rather
 than by the production application.
 """
+
 #!/usr/bin/env python3
 """
 Script de nettoyage de l'environnement de test.

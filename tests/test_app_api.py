@@ -56,8 +56,14 @@ def test_batch_api_rejects_invalid_payload(project_client):
     client, project = project_client
     (project / "copies_anonymes_validees" / "Copie_01.pdf").touch()
     assert client.post("/api/batch/start", json={"type": "ocr", "start": "bad"}).status_code == 400
-    assert client.post("/api/batch/start", json={"type": "ocr", "start": 2, "end": 1}).status_code == 400
-    assert client.post("/api/batch/start", data="not-json", content_type="text/plain").status_code == 400
+    assert (
+        client.post("/api/batch/start", json={"type": "ocr", "start": 2, "end": 1}).status_code
+        == 400
+    )
+    assert (
+        client.post("/api/batch/start", data="not-json", content_type="text/plain").status_code
+        == 400
+    )
 
 
 def test_batch_status_and_stop_without_job(project_client):

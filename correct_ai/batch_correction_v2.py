@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import json_repair
+
 from correct_ai.llm_providers import ProviderConfig
 
 # Ajouter le répertoire parent au path pour importer les autres modules

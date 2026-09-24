@@ -93,7 +93,9 @@ def test_rebuild_extraction_for_empty_copy(tmp_path):
 
 def test_analyze_subject_reconstructs_structure_without_llm(monkeypatch, tmp_path):
     """Subject markers should produce byte-reconstructible structure JSON."""
-    (tmp_path / "sujet.md").write_text("Question one (--Q1)\nQuestion two (--Q2)\n", encoding="utf-8")
+    (tmp_path / "sujet.md").write_text(
+        "Question one (--Q1)\nQuestion two (--Q2)\n", encoding="utf-8"
+    )
     generated = {}
 
     def fake_bareme(data, project_dir):

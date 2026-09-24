@@ -4,6 +4,7 @@ The module validates schema creation, subject/rubric imports, OCR protection,
 LLM and teacher correction priority, and query helpers using temporary
 databases.
 """
+
 import hashlib
 import os
 import sqlite3

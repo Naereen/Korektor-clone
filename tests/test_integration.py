@@ -16,10 +16,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 
-from correct_ai.batch_correction_v2 import (
-    correct_all_incremental,
-    correct_copy_incremental_mock,
-)
+from correct_ai.batch_correction_v2 import correct_all_incremental, correct_copy_incremental_mock
 from correct_ai.database import (
     get_bareme,
     get_corrige,

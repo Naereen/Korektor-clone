@@ -65,7 +65,9 @@ def build_incremental_prompt(
 {corrige}
 
 ## BAREME:
-""".format(sujet=sujet, corrige=corrige)
+""".format(
+        sujet=sujet, corrige=corrige
+    )
 
     # Ajouter chaque question du barème
     for q in bareme:

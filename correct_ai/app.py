@@ -14,8 +14,8 @@ server.  The file can be imported as a package module or launched directly
 with ``uv run python correct_ai/app.py``.
 """
 
-import collections
 import base64
+import collections
 import copy
 import csv
 import io
@@ -159,6 +159,7 @@ def inject_project_context():
         "current_project_dir": config.project_dir,
         "current_project_name": config.project_name,
     }
+
 
 APP_ICON_PATH = os.path.join(APP_ROOT, "favicon-512x512.png")
 
@@ -891,9 +892,19 @@ def api_import():
         try:
             pages_per_copy = int(request.form.get("pages_per_copy", 2 if already_a4 else 4))
         except (TypeError, ValueError):
-            return jsonify({"success": False, "error": "Le nombre de pages par copie doit être un entier"}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "Le nombre de pages par copie doit être un entier"}
+                ),
+                400,
+            )
         if pages_per_copy < 1:
-            return jsonify({"success": False, "error": "Le nombre de pages par copie doit être positif"}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "Le nombre de pages par copie doit être positif"}
+                ),
+                400,
+            )
 
         if not file:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
@@ -978,7 +989,12 @@ def split_process():
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "Le pourcentage doit être numérique"}), 400
         if not 0 <= header_ratio <= 0.5:
-            return jsonify({"success": False, "error": "Le pourcentage doit être compris entre 0 et 50 %"}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "Le pourcentage doit être compris entre 0 et 50 %"}
+                ),
+                400,
+            )
 
         doc = get_splitter_doc()
         if not doc:
@@ -1433,7 +1449,10 @@ def _report_paths(copie_info):
     """Return (md_path, pdf_path) for the report of one student, creating the dir."""
     reports_dir = report_builder.get_reports_dir(config.project_dir)
     basename = report_builder.report_basename(
-        copie_info["id"], copie_info.get("etudiant_id"), copie_info.get("nom"), copie_info.get("prenom")
+        copie_info["id"],
+        copie_info.get("etudiant_id"),
+        copie_info.get("nom"),
+        copie_info.get("prenom"),
     )
     return (
         os.path.join(reports_dir, f"{basename}.md"),
@@ -1454,13 +1473,11 @@ def _corrections_total(corrections):
 
 def _get_class_totals(db):
     """Return (list of per-copy totals across the class, max_points from the barème)."""
-    rows = db.execute(
-        """
+    rows = db.execute("""
         SELECT SUM(CASE WHEN validee_par_prof THEN note_prof ELSE note_llm END) as total
         FROM corrections
         GROUP BY copie_id
-        """
-    ).fetchall()
+        """).fetchall()
     max_points = db.execute("SELECT COALESCE(SUM(points), 0) FROM bareme").fetchone()[0] or 0
     totals = [row["total"] for row in rows if row["total"] is not None]
     return totals, max_points
@@ -1468,15 +1485,13 @@ def _get_class_totals(db):
 
 def _get_question_class_stats(db):
     """Return {question: {points, min, max, moyenne}} across the class, from the bareme order."""
-    rows = db.execute(
-        """
+    rows = db.execute("""
         SELECT b.id, b.question, b.points,
                CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END AS note
         FROM bareme b
         LEFT JOIN corrections c ON c.bareme_id = b.id
         ORDER BY b.id
-        """
-    ).fetchall()
+        """).fetchall()
 
     by_id = {}
     order = []
@@ -1512,8 +1527,15 @@ def _build_report_content(db, copie_info, corrections, md_path):
         student_total = _corrections_total(corrections)
         candidate_name = f"graphique_{os.path.splitext(os.path.basename(md_path))[0]}.png"
         candidate_path = os.path.join(os.path.dirname(md_path), candidate_name)
-        if report_builder.generate_grade_chart(student_total, class_totals, max_points, candidate_path):
-            charts.append({"path": candidate_path, "legend": "Répartition des notes de la classe, et de votre note"})
+        if report_builder.generate_grade_chart(
+            student_total, class_totals, max_points, candidate_path
+        ):
+            charts.append(
+                {
+                    "path": candidate_path,
+                    "legend": "Répartition des notes de la classe, et de votre note",
+                }
+            )
 
     if corrections:
         question_stats = _get_question_class_stats(db)
@@ -1533,10 +1555,17 @@ def _build_report_content(db, copie_info, corrections, md_path):
         profile_name = f"profil_{os.path.splitext(os.path.basename(md_path))[0]}.png"
         profile_path = os.path.join(os.path.dirname(md_path), profile_name)
         if report_builder.generate_question_profile_chart(profile_rows, profile_path):
-            charts.append({"path": profile_path, "legend": "Profil par question, comparé à la classe"})
+            charts.append(
+                {"path": profile_path, "legend": "Profil par question, comparé à la classe"}
+            )
 
     return report_builder.build_report_markdown(
-        copie_info, corrections, sujet_title, sujet_date, charts=charts, nom_examen=config.project_name
+        copie_info,
+        corrections,
+        sujet_title,
+        sujet_date,
+        charts=charts,
+        nom_examen=config.project_name,
     )
 
 
@@ -1728,7 +1757,9 @@ class ReportBatchJob:
                 if not self.stop_requested and merged_pdf_paths:
                     self.current_action = "Fusion des PDF (pdftk)..."
                     merged_name = f"rapport_total_date-{datetime.now():%d-%m-%Y}.pdf"
-                    merged_path = os.path.join(report_builder.get_reports_dir(project_dir), merged_name)
+                    merged_path = os.path.join(
+                        report_builder.get_reports_dir(project_dir), merged_name
+                    )
                     try:
                         report_builder.merge_pdfs(merged_pdf_paths, merged_path)
                         self.merged_pdf = merged_name
@@ -1796,7 +1827,9 @@ def api_rapport_batch_merged():
     if not report_batch_job.merged_pdf:
         return "Aucun PDF fusionné disponible", 404
 
-    path = os.path.join(report_builder.get_reports_dir(config.project_dir), report_batch_job.merged_pdf)
+    path = os.path.join(
+        report_builder.get_reports_dir(config.project_dir), report_batch_job.merged_pdf
+    )
     if not os.path.exists(path):
         return "Fichier introuvable", 404
 
@@ -2073,8 +2106,7 @@ def export_bilan_csv():
     try:
         db = get_db(config.project_dir)
         question_count = db.execute("SELECT COUNT(*) FROM bareme").fetchone()[0]
-        rows = db.execute(
-            """
+        rows = db.execute("""
             SELECT copies.id AS copie_id,
                    copies.prenom,
                    copies.nom,
@@ -2086,29 +2118,40 @@ def export_bilan_csv():
             LEFT JOIN corrections ON corrections.copie_id = copies.id
             GROUP BY copies.id
             ORDER BY copies.id
-            """
-        ).fetchall()
+            """).fetchall()
         max_points = db.execute("SELECT COALESCE(SUM(points), 0) FROM bareme").fetchone()[0]
 
         output = io.StringIO(newline="")
         writer = csv.writer(output)
-        writer.writerow([
-            "Copie_ID", "Prenom", "Nom", "Note_brute", "Note_sur_20",
-            "Questions_corrigees", "Nombre_questions", "Statut",
-        ])
+        writer.writerow(
+            [
+                "Copie_ID",
+                "Prenom",
+                "Nom",
+                "Note_brute",
+                "Note_sur_20",
+                "Questions_corrigees",
+                "Nombre_questions",
+                "Statut",
+            ]
+        )
         for row in rows:
             total = row["total"]
-            score_out_of_twenty = total / max_points * 20 if total is not None and max_points else ""
-            writer.writerow([
-                row["copie_id"],
-                row["prenom"] or "",
-                row["nom"] or "",
-                total if total is not None else "",
-                round(score_out_of_twenty, 2) if score_out_of_twenty != "" else "",
-                row["nb_corr"],
-                question_count,
-                "Complète" if row["nb_corr"] >= question_count else "Partielle",
-            ])
+            score_out_of_twenty = (
+                total / max_points * 20 if total is not None and max_points else ""
+            )
+            writer.writerow(
+                [
+                    row["copie_id"],
+                    row["prenom"] or "",
+                    row["nom"] or "",
+                    total if total is not None else "",
+                    round(score_out_of_twenty, 2) if score_out_of_twenty != "" else "",
+                    row["nb_corr"],
+                    question_count,
+                    "Complète" if row["nb_corr"] >= question_count else "Partielle",
+                ]
+            )
 
         response = send_file(
             io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -2167,8 +2210,7 @@ def api_bilan_stats():
         max_points = db.execute("SELECT SUM(points) FROM bareme").fetchone()[0] or 0
 
         # Moyenne des points obtenus par question, en utilisant la note finale.
-        question_averages = db.execute(
-            """
+        question_averages = db.execute("""
             SELECT b.question,
                    b.points,
                    ROUND(AVG(CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END), 2) AS moyenne
@@ -2176,11 +2218,9 @@ def api_bilan_stats():
             LEFT JOIN corrections c ON c.bareme_id = b.id
             GROUP BY b.id
             ORDER BY b.id
-            """
-        ).fetchall()
+            """).fetchall()
 
-        question_distributions = db.execute(
-            """
+        question_distributions = db.execute("""
             SELECT b.question,
                    b.points,
                    c.copie_id,
@@ -2188,8 +2228,7 @@ def api_bilan_stats():
             FROM bareme b
             LEFT JOIN corrections c ON c.bareme_id = b.id
             ORDER BY b.id, c.copie_id
-            """
-        ).fetchall()
+            """).fetchall()
         distributions = {}
         for row in question_distributions:
             question = row["question"]
