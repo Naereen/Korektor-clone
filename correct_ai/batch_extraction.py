@@ -271,6 +271,7 @@ def extract_copy(
                 "Tu es un expert en transcription fidèle de copies d'examen manuscrites. "
                 "Transcris EXACTEMENT ce qui est écrit, sans interpréter, sans corriger. "
                 "Place le texte transcrit entre <markdown> et </markdown>. "
+                "Ce qui ressemble à du code sera entouré de backticks ` si c'est dans une phrase, et de triples backticks ``` si c'est un bloc de code. Ne modifie pas le contenu du code. Les codes sont généralement en langages OCaml, C, SQL ou Python."
                 "Ne retourne RIEN d'autre."
             )
 
