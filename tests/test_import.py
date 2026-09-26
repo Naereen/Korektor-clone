@@ -57,6 +57,14 @@ class TestImportPage:
         assert "currentProjectName.textContent = data.project_name" in content
         assert "currentProjectName.parentElement.title = data.project_dir" in content
 
+    def test_project_directory_history_controls(self, client):
+        """Validated paths can be recalled from the project field by mouse or keyboard."""
+        content = client.get("/import").data.decode("utf-8")
+        assert 'id="projectDirHistory"' in content
+        assert "projectDirInput.addEventListener('dblclick'" in content
+        assert "event.key === 'ArrowDown'" in content
+        assert "localStorage.setItem" in content
+
     def test_page_defaults_to_preserving_a4_pdf(self, client):
         """Ensure A4 imports are preserved by default in the UI."""
         content = client.get("/import").data.decode("utf-8")

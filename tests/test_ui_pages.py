@@ -7,6 +7,7 @@ and force-processing options are present in the rendered HTML.
 import json
 import os
 import sys
+from html import escape
 
 import pytest
 
@@ -147,10 +148,13 @@ class TestDocumentationPage:
         assert content.index("Bilan") < content.index("Documentation")
 
     def test_navigation_displays_current_project_directory(self, client):
-        """Ensure every page exposes the active project directory in the navbar."""
+        """Ensure the navbar shows the project and exposes its full path."""
+        from app import config
+
         content = client.get("/documentation").data.decode("utf-8")
-        assert "Dossier de travail courant" in content
-        assert "project-dir-path" in content
+        assert '<a href="/settings">Projet :</a>' in content
+        assert 'class="project-dir-path" id="currentProjectName"' in content
+        assert f'title="{escape(config.project_dir, quote=True)}"' in content
 
     def test_footer_contains_project_and_repository_information(self, client):
         """Ensure the shared footer exposes project, navigation, and version data."""

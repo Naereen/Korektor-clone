@@ -17,16 +17,23 @@
                 <h5 class="mb-0"><i class="bi bi-folder2-open"></i> Dossier du projet (chemin absolu)</h5>
             </div>
             <div class="card-body">
-                <div class="input-group mb-2">
-                    <input type="text" class="form-control font-monospace" id="projectDir"
-                           value="{{ current_dir }}" placeholder="/chemin/vers/projet">
-                    <button class="btn btn-outline-secondary" type="button" id="btnBrowse"
-                            title="Parcourir...">
-                        <i class="bi bi-folder-symlink"></i>
-                    </button>
-                    <button class="btn btn-primary" type="button" id="btnSetDir">
-                        <i class="bi bi-check-lg"></i> Valider
-                    </button>
+                <div class="position-relative mb-2" id="projectDirControl">
+                    <div class="input-group">
+                        <input type="text" class="form-control font-monospace" id="projectDir"
+                               name="project_dir" autocomplete="on" aria-autocomplete="list"
+                               aria-controls="projectDirHistory" aria-expanded="false"
+                               value="{{ current_dir }}" placeholder="/chemin/vers/projet">
+                        <button class="btn btn-outline-secondary" type="button" id="btnBrowse"
+                                title="Parcourir...">
+                            <i class="bi bi-folder-symlink"></i>
+                        </button>
+                        <button class="btn btn-primary" type="button" id="btnSetDir">
+                            <i class="bi bi-check-lg"></i> Valider
+                        </button>
+                    </div>
+                    <div id="projectDirHistory" class="list-group position-absolute top-100 start-0 w-100 shadow-sm d-none"
+                         role="listbox" aria-label="Dossiers utilisés récemment"
+                         style="z-index: 1050; max-height: 240px; overflow-y: auto;"></div>
                 </div>
                 <div id="dirFeedback" class="small"></div>
             </div>
@@ -153,8 +160,101 @@ function updatePdfOptions() {
 document.getElementById('alreadyA4').addEventListener('change', updatePdfOptions);
 
 // === Section 1: Dossier projet ===
+const projectDirInput = document.getElementById('projectDir');
+const projectDirHistory = document.getElementById('projectDirHistory');
+const projectDirControl = document.getElementById('projectDirControl');
+const projectDirHistoryKey = 'korektor.projectDirHistory';
+let recentProjectDirs = [];
+let selectedHistoryIndex = -1;
+
+try {
+    const saved = JSON.parse(localStorage.getItem(projectDirHistoryKey) || '[]');
+    if (Array.isArray(saved)) {
+        recentProjectDirs = saved.filter(path => typeof path === 'string' && path.trim()).slice(0, 10);
+    }
+} catch (error) {
+    recentProjectDirs = [];
+}
+
+function closeProjectDirHistory() {
+    projectDirHistory.classList.add('d-none');
+    projectDirInput.setAttribute('aria-expanded', 'false');
+    projectDirInput.removeAttribute('aria-activedescendant');
+    selectedHistoryIndex = -1;
+}
+
+function showProjectDirHistory(filter = '') {
+    const matching = recentProjectDirs.filter(path => path.toLowerCase().includes(filter.toLowerCase()));
+    projectDirHistory.replaceChildren();
+    matching.forEach((path, index) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.id = 'projectDirOption' + index;
+        option.className = 'list-group-item list-group-item-action text-start text-break font-monospace small';
+        option.setAttribute('role', 'option');
+        option.textContent = path;
+        option.dataset.path = path;
+        projectDirHistory.appendChild(option);
+    });
+    selectedHistoryIndex = -1;
+    projectDirHistory.classList.toggle('d-none', matching.length === 0);
+    projectDirInput.setAttribute('aria-expanded', String(matching.length > 0));
+}
+
+function selectProjectDirHistory(option) {
+    projectDirInput.value = option.dataset.path;
+    closeProjectDirHistory();
+    projectDirInput.focus();
+}
+
+function rememberProjectDir(path) {
+    if (!path) return;
+    recentProjectDirs = [path, ...recentProjectDirs.filter(previous => previous !== path)].slice(0, 10);
+    try {
+        localStorage.setItem(projectDirHistoryKey, JSON.stringify(recentProjectDirs));
+    } catch (error) {
+        // The list remains available until the page is reloaded if storage is disabled.
+    }
+    closeProjectDirHistory();
+}
+
+projectDirInput.addEventListener('dblclick', () => showProjectDirHistory());
+projectDirInput.addEventListener('input', () => {
+    if (!projectDirHistory.classList.contains('d-none')) {
+        showProjectDirHistory(projectDirInput.value.trim());
+    }
+});
+projectDirInput.addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (projectDirHistory.classList.contains('d-none')) showProjectDirHistory();
+        const options = projectDirHistory.querySelectorAll('[role="option"]');
+        if (!options.length) return;
+        event.preventDefault();
+        selectedHistoryIndex = (selectedHistoryIndex + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+        options.forEach((option, index) => option.classList.toggle('active', index === selectedHistoryIndex));
+        projectDirInput.setAttribute('aria-activedescendant', options[selectedHistoryIndex].id);
+        options[selectedHistoryIndex].scrollIntoView({block: 'nearest'});
+    } else if (event.key === 'Enter') {
+        if (!projectDirHistory.classList.contains('d-none') && selectedHistoryIndex >= 0) {
+            event.preventDefault();
+            selectProjectDirHistory(projectDirHistory.querySelectorAll('[role="option"]')[selectedHistoryIndex]);
+        } else {
+            document.getElementById('btnSetDir').click();
+        }
+    } else if (event.key === 'Escape') {
+        closeProjectDirHistory();
+    }
+});
+projectDirHistory.addEventListener('click', event => {
+    const option = event.target.closest('[role="option"]');
+    if (option) selectProjectDirHistory(option);
+});
+document.addEventListener('click', event => {
+    if (!projectDirControl.contains(event.target)) closeProjectDirHistory();
+});
+
 document.getElementById('btnSetDir').addEventListener('click', function() {
-    const dir = document.getElementById('projectDir').value.trim();
+    const dir = projectDirInput.value.trim();
     if (!dir) return;
     fetch('/api/project/set', {
         method: 'POST',
@@ -165,6 +265,7 @@ document.getElementById('btnSetDir').addEventListener('click', function() {
     .then(data => {
         const fb = document.getElementById('dirFeedback');
         if (data.success) {
+            rememberProjectDir(data.project_dir);
             fb.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Dossier défini : ' + data.project_dir + '</span>';
             const currentProjectName = document.getElementById('currentProjectName');
             currentProjectName.textContent = data.project_name;
