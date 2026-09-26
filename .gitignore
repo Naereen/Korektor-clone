@@ -31,6 +31,12 @@ env/
 ## Configuration for CorrectAI (Korektor)o
 .correctai_config.json
 
+## Examples of evaluations
+example-*
+example_*
+exemple-*
+exemple_*
+
 ## TP et DS etc
 ds_*
 ds-*

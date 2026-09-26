@@ -51,6 +51,10 @@ from database import get_db
 from database import get_sujet as db_get_sujet
 from llm_providers import get_provider
 
+# This module is deliberately an orchestration layer rather than a domain layer.
+# Routes translate browser requests into calls to the PDF, OCR, correction, and
+# reporting modules; those modules own the detailed business algorithms.
+
 # --- Configuration & Path Management ---
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.dirname(APP_ROOT)  # Go up to project root (where code is)
@@ -60,6 +64,8 @@ SPLIT_SETTINGS_FILENAME = ".korektor_split.json"
 
 
 class ProjectConfig:
+    """Hold the currently selected project and centralize its file layout."""
+
     def __init__(self):
         """Initialize paths and load persisted project configuration."""
         self.project_dir = os.path.join(APP_ROOT, "exemple")
@@ -120,6 +126,9 @@ class ProjectConfig:
 
     def get_output_dir(self):
         """Return and create the directory containing anonymized copies."""
+        # The directory is shared by the splitter, OCR workflow, and extraction
+        # batch, so keeping its name in one place prevents path drift between UI
+        # routes and background workers.
         # User requested subfolders for correction: 'corrections' or keep 'copies_anonymes_validees'
         # Let's keep the legacy name for continuity, or strictly follow "sub-dossiers".
         # Current valid data is in 'copies_anonymes_validees'.
@@ -150,6 +159,8 @@ class ProjectConfig:
 
 config = ProjectConfig()
 
+# Flask is created once at import time so tests can use the same route table
+# through ``app.test_client()`` without starting a development server.
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
@@ -171,7 +182,8 @@ def app_icon():
     return send_file(APP_ICON_PATH, mimetype="image/png")
 
 
-# Global state for split view
+# The split-view document is a read-only process-level cache.  It is invalidated
+# whenever the active project or the imported PDF changes.
 splitter_doc = None
 
 
@@ -187,6 +199,8 @@ def get_splitter_doc():
 
 
 # --- Settings Route ---
+# Project selection changes the root of every subsequent file and database
+# operation, so the cached PDF handle must be closed before switching projects.
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     """Render or update the project settings page."""
@@ -267,7 +281,8 @@ def api_project_check():
         "copiesA3.pdf": os.path.exists(os.path.join(project_dir, "copiesA3.pdf")),
         "copiesA4_sorted.pdf": os.path.exists(os.path.join(project_dir, "copiesA4_sorted.pdf")),
     }
-    # Compter les copies
+    # Count both generated PDFs and extracted-copy directories: they represent
+    # different stages of the workflow and can legitimately coexist.
     copies_dir = os.path.join(project_dir, "copies_anonymes_validees")
     nb_pdfs = 0
     nb_extractions = 0
@@ -369,6 +384,8 @@ def api_bareme_generate():
 # --- UTILS: Student Loading ---
 def load_students():
     """Load student metadata from the project's CSV file."""
+    # Student exports are produced by several tools, hence the tolerant header
+    # and delimiter detection instead of assuming one fixed CSV dialect.
     csv_path = config.get_path("liste-etudiants.csv")
     students = []
     if os.path.exists(csv_path):
@@ -446,6 +463,9 @@ def load_students():
 # --- UTILS: A3 Split Logic (Refactored from sortpdf.py) ---
 def process_a3_split(input_stream, output_path, sort_booklet=True):
     """Split booklet pages into A4 pages and optionally reorder them."""
+    # A booklet scan contains two logical A4 pages on each physical page.  The
+    # split is done with page boxes, avoiding rasterization and preserving PDF
+    # text/image quality for the later OCR step.
     reader = PdfReader(input_stream)
     writer = PdfWriter()
 
@@ -476,8 +496,9 @@ def process_a3_split(input_stream, output_path, sort_booklet=True):
             current_chunk_pages.append(page_right)
 
         if sort_booklet and len(current_chunk_pages) == 4:
-            # Reorder 4,1,2,3 -> 1,2,3,4
-            # Input sequence (Split): P1L(4), P1R(1), P2L(2), P2R(3) matches visual description
+            # Reorder booklet reading order: the physical scan is commonly
+            # [page 4, page 1, page 2, page 3], while the validator expects
+            # [page 1, page 2, page 3, page 4].
             p4 = current_chunk_pages[0]
             p1 = current_chunk_pages[1]
             p2 = current_chunk_pages[2]
@@ -522,6 +543,8 @@ import time
 
 # --- Batch Processing State ---
 class BatchJob:
+    """Expose cooperative background processing through a polling-friendly state."""
+
     def __init__(self):
         """Initialize the state shared by one background batch job."""
         self.running = False
@@ -533,6 +556,8 @@ class BatchJob:
 
     def start_batch_function(self, job_type, start, end, project_dir, force=False):
         """Start an extraction or correction job in a background thread."""
+        # The HTTP request only starts the worker.  Progress and logs are kept
+        # on this object because the browser polls them through /api/batch/status.
         if self.running:
             return False
         self.running = True
@@ -543,6 +568,9 @@ class BatchJob:
 
         def run_wrapper():
             """Execute the selected batch while capturing output for polling."""
+            # Batch code predates this web layer and writes to stdout/logging;
+            # temporarily redirect both streams so the existing UI can display
+            # one consistent activity feed.
             # Sauvegarder le handler original du logger korektor
             import logging
 
@@ -632,6 +660,9 @@ class BatchJob:
                             self.progress = int((count / total) * 100)
 
                     elif job_type == "correction":
+                        # Correction depends on a complete local context: the
+                        # schema, extracted answers, subject, answer key, and
+                        # rubric must all be available before the LLM is called.
                         # Obtenir la base de données (init_db est appelé uniquement si tables n'existent pas)
                         db = get_db(project_dir)
                         # Vérifier si les tables existent déjà pour éviter init inutile
@@ -809,7 +840,8 @@ def batch_start():
     req_start = data.get("start")
     req_end = data.get("end")
 
-    # Determine range
+    # Determine a range from the copies that actually exist.  This keeps the
+    # endpoint independent from assumptions about contiguous copy numbering.
     existing = get_copy_ids()  # helper needed
     if not existing:
         return jsonify({"success": False, "error": "Aucune copie trouvée"}), 400
@@ -1010,7 +1042,9 @@ def split_process():
             return jsonify({"success": False, "error": "Doc not loaded"}), 500
         pages_per_copy = config.get_pages_per_copy()
 
-        # Logic from split_copies.py
+        # Convert the flat browser selection into contiguous segments.  A
+        # continuation or repeated student ID extends the current copy; any
+        # other selection starts a new copy.
         copy_segments = []
         current_copy_segments = []
         current_student_id = None
@@ -1037,7 +1071,8 @@ def split_process():
             copy_segments.append(current_copy_segments)
             copy_students.append(current_student_id)
 
-        # Duplicate check logic... (omitted for brevity, can re-add if needed, but important)
+        # Each generated PDF is also registered in correspondance.csv, which is
+        # the file-based bridge between anonymous copy numbers and students.
 
         output_dir = config.get_output_dir()
         csv_path = config.get_path("correspondance.csv")
@@ -1188,6 +1223,9 @@ def get_pdf(copie_id):
 # Use subfolders for data to keep clean
 def get_copy_dir(copie_id):
     """Return and create the file directory for one copy."""
+    # Legacy file-based endpoints use this directory, while newer correction
+    # and reporting routes use SQLite.  Keeping the adapter is important for
+    # old projects and for the validation pages.
     d = os.path.join(config.get_output_dir(), copie_id)
     if not os.path.exists(d):
         os.makedirs(d)
@@ -1358,6 +1396,8 @@ def get_db_corrections(copie_id):
             db.commit()
             return jsonify({"success": True})
 
+        # The prof-approved value wins over the LLM value.  This rule is used
+        # consistently by validation, reports, exports, and dashboard stats.
         corrections = db.execute(
             """
             SELECT
@@ -1527,6 +1567,8 @@ def _get_question_class_stats(db):
 
 def _build_report_content(db, copie_info, corrections, md_path):
     """Build the report Markdown, generating the class-comparison charts PNGs alongside it."""
+    # Reports are generated from final correction values and current class
+    # statistics, so a teacher edit is reflected in both the prose and charts.
     sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
 
     charts = []
@@ -1705,6 +1747,9 @@ class ReportBatchJob:
 
     def start(self, project_dir):
         """Start the background thread iterating over every copy, unless already running."""
+        # Report generation is intentionally independent from the correction
+        # worker: teachers can regenerate deliverables without rerunning the
+        # expensive OCR/LLM pipeline.
         if self.running:
             return False
         self.running = True
@@ -1928,7 +1973,8 @@ def get_ocr_pdf(copie_id):
     if not os.path.exists(pdf_path):
         return "PDF not found", 404
 
-    # If a specific page is requested, return it as an image
+    # PDF delivery and page-image delivery share one endpoint so the OCR screen
+    # can use the same copy identifier for its document viewer and page editor.
     if page_num is not None:
         try:
             page_index = int(page_num) - 1
@@ -2021,7 +2067,8 @@ def rebuild_extraction(copie_id):
     extraction_path = os.path.join(copy_dir, "extraction.md")
 
     try:
-        # Lire TOUS les fichiers pageXX.md dans le dossier
+        # Page files are the editable source of truth for OCR verification;
+        # extraction.md is a derived aggregate consumed by correction.
         page_files = sorted(
             [f for f in os.listdir(copy_dir) if f.startswith("page") and f.endswith(".md")]
         )
@@ -2098,6 +2145,7 @@ def export_bilan_graphs():
     saved_files = []
 
     try:
+        import binascii
         for graph in data["graphs"]:
             if not isinstance(graph, dict):
                 continue
@@ -2114,7 +2162,7 @@ def export_bilan_graphs():
             with open(os.path.join(output_dir, filename), "wb") as image_file:
                 image_file.write(image_bytes)
             saved_files.append(filename)
-    except (ValueError, base64.binascii.Error) as error:
+    except (ValueError, binascii.Error) as error:
         return jsonify({"success": False, "error": f"PNG invalide : {error}"}), 400
 
     return jsonify({"success": True, "directory": output_dir, "files": saved_files})
@@ -2194,7 +2242,8 @@ def api_bilan_stats():
     try:
         db = get_db(config.project_dir)
 
-        # Nombre de copies
+        # This endpoint is read-only: all dashboard values are derived from the
+        # database so the UI does not need to reconcile several file formats.
         nb_copies = db.execute("SELECT COUNT(*) FROM copies").fetchone()[0]
 
         # Nombre de questions dans le barème
