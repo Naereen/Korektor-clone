@@ -164,12 +164,59 @@ config = ProjectConfig()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
+def get_repository_context():
+    """Return safe, display-ready metadata for the shared application footer."""
+    fallback = {
+        "commit_short": "inconnu",
+        "commit_message": "Version locale",
+        "commit_date": "",
+        "commit_url": None,
+        "repository_url": "https://github.com/Naereen/Korektor-clone",
+    }
+    try:
+        commit = subprocess.run(
+            ["git", "log", "-1", "--format=%h%x1f%s%x1f%ad", "--date=short"],
+            cwd=APP_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        ).stdout.strip().split("\x1f")
+        remote = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=APP_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        ).stdout.strip()
+        repository_url = remote.rstrip("/")
+        if repository_url.startswith("git@github.com:"):
+            repository_url = "https://github.com/" + repository_url.split(":", 1)[1]
+        if repository_url.endswith(".git"):
+            repository_url = repository_url[:-4]
+        if len(commit) == 3 and "github.com/" in repository_url:
+            fallback.update(
+                {
+                    "commit_short": commit[0],
+                    "commit_message": commit[1],
+                    "commit_date": commit[2],
+                    "commit_url": f"{repository_url}/commit/{commit[0]}",
+                    "repository_url": repository_url,
+                }
+            )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return fallback
+
+
 @app.context_processor
 def inject_project_context():
     """Expose the active project directory to every rendered template."""
     return {
         "current_project_dir": config.project_dir,
         "current_project_name": config.project_name,
+        "repository": get_repository_context(),
     }
 
 

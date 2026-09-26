@@ -151,3 +151,12 @@ class TestDocumentationPage:
         content = client.get("/documentation").data.decode("utf-8")
         assert "Dossier de travail courant" in content
         assert "project-dir-path" in content
+
+    def test_footer_contains_project_and_repository_information(self, client):
+        """Ensure the shared footer exposes project, navigation, and version data."""
+        content = client.get("/documentation").data.decode("utf-8")
+        assert "site-footer" in content
+        assert "Projet actif" in content
+        assert "Philippe HELLUY" in content
+        assert "Commit" in content
+        assert "/documentation" in content
