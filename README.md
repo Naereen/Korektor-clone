@@ -67,7 +67,9 @@ Le système utilise désormais une base SQLite pour stocker toutes les correctio
 *   Table `corrige` : Corrigé officiel
 *   Table `bareme` : Barème avec questions, réponses attendues, points
 *   Table `copies` : Métadonnées des copies
-*   Table `corrections` : **Toutes les corrections avec `raisonnement_llm`** (note, commentaire, raisonnement détaillé, champs QCM)
+*   Table `corrections` : **Toutes les corrections avec `raisonnement_llm`** (note, commentaire, raisonnement détaillé, champs QCM). Les colonnes facultatives `crop_image_path` (chemin du PNG) et `bounding_boxes` (texte JSON) conservent les extraits de questions et leurs zones. Les anciennes bases sont migrées automatiquement à leur ouverture.
+
+Les zones sont enregistrées sous la forme `[{"box_2d": [ymin, xmin, ymax, xmax], "label": "Q1"}]`, avec des coordonnées entières de 0 à 1000. La fonction `crop_and_annotate_question` du module `correct_ai.image_processing` produit un PNG découpé et surligné à partir de l'image de la page.
 
 Certaines rubriques ne sont pas encore utilisées, mais la base est un bon point de départ pour vérifier ou affiner les corrections en discutant avec des agents IA.
 

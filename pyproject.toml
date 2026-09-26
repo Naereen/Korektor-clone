@@ -1,6 +1,6 @@
 [project]
 name = "korektor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Assistant IA de correction de copies manuscrites"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,6 +12,7 @@ dependencies = [
     "json-repair",
     "tiktoken",
     "matplotlib",
+    "pillow",
 ]
 
 [dependency-groups]

@@ -164,6 +164,50 @@ def test_db_with_data(test_db_with_schema, tmp_path):
 class TestSchema:
     """Tests du schéma de la base de données."""
 
+    def test_new_corrections_store_image_metadata(self, tmp_path):
+        """New databases store a PNG path and normalized boxes as JSON text."""
+        import json
+
+        from correct_ai.database import get_db, init_db
+
+        conn = get_db(str(tmp_path))
+        init_db(conn)
+        boxes = [{"box_2d": [250, 100, 750, 900], "label": "Q1"}]
+        conn.execute(
+            """INSERT INTO corrections
+               (copie_id, bareme_id, reponse_etudiant, crop_image_path, bounding_boxes)
+               VALUES (?, ?, ?, ?, ?)""",
+            (1, 1, "reponse", "snippets/q1.png", json.dumps(boxes)),
+        )
+        row = conn.execute("SELECT crop_image_path, bounding_boxes FROM corrections").fetchone()
+        assert row["crop_image_path"] == "snippets/q1.png"
+        assert json.loads(row["bounding_boxes"]) == boxes
+        conn.close()
+
+    def test_existing_corrections_migrated_on_open(self, tmp_path):
+        """An existing project's corrections gain nullable image metadata."""
+        from correct_ai.database import get_db
+
+        db_path = tmp_path / "korektor.db"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "CREATE TABLE corrections (id INTEGER PRIMARY KEY, reponse_etudiant TEXT NOT NULL)"
+            )
+            conn.execute("INSERT INTO corrections VALUES (1, 'ancienne reponse')")
+
+        for _ in range(2):
+            conn = get_db(str(tmp_path))
+            columns = {row["name"]: row for row in conn.execute("PRAGMA table_info(corrections)")}
+            assert columns["crop_image_path"]["type"] == "TEXT"
+            assert columns["bounding_boxes"]["type"] == "TEXT"
+            assert columns["crop_image_path"]["notnull"] == 0
+            assert columns["bounding_boxes"]["notnull"] == 0
+            row = conn.execute("SELECT * FROM corrections WHERE id = 1").fetchone()
+            assert row["reponse_etudiant"] == "ancienne reponse"
+            assert row["crop_image_path"] is None
+            assert row["bounding_boxes"] is None
+            conn.close()
+
     def test_all_tables_created(self, test_db_with_schema):
         """1.1.1 : Vérifier que toutes les tables sont créées."""
         tables = test_db_with_schema.execute(

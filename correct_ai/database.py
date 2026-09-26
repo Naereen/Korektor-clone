@@ -49,7 +49,20 @@ def get_db(project_dir: str) -> sqlite3.Connection:
     os.makedirs(project_dir, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    migrate_corrections(conn)
     return conn
+
+
+def migrate_corrections(conn: sqlite3.Connection) -> None:
+    """Add nullable image metadata to an existing corrections table if needed."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(corrections)")}
+    if not columns:
+        return
+
+    for column in ("crop_image_path", "bounding_boxes"):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE corrections ADD COLUMN {column} TEXT")
+    conn.commit()
 
 
 def init_db(conn: sqlite3.Connection) -> None:
@@ -111,6 +124,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             commentaire_prof TEXT,
             validee_par_prof BOOLEAN DEFAULT 0,
             date_validation DATETIME,
+            crop_image_path TEXT,
+            bounding_boxes TEXT,
             FOREIGN KEY(copie_id) REFERENCES copies(id),
             FOREIGN KEY(bareme_id) REFERENCES bareme(id),
             UNIQUE(copie_id, bareme_id)
@@ -128,6 +143,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_corrections_bareme ON corrections(bareme_id);
         CREATE INDEX IF NOT EXISTS idx_corrections_validees ON corrections(copie_id) WHERE validee_par_prof = 1;
     """)
+    migrate_corrections(conn)
     conn.commit()
 
 

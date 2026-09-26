@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from contextlib import closing
 from datetime import datetime
 
 import pymupdf
@@ -162,6 +163,8 @@ config = ProjectConfig()
 # Flask is created once at import time so tests can use the same route table
 # through ``app.test_client()`` without starting a development server.
 app = Flask(__name__, template_folder="templates", static_folder="static")
+with closing(get_db(config.project_dir)) as startup_db:
+    database.init_db(startup_db)
 
 
 def get_repository_context():
