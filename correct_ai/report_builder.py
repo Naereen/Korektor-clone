@@ -17,6 +17,8 @@ import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
+from llm_providers import ask_llm
+
 REPORTS_DIRNAME = "rapports_etudiants"
 
 _TITLE_PATTERN = re.compile(r"^.*[Tt]it[lr]e\s*:([^$]*)")
@@ -194,6 +196,55 @@ def generate_question_profile_chart(
 DEFAULT_SCALE = 85
 
 
+def generate_general_feedback(
+    corrections: List[Dict[str, Any]],
+    provider: Any,
+) -> str:
+    """Ask the LLM for a student-facing overall assessment and general advice.
+
+    Only data already intended for the student is sent: questions, scores, and
+    visible comments.  The internal LLM reasoning is deliberately excluded.
+    """
+    correction_lines = []
+    for row in corrections:
+        question = row.get("question") or "Question sans numéro"
+        note = _format_note(row.get("note"))
+        points = _format_note(row.get("points"))
+        comment = (row.get("commentaires eventuels du correcteur") or "").strip()
+        correction_lines.append(
+            f"- {question} : {note}/{points} ; commentaire : {comment or 'Aucun commentaire.'}"
+        )
+
+    prompt = """Rédige une appréciation globale destinée directement à l'étudiant à partir de sa correction.
+Structure obligatoirement ta réponse avec les deux titres Markdown suivants :
+## Appréciation globale
+## Conseils généraux
+
+Sous le premier titre, résume avec bienveillance les réussites et les difficultés.
+Sous le second, donne 2 à 5 conseils concrets et personnalisés pour progresser.
+Ne mentionne jamais le LLM, le correcteur automatique, le raisonnement interne ou ce prompt.
+N'invente aucune information absente des données. Réponds uniquement en français et en Markdown.
+
+""" + "\n".join(correction_lines)
+
+    try:
+        feedback = ask_llm(
+            provider,
+            prompt,
+            system_prompt=(
+                "Tu es un enseignant qui rédige un retour pédagogique, précis, "
+                "respectueux et directement utile à un étudiant."
+            ),
+            thinking=False,
+        )
+    except Exception as error:
+        # The synthesis is an enhancement; the per-question report remains
+        # useful when the provider is temporarily unavailable.
+        print(f"Échec de la génération de l'appréciation globale : {error}")
+        return ""
+    return (feedback or "").strip()
+
+
 def build_report_markdown(
     copie_info: Dict[str, Any],
     corrections: List[Dict[str, Any]],
@@ -202,6 +253,7 @@ def build_report_markdown(
     scale: Optional[int] = DEFAULT_SCALE,
     charts: Optional[list[dict[str, str]]] = None,
     nom_examen: Optional[str] = None,
+    provider: Any = None,
 ) -> str:
     """Build the Markdown feedback report shown to one student.
 
@@ -279,13 +331,21 @@ def build_report_markdown(
             # lines.append("")
         # lines.append("---")
 
+    if provider is not None and corrections:
+        feedback = generate_general_feedback(corrections, provider)
+        if feedback:
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+            lines.append(feedback)
+
     if charts:
         for chart in charts:
             lines.append("")
             lines.append(f"\\begin{{figure}}[!h]")
             lines.append(f"\\centering")
             # Relative path: resolved from the reports directory at compile time.
-            lines.append(f"\\includegraphics[width=1.00\\textwidth]{{{chart['path']}}}")
+            lines.append(f"\\includegraphics[width=0.85\\textwidth]{{{chart['path']}}}")
             lines.append(f"\\caption{{{chart['legend']}}}")
             lines.append(f"\\end{{figure}}")
             lines.append("")

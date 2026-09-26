@@ -1570,6 +1570,9 @@ def _build_report_content(db, copie_info, corrections, md_path):
     # Reports are generated from final correction values and current class
     # statistics, so a teacher edit is reflected in both the prose and charts.
     sujet_title, sujet_date = report_builder.parse_sujet_header(db_get_sujet(db))
+    # The final LLM call is made after all per-question feedback is available,
+    # allowing it to synthesize the complete copy rather than isolated answers.
+    provider = get_provider()
 
     charts = []
 
@@ -1617,6 +1620,7 @@ def _build_report_content(db, copie_info, corrections, md_path):
         sujet_date,
         charts=charts,
         nom_examen=config.project_name,
+        provider=provider,
     )
 
 
