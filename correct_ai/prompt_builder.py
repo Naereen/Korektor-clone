@@ -108,7 +108,7 @@ def build_incremental_prompt(
 ---
 
 Complète EXACTEMENT le template JSON ci-dessous. Tu ne dois NI supprimer NI ajouter de clés.
-Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudiant.
+Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudiant, bounding_boxes.
 
 ```json
 {{
@@ -121,7 +121,8 @@ Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudi
             f'"note": 0.0, '
             f'"commentaire": "Non répondu.", '
             f'"raisonnement": "", '
-            f'"reponse_etudiant": ""'
+            f'"reponse_etudiant": "", '
+            f'"bounding_boxes": []'
             f"}}"
         )
     prompt += ",\n".join(template_entries)
@@ -136,6 +137,10 @@ Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudi
 4. Le commentaire doit être super long, mais assez détaillé quand-même (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement peut être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
 5. Si l'étudiant n'a pas répondu à une question, laisse les valeurs par défaut (note=0.0, commentaire="Non répondu.") et explique dans le raisonnement ce qui était attendu.
 6. NE SUPPRIME AUCUNE CLÉ du template. Ne modifie pas les noms des questions.
+7. Pour chaque question, remplis "bounding_boxes" avec les zones des erreurs ou remarques visibles sur la copie :
+    "bounding_boxes": [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Description synthétique de l'erreur ou remarque"}]
+    Les coordonnées ymin, xmin, ymax, xmax sont des entiers normalisés entre 0 et 1000 par rapport aux dimensions de l'image de la page (origine en haut à gauche). Utilise [] si aucune zone n'est identifiable.
+    Si la copie a plusieurs pages, ajoute "page": 1 (numéro de page à partir de 1) dans chaque objet de bounding_boxes ; les coordonnées sont relatives à cette page.
 """
 
     return prompt
@@ -210,7 +215,8 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
             f'"note": 0.0, '
             f'"commentaire": "Non répondu.", '
             f'"raisonnement": "", '
-            f'"reponse_etudiant": ""'
+            f'"reponse_etudiant": "", '
+            f'"bounding_boxes": []'
             f"}}"
         )
     prompt += ",\n".join(template_entries)
@@ -223,6 +229,7 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
 2. Si l'étudiant n'a pas répondu, laisse les valeurs par défaut et explique dans le raisonnement ce qui était attendu.
 3. Le commentaire doit être pas trop long (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement doit être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
 4. NE SUPPRIME AUCUNE CLÉ du template.
+5. Pour chaque question, fournis "bounding_boxes": [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Description synthétique de l'erreur ou remarque"}], avec des coordonnées entières normalisées entre 0 et 1000 par rapport à l'image de la page. Utilise [] si aucune zone n'est identifiable et ajoute "page": 1 dans chaque boîte pour une copie multipage.
 """
 
     return prompt

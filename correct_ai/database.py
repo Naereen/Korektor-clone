@@ -481,10 +481,16 @@ def save_correction(
         # Correction validée par le professeur (prioritaire)
         conn.execute(
             """
-            INSERT OR REPLACE INTO corrections 
+            INSERT INTO corrections
             (copie_id, bareme_id, reponse_etudiant, 
              note_prof, commentaire_prof, validee_par_prof, date_validation)
             VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT(copie_id, bareme_id) DO UPDATE SET
+                reponse_etudiant = excluded.reponse_etudiant,
+                note_prof = excluded.note_prof,
+                commentaire_prof = excluded.commentaire_prof,
+                validee_par_prof = 1,
+                date_validation = CURRENT_TIMESTAMP
         """,
             [
                 copy_id,
@@ -496,14 +502,15 @@ def save_correction(
         )
     else:
         # Correction par LLM
+        migrate_corrections(conn)
         conn.execute(
             """
             INSERT OR REPLACE INTO corrections 
             (copie_id, bareme_id, reponse_etudiant, 
              note_llm, commentaire_llm, raisonnement_llm, 
              nb_bonnes_llm, nb_mauvaises_llm, bonus_redaction_llm, 
-             date_correction_llm)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+             bounding_boxes, crop_image_path, date_correction_llm)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
             [
                 copy_id,
@@ -515,6 +522,8 @@ def save_correction(
                 data.get("nb_bonnes", 0),
                 data.get("nb_mauvaises", 0),
                 data.get("bonus_redaction", 0),
+                data.get("bounding_boxes", "[]"),
+                data.get("crop_image_path"),
             ],
         )
     conn.commit()

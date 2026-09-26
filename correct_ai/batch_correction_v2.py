@@ -20,12 +20,15 @@ import os
 import random
 import sqlite3
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import json_repair
+import pymupdf
 
+from correct_ai.image_processing import crop_and_annotate_question
 from correct_ai.llm_providers import ProviderConfig
 
 # Ajouter le répertoire parent au path pour importer les autres modules
@@ -60,6 +63,95 @@ from correct_ai.database import (
     save_correction,
 )
 from correct_ai.prompt_builder import build_incremental_prompt, estimate_prompt_tokens
+
+CORRECTION_SYSTEM_PROMPT = (
+    "Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière "
+    "MP2I en France. Note selon le barème et maintiens l'uniformité. Pour chaque "
+    "question, renseigne bounding_boxes avec les erreurs localisées sur les images "
+    "des pages, ou [] si aucune zone n'est identifiable. Chaque boîte JSON a "
+    "box_2d=[ymin, xmin, ymax, xmax] en entiers normalisés de 0 à 1000 et "
+    "label ; indique page (à partir de 1) pour les PDF multipages."
+)
+
+
+def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
+    """Keep only well-formed, normalized boxes from a model response."""
+    if isinstance(value, str):
+        try:
+            value = json_repair.loads(value)
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(value, list):
+        return []
+
+    boxes: List[Dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        bounds = item.get("box_2d")
+        label = item.get("label")
+        page = item.get("page")
+        if (
+            not isinstance(bounds, list)
+            or len(bounds) != 4
+            or any(type(coord) is not int for coord in bounds)
+            or not (0 <= bounds[0] < bounds[2] <= 1000)
+            or not (0 <= bounds[1] < bounds[3] <= 1000)
+            or not isinstance(label, str)
+            or (page is not None and (type(page) is not int or page < 1))
+        ):
+            continue
+        box = {"box_2d": bounds, "label": label}
+        if page is not None:
+            box["page"] = page
+        boxes.append(box)
+    return boxes
+
+
+def _prepare_correction_data(
+    data: Dict[str, Any],
+    copy_id: int,
+    bareme_id: int,
+    pdf_path: str,
+    project_dir: str,
+) -> Dict[str, Any]:
+    """Serialize model boxes and crop the first box with a known source page."""
+    prepared = dict(data)
+    boxes = _valid_bounding_boxes(data.get("bounding_boxes", []))
+    prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
+    prepared["crop_image_path"] = None
+    if not boxes or not pdf_path:
+        return prepared
+
+    try:
+        with pymupdf.open(os.path.join(project_dir, pdf_path)) as document:
+            for box in boxes:
+                page_number = box.get("page", 1)
+                if (len(document) > 1 and "page" not in box) or page_number > len(document):
+                    logger.warning("Page inconnue pour la boîte de la copie %s", copy_id)
+                    continue
+
+                relative_path = os.path.join(
+                    "cropped_questions", f"copie_{copy_id}_question_{bareme_id}.png"
+                )
+                try:
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        page_image = os.path.join(temp_dir, "page.png")
+                        document[page_number - 1].get_pixmap(dpi=150, alpha=False).save(page_image)
+                        crop_and_annotate_question(
+                            page_image,
+                            box["box_2d"],
+                            os.path.join(project_dir, relative_path),
+                            label=box["label"],
+                        )
+                except (OSError, ValueError, RuntimeError) as error:
+                    logger.warning("Boîte non recadrable pour la copie %s : %s", copy_id, error)
+                    continue
+                prepared["crop_image_path"] = relative_path
+                break
+    except Exception as error:
+        logger.warning("Recadrage impossible pour la copie %s : %s", copy_id, error)
+    return prepared
 
 
 def _fit_previous_corrections_to_prompt(
@@ -102,49 +194,22 @@ def parse_llm_response(response: str) -> Dict[str, Any]:
     Returns:
         Dict: Dictionnaire parsé avec {question: {note: ..., commentaire: ..., reponse_etudiant: ...}}
 
-    Raises:
-        ValueError: Si la réponse ne peut pas être parsée
     """
-    # Gérer les réponses vides
     if not response or not response.strip():
         return {}
 
     try:
         result = json_repair.loads(response)
-        # json_repair peut retourner une string pour les réponses vides
-        if isinstance(result, str):
-            return {}
-        # Si le LLM retourne une liste [{"question": "Q1", ...}], la convertir en dict
-        if isinstance(result, list):
-            return {
-                item.get("question", str(i)): item
-                for i, item in enumerate(result)
-                if isinstance(item, dict)
-            }
-        return result if isinstance(result, dict) else {}
-    except Exception:
-        pass
-
-    # Essayer avec json standard
-    try:
-        result = json.loads(response)
-        return result if isinstance(result, dict) else {}
-    except json.JSONDecodeError as e:
-        # Essayons de corriger manuellement
-        # Remplacer les simples quotes par des doubles
-        response_fixed = response.replace("'", '"')
-        try:
-            return json.loads(response_fixed)
-        except json.JSONDecodeError:
-            # Extraire le JSON du texte
-            import re
-
-            json_match = re.search(r"\{.*\}", response, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group(0))
-
-            # Dernier recours : retourner une réponse vide
-            return {}
+    except (ValueError, TypeError) as error:
+        logger.warning("Réponse JSON du LLM inexploitable : %s", error)
+        return {}
+    if isinstance(result, list):
+        return {
+            item.get("question", str(index)): item
+            for index, item in enumerate(result)
+            if isinstance(item, dict)
+        }
+    return result if isinstance(result, dict) else {}
 
 
 def correct_copy_incremental(
@@ -275,7 +340,7 @@ def correct_copy_incremental(
                         provider=p,
                         pdf_path=pdf_abs_path,
                         prompt_text=prompt,
-                        system_prompt="Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France. Nota selon le barème et maintain uniformité.",
+                        system_prompt=CORRECTION_SYSTEM_PROMPT,
                     )
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'appel LLM pour la copie {copy_id}: {e}")
@@ -295,7 +360,7 @@ def correct_copy_incremental(
                             response = ask_llm_with_progress(
                                 provider=p,
                                 prompt_text=prompt,
-                                system_prompt="Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France. Nota selon le barème et maintain uniformité.",
+                                system_prompt=CORRECTION_SYSTEM_PROMPT,
                                 progress_callback=progress_callback,
                             )
                         except Exception as e2:
@@ -313,7 +378,7 @@ def correct_copy_incremental(
                                 response = ask_llm_with_progress(
                                     provider=p,
                                     prompt_text=prompt_simple,
-                                    system_prompt="Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France.",
+                                    system_prompt=CORRECTION_SYSTEM_PROMPT,
                                     progress_callback=progress_callback,
                                 )
                             except Exception as e3:
@@ -367,12 +432,24 @@ def correct_copy_incremental(
             # 5. Sauvegarder dans la base
             # Mapper les questions du JSON vers bareme_id
             bareme_map = {b["question"]: b["id"] for b in bareme}
+            if not any(
+                bareme_map.get(question) and isinstance(data, dict)
+                for question, data in correction_data.items()
+            ):
+                logger.warning("Aucune question exploitable pour la copie %s", copy_id)
+                if attempt < 1:
+                    time.sleep(2)
+                    continue
+                return False
 
             saved_count = 0
             for question, data in correction_data.items():
                 bareme_id = bareme_map.get(question)
-                if bareme_id:
-                    save_correction(db, copy_id, bareme_id, data, is_prof=False)
+                if bareme_id and isinstance(data, dict):
+                    prepared = _prepare_correction_data(
+                        data, copy_id, bareme_id, current_copy["pdf_path"], project_dir
+                    )
+                    save_correction(db, copy_id, bareme_id, prepared, is_prof=False)
                     saved_count += 1
 
             logger.info(
@@ -509,8 +586,11 @@ def correct_copy_incremental_mock(
         saved_count = 0
         for question, data in correction_data.items():
             bareme_id = bareme_map.get(question)
-            if bareme_id:
-                save_correction(db, copy_id, bareme_id, data, is_prof=False)
+            if bareme_id and isinstance(data, dict):
+                prepared = _prepare_correction_data(
+                    data, copy_id, bareme_id, current_copy["pdf_path"], project_dir
+                )
+                save_correction(db, copy_id, bareme_id, prepared, is_prof=False)
                 saved_count += 1
 
         logger.info(f"✅ Copie {copy_id} corrigée avec succès (mock, {saved_count} corrections)")

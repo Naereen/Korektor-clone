@@ -120,9 +120,10 @@ def test_pdf_to_base64_images(tmp_path):
 
 
 def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
-    """Vision requests should contain one image block per PDF page."""
+    """Vision requests should number each PDF page beside its image."""
     pdf_path = tmp_path / "copy.pdf"
     doc = pymupdf.open()
+    doc.new_page()
     doc.new_page()
     doc.save(pdf_path)
     doc.close()
@@ -137,7 +138,11 @@ def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
     assert ask_llm_with_pdf(provider, str(pdf_path), "read") == "ocr"
     content = captured["json"]["messages"][1]["content"]
     assert content[0]["type"] == "text"
-    assert content[1]["type"] == "image_url"
+    assert [item["text"] for item in content if item["type"] == "text"][1:] == [
+        "Page 1",
+        "Page 2",
+    ]
+    assert len([item for item in content if item["type"] == "image_url"]) == 2
 
 
 def test_streaming_llm_accumulates_content(monkeypatch):

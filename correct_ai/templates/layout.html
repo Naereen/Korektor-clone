@@ -85,7 +85,7 @@
         .project-dir-indicator {
             max-width: min(42vw, 520px);
             color: #4b5563;
-            font-size: 0.82rem;
+            font-size: 1.2rem;
         }
 
         .project-dir-indicator .project-dir-path {
@@ -177,7 +177,9 @@
                 </ul>
                 <div class="project-dir-indicator ms-lg-auto" title="{{ current_project_dir }}">
                     <i class="bi bi-folder2-open me-1" aria-hidden="true"></i>
-                    <span class="visually-hidden">Dossier de travail courant, projet : </span>
+                    <span class="project-dir-label">
+                        <a href="/settings">Projet :</a>
+                    </span>
                     <span class="project-dir-path" id="currentProjectName">{{ current_project_name }}</span>
                 </div>
             </div>

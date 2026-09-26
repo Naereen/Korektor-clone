@@ -213,7 +213,8 @@ def ask_llm_with_pdf(
     # Format standard OpenAI Vision: [{"type": "text", ...}, {"type": "image_url", ...}]
     user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt_text}]
 
-    for b64_img in images_b64:
+    for page_number, b64_img in enumerate(images_b64, start=1):
+        user_content.append({"type": "text", "text": f"Page {page_number}"})
         user_content.append(
             {
                 "type": "image_url",

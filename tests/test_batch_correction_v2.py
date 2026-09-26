@@ -10,6 +10,7 @@ import os
 import sqlite3
 import sys
 
+import pymupdf
 import pytest
 
 # Ajouter le répertoire parent au path
@@ -17,7 +18,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 
-from correct_ai.batch_correction_v2 import correct_copy_incremental_mock, parse_llm_response
+from correct_ai.batch_correction_v2 import (
+    correct_copy_incremental,
+    correct_copy_incremental_mock,
+    parse_llm_response,
+)
 from correct_ai.database import (
     get_bareme,
     get_corrige,
@@ -141,6 +146,105 @@ class TestParseLlmResponse:
 
         # Devrait retourner un dict (peut-être vide ou partiellement parsé)
         assert isinstance(result, dict), "Résultat devrait être un dict"
+
+
+def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
+    """Repaired LLM JSON saves boxes and renders only unambiguous page crops."""
+    from correct_ai import llm_providers
+
+    pdf_path = tmp_path / "copy.pdf"
+    with pymupdf.open() as document:
+        document.new_page(width=100, height=100)
+        second = document.new_page(width=100, height=100)
+        second.draw_rect(pymupdf.Rect(0, 0, 100, 100), color=(0, 0, 1), fill=(0, 0, 1))
+        document.save(pdf_path)
+
+    db = get_db(str(tmp_path))
+    init_db(db)
+    db.execute("INSERT INTO sujet (contenu) VALUES ('Sujet')")
+    db.execute("INSERT INTO corrige (contenu) VALUES ('Corrigé')")
+    for question in ("Q1", "Q2", "Q3", "Q4"):
+        db.execute("INSERT INTO bareme (question, type_qcm, points) VALUES (?, 0, 1)", (question,))
+    db.execute(
+        "INSERT INTO copies (id, pdf_path, extraction_texte) VALUES (1, 'copy.pdf', 'Texte OCR')"
+    )
+    db.commit()
+
+    boxes = [
+        {"box_2d": [0, 0, 1, 1], "label": "Trop petit", "page": 2},
+        {"box_2d": [100, 100, 500, 500], "label": "Erreur", "page": 2},
+        {"box_2d": [100, 100, 500, 500], "label": "Sans page"},
+    ]
+    response = {
+        "Q1": {"note": 0, "reponse_etudiant": "x", "bounding_boxes": boxes},
+        "Q2": {
+            "note": 1,
+            "reponse_etudiant": "y",
+            "bounding_boxes": [{"box_2d": [2000, 0, 5, 5], "label": "Hors cadre"}],
+        },
+        "Q3": {"note": 1, "reponse_etudiant": "z"},
+        "Q4": {"note": 1, "reponse_etudiant": "w", "bounding_boxes": [boxes[-1]]},
+    }
+    prompts = []
+
+    def fake_ask_llm_with_pdf(**kwargs):
+        prompts.append((kwargs["prompt_text"], kwargs["system_prompt"]))
+        return json.dumps(response, ensure_ascii=False)[:-1]
+
+    monkeypatch.setattr(llm_providers, "ask_llm_with_pdf", fake_ask_llm_with_pdf)
+    try:
+        assert correct_copy_incremental(1, "ILAAS_OSS", db, str(tmp_path))
+        assert '"bounding_boxes": []' in prompts[0][0]
+        assert "bounding_boxes" in prompts[0][1]
+        rows = {
+            row["question"]: row
+            for row in db.execute(
+                "SELECT b.question, c.bounding_boxes, c.crop_image_path "
+                "FROM corrections c JOIN bareme b ON b.id = c.bareme_id"
+            )
+        }
+        assert len(rows) == 4
+        assert json.loads(rows["Q1"]["bounding_boxes"]) == boxes
+        crop = tmp_path / rows["Q1"]["crop_image_path"]
+        assert crop.is_file() and crop.suffix == ".png"
+        assert json.loads(rows["Q2"]["bounding_boxes"]) == []
+        assert rows["Q2"]["crop_image_path"] is None
+        assert json.loads(rows["Q3"]["bounding_boxes"]) == []
+        assert rows["Q3"]["crop_image_path"] is None
+        assert json.loads(rows["Q4"]["bounding_boxes"]) == [boxes[-1]]
+        assert rows["Q4"]["crop_image_path"] is None
+    finally:
+        db.close()
+
+
+def test_unusable_llm_response_does_not_mark_copy_corrected(test_db_with_full_data, monkeypatch):
+    """An unusable repaired response must fail rather than silently succeed."""
+    from correct_ai import llm_providers
+
+    db, project_dir = test_db_with_full_data
+    attempts = []
+    monkeypatch.setattr(
+        llm_providers,
+        "ask_llm_with_pdf",
+        lambda **kwargs: attempts.append(kwargs) or '{"Unknown": {"note": 1}}',
+    )
+    monkeypatch.setattr("correct_ai.batch_correction_v2.time.sleep", lambda _: None)
+
+    assert not correct_copy_incremental(1, "ILAAS_OSS", db, project_dir)
+    assert len(attempts) == 2
+    assert db.execute("SELECT COUNT(*) FROM corrections WHERE copie_id = 1").fetchone()[0] == 0
+
+
+def test_missing_pdf_preserves_valid_boxes(tmp_path):
+    """Failure to render a page must not discard valid location data."""
+    from correct_ai.batch_correction_v2 import _prepare_correction_data
+
+    box = {"box_2d": [100, 100, 500, 500], "label": "Erreur"}
+    prepared = _prepare_correction_data(
+        {"note": 0, "bounding_boxes": [box]}, 1, 1, "missing.pdf", str(tmp_path)
+    )
+    assert json.loads(prepared["bounding_boxes"]) == [box]
+    assert prepared["crop_image_path"] is None
 
 
 # =============================================================================

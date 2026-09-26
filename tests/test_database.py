@@ -675,6 +675,40 @@ class TestSaveCorrection:
         ), "raisonnement_llm incorrect"
         assert result["reponse_etudiant"] == "Réponse de létudiant", "reponse_etudiant incorrect"
 
+    def test_prof_validation_preserves_llm_image_metadata(self, tmp_path):
+        """Teacher feedback should keep the original LLM's boxes and crop."""
+        import json
+
+        from correct_ai.database import get_db, init_db, save_correction
+
+        conn = get_db(str(tmp_path))
+        init_db(conn)
+        save_correction(
+            conn,
+            1,
+            1,
+            {
+                "reponse_etudiant": "A",
+                "note": 0,
+                "bounding_boxes": '[{"box_2d": [10, 20, 30, 40], "label": "Erreur"}]',
+                "crop_image_path": "cropped_questions/copie_1_question_1.png",
+            },
+        )
+        save_correction(
+            conn,
+            1,
+            1,
+            {"reponse_etudiant": "A", "note": 1, "commentaire": "Corrigé"},
+            is_prof=True,
+        )
+        row = conn.execute("SELECT * FROM corrections WHERE copie_id = 1").fetchone()
+        assert row["validee_par_prof"] == 1
+        assert row["note_prof"] == 1
+        assert row["note_llm"] == 0
+        assert row["crop_image_path"] == "cropped_questions/copie_1_question_1.png"
+        assert json.loads(row["bounding_boxes"])[0]["label"] == "Erreur"
+        conn.close()
+
 
 # =============================================================================
 # Tests de mark_extractions_verified (1.2.4)
