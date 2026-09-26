@@ -41,6 +41,12 @@
         user-select: none;
     }
 
+    #notes-table-el thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
     #notes-table-el thead th.sortable .sort-icon {
         margin-left: 4px;
         opacity: 0.5;
@@ -129,7 +135,7 @@
         <div class="card shadow-sm text-center">
             <div class="card-body py-2">
                 <div class="class-stat-value" id="stat-standard-deviation">-</div>
-                <div class="text-muted small">Écart-type / 20</div>
+                <div class="text-muted small">Écart-type</div>
             </div>
         </div>
     </div>
@@ -151,6 +157,40 @@
     </div>
 </div>
 
+<br>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-people"></i> Bilan par groupe de TD</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Groupe de TD</th>
+                                <th>Copies</th>
+                                <th>Moyenne / 20</th>
+                                <th>Médiane / 20</th>
+                                <th>Écart-type</th>
+                                <th>Minimum / 20</th>
+                                <th>Maximum / 20</th>
+                            </tr>
+                        </thead>
+                        <tbody id="td-groups-table">
+                            <tr><td colspan="7" class="text-center text-muted">Chargement...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<br>
+
 <div class="row">
     <!-- Tableau des notes -->
     <div class="col-md-8 bilan-notes-column">
@@ -165,6 +205,7 @@
                             <tr>
                                 <th class="sortable" data-key="copie">Copie <i class="bi bi-arrow-down-up sort-icon"></i></th>
                                 <th class="sortable" data-key="etudiant">Étudiant <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                                <th class="sortable" data-key="groupe">Groupe <i class="bi bi-arrow-down-up sort-icon"></i></th>
                                 <th class="sortable" data-key="total">Note totale <i class="bi bi-arrow-down-up sort-icon"></i></th>
                                 <th class="sortable" data-key="pct">/<span id="stat-max-header">-</span> <i class="bi bi-arrow-down-up sort-icon"></i></th>
                                 <th class="sortable" data-key="score20">Note / 20 <i class="bi bi-arrow-down-up sort-icon"></i></th>
@@ -173,7 +214,7 @@
                             </tr>
                         </thead>
                         <tbody id="notes-table">
-                            <tr><td colspan="7" class="text-center text-muted">Chargement...</td></tr>
+                            <tr><td colspan="8" class="text-center text-muted">Chargement...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -329,6 +370,7 @@ async function loadBilan() {
         document.getElementById('stat-max-header').innerText = data.max_points;
 
         updateClassStatistics(data.notes, data.max_points);
+        renderTdGroupsTable(data.notes, data.max_points);
         renderBilanCharts(data);
         await loadStudentChartSelector();
         await loadStudentChart();
@@ -345,8 +387,9 @@ async function loadBilan() {
 
             rows += '<tr>';
             rows += '<td data-value="' + n.copie_id + '"><strong>Copie ' + n.copie_id + '</strong></td>';
-            const studentName = [n.prenom, n.nom].filter(Boolean).join(' ');
+            const studentName = [n.nom, n.prenom].filter(Boolean).join(' ');
             rows += '<td data-value="' + (studentName || '').toLowerCase() + '">' + (studentName || '-') + '</td>';
+            rows += '<td data-value="' + (n.td || '').toLowerCase() + '">' + (n.td || '-') + '</td>';
             const scoreOutOfTwenty = data.max_points > 0
                 ? Number(n.total || 0) / data.max_points * 20
                 : 0;
@@ -647,7 +690,7 @@ async function loadStudentChart() {
             fetch(`/api/db/corrections/${copyId}`)
         ]);
         if (!baremeResponse.ok || !correctionsResponse.ok) {
-            throw new Error('Impossible de charger les données de l’étudiant');
+            throw new Error("Impossible de charger les données de l'étudiant");
         }
 
         const bareme = await baremeResponse.json();
@@ -719,14 +762,30 @@ function renderStudentChart(labels, maximums, scores, scoreLabel) {
         });
 }
 
+function computeScoreStats(scores) {
+    const sorted = [...scores].sort((a, b) => a - b);
+    const average = sorted.reduce((sum, score) => sum + score, 0) / sorted.length;
+    const middle = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
+    const variance = sorted.reduce((sum, score) => sum + (score - average) ** 2, 0) / sorted.length;
+    return {
+        average,
+        median,
+        standardDeviation: Math.sqrt(variance),
+        minimum: sorted[0],
+        maximum: sorted[sorted.length - 1]
+    };
+}
+
 function updateClassStatistics(notes, maximumPoints) {
     const scores = notes
         .map(note => {
             const total = Number(note.total);
             return maximumPoints > 0 ? total / maximumPoints * 20 : NaN;
         })
-        .filter(score => Number.isFinite(score))
-        .sort((a, b) => a - b);
+        .filter(score => Number.isFinite(score));
 
     const fields = [
         'stat-average',
@@ -741,28 +800,57 @@ function updateClassStatistics(notes, maximumPoints) {
         return;
     }
 
-    const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-    const middle = Math.floor(scores.length / 2);
-    const median = scores.length % 2
-        ? scores[middle]
-        : (scores[middle - 1] + scores[middle]) / 2;
-    const variance = scores.reduce((sum, score) => sum + (score - average) ** 2, 0) / scores.length;
-    const standardDeviation = Math.sqrt(variance);
+    const stats = computeScoreStats(scores);
     const format = value => value.toFixed(2);
 
-    document.getElementById('stat-average').innerText = format(average);
-    document.getElementById('stat-median').innerText = format(median);
-    document.getElementById('stat-standard-deviation').innerText = format(standardDeviation);
-    document.getElementById('stat-minimum').innerText = format(scores[0]);
-    document.getElementById('stat-maximum').innerText = format(scores[scores.length - 1]);
+    document.getElementById('stat-average').innerText = format(stats.average);
+    document.getElementById('stat-median').innerText = format(stats.median);
+    document.getElementById('stat-standard-deviation').innerText = format(stats.standardDeviation);
+    document.getElementById('stat-minimum').innerText = format(stats.minimum);
+    document.getElementById('stat-maximum').innerText = format(stats.maximum);
 
     const scoreColor = value => interpolateColor('#8b1e2d', '#1f6f4a', value / 20);
     const deviationColor = value => interpolateColor('#8b1e2d', '#1f6f4a', 1 - value / 10);
-    document.getElementById('stat-average').style.color = scoreColor(average);
-    document.getElementById('stat-median').style.color = scoreColor(median);
-    document.getElementById('stat-standard-deviation').style.color = deviationColor(standardDeviation);
+    document.getElementById('stat-average').style.color = scoreColor(stats.average);
+    document.getElementById('stat-median').style.color = scoreColor(stats.median);
+    document.getElementById('stat-standard-deviation').style.color = deviationColor(stats.standardDeviation);
     document.getElementById('stat-minimum').style.color = '#8b1e2d';
     document.getElementById('stat-maximum').style.color = '#1f6f4a';
+}
+
+function renderTdGroupsTable(notes, maximumPoints) {
+    const groups = new Map();
+    notes.forEach(note => {
+        const groupName = note.td || 'Sans groupe';
+        const total = Number(note.total);
+        const score = maximumPoints > 0 && Number.isFinite(total) ? total / maximumPoints * 20 : NaN;
+        if (!Number.isFinite(score)) return;
+        if (!groups.has(groupName)) groups.set(groupName, []);
+        groups.get(groupName).push(score);
+    });
+
+    const tbody = document.getElementById('td-groups-table');
+    if (groups.size === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Aucune donnée</td></tr>';
+        return;
+    }
+
+    const format = value => value.toFixed(2);
+    let rows = '';
+    Array.from(groups.keys()).sort().forEach(groupName => {
+        const scores = groups.get(groupName);
+        const stats = computeScoreStats(scores);
+        rows += '<tr>';
+        rows += '<td><strong>' + groupName + '</strong></td>';
+        rows += '<td>' + scores.length + '</td>';
+        rows += '<td>' + format(stats.average) + '</td>';
+        rows += '<td>' + format(stats.median) + '</td>';
+        rows += '<td>' + format(stats.standardDeviation) + '</td>';
+        rows += '<td>' + format(stats.minimum) + '</td>';
+        rows += '<td>' + format(stats.maximum) + '</td>';
+        rows += '</tr>';
+    });
+    tbody.innerHTML = rows;
 }
 
 function interpolateColor(start, end, ratio) {

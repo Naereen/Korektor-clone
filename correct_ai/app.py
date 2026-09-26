@@ -411,11 +411,13 @@ def load_students():
                     id_key = find_key(["num", "etu", "n° étudiant"])
                     nom_key = find_key(["nom"])
                     prenom_key = find_key(["prénom", "prenom"])
+                    td_key = find_key(["td"])
 
                     if id_key and nom_key:
                         s_id = row[id_key].strip()
                         s_name = row[nom_key].strip()
                         s_first = row[prenom_key].strip() if prenom_key and row[prenom_key] else ""
+                        s_td = row[td_key].strip() if td_key and row[td_key] else ""
 
                         # Filter out empty or header-like repetitions if any
                         if s_id and s_name and s_id.lower() != "n° étudiant":
@@ -425,6 +427,7 @@ def load_students():
                                     "label": f"{s_name} {s_first} ({s_id})",
                                     "name": s_name,
                                     "firstname": s_first,
+                                    "td": s_td,
                                 }
                             )
             else:
@@ -2216,6 +2219,7 @@ def api_bilan_stats():
              SELECT c.copie_id,
                  copies.prenom,
                  copies.nom,
+                 copies.etudiant_id,
                    ROUND(SUM(CASE WHEN c.validee_par_prof THEN c.note_prof ELSE c.note_llm END), 1) as total,
                    COUNT(*) as nb_corr
             FROM corrections c
@@ -2269,6 +2273,8 @@ def api_bilan_stats():
 
         db.close()
 
+        td_by_student_id = {s["id"]: s.get("td", "") for s in load_students()}
+
         return jsonify(
             {
                 "nb_copies": nb_copies,
@@ -2292,6 +2298,7 @@ def api_bilan_stats():
                         "nom": n["nom"] or "",
                         "total": n["total"],
                         "nb_corr": n["nb_corr"],
+                        "td": td_by_student_id.get(n["etudiant_id"] or "", ""),
                     }
                     for n in notes
                 ],
