@@ -130,10 +130,20 @@
         <div class="d-flex align-items-center gap-3">
             <h3 class="mb-0">Vérification OCR</h3>
             <!-- Sélecteur de copie d'examen -->
-            <!-- TODO: ajouter un bouton rapide pour passer à la copie précédente, et un pour passer à la copie suivante -->
-            <select id="copy-select" class="form-select form-select-sm" style="width: 200px;">
-                <option value="">Chargement...</option>
-            </select>
+            <div class="d-flex align-items-center gap-1">
+                <button id="prev-copy-btn" class="btn btn-outline-secondary btn-sm" title="Copie précédente">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <select id="copy-select" class="form-select form-select-sm" style="width: 200px;">
+                    <option value="">Chargement...</option>
+                </select>
+                <button id="next-copy-btn" class="btn btn-outline-secondary btn-sm" title="Copie suivante">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <h5 id="student-name" class="mb-0 text-muted"></h5>
         </div>
         <div class="d-flex align-items-center gap-2">
             <span id="save-status" class="badge bg-secondary">Prêt</span>
@@ -182,6 +192,9 @@ let pendingAction = null;  // {type: 'copy'|'page'|'leave', target: ...}
 let afterSaveCallback = null;
 
 const copySelect = document.getElementById('copy-select');
+const prevCopyBtn = document.getElementById('prev-copy-btn');
+const nextCopyBtn = document.getElementById('next-copy-btn');
+const studentName = document.getElementById('student-name');
 const pageSelector = document.getElementById('page-selector');
 const pdfViewer = document.getElementById('pdf-viewer');
 const markdownEditor = document.getElementById('markdown-editor');
@@ -205,6 +218,8 @@ const unsavedModal = new bootstrap.Modal(document.getElementById('unsaved-modal'
 document.addEventListener('DOMContentLoaded', async () => {
     await loadCopies();
     copySelect.addEventListener('change', () => switchCopy(copySelect.value));
+    prevCopyBtn.addEventListener('click', () => switchToAdjacentCopy(-1));
+    nextCopyBtn.addEventListener('click', () => switchToAdjacentCopy(1));
     togglePreviewBtn.addEventListener('click', togglePreview);
     cancelBtn.addEventListener('click', confirmCancel);
     saveBtn.addEventListener('click', saveCurrentPage);
@@ -236,6 +251,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // === Copies ===
+async function loadStudentName(copyId) {
+    studentName.innerText = "";
+    try {
+        const res = await fetch(`/api/ocr/student/${copyId}`);
+        const data = await res.json();
+        if (data.name || data.firstname) studentName.innerText = `${data.firstname} ${data.name}`.trim();
+    } catch(e) { console.error(e); }
+}
+
 async function loadCopies() {
     try {
         const res = await fetch('/api/ocr/copies');
@@ -246,6 +270,16 @@ async function loadCopies() {
 }
 
 // === Navigation avec confirmation ===
+function switchToAdjacentCopy(offset) {
+    const options = Array.from(copySelect.options).filter(o => o.value);
+    if (!options.length) return;
+    const currentIndex = options.findIndex(o => o.value === copySelect.value);
+    const newIndex = currentIndex + offset;
+    if (newIndex < 0 || newIndex >= options.length) return;
+    copySelect.value = options[newIndex].value;
+    switchCopy(copySelect.value);
+}
+
 async function switchCopy(copyId) {
     if (!copyId) { currentCopy = null; resetUI(); return; }
     if (hasUnsavedChanges && currentCopy !== copyId) {
@@ -260,6 +294,7 @@ async function doSwitchCopy(copyId) {
     currentCopy = copyId;
     hasUnsavedChanges = false;
     setSaveStatus("Chargement...", "info");
+    loadStudentName(copyId);
     try {
         pdfViewer.src = "";
         const res = await fetch(`/api/ocr/pages/${copyId}`);
@@ -291,6 +326,8 @@ async function doSwitchPage(pageNum) {
     currentPageNum.innerText = pageNum;
     document.querySelectorAll('.page-btn').forEach(b => b.classList.toggle('active', b.dataset.page === pageNum));
     pdfViewer.src = `/api/ocr/pdf/${currentCopy}?page=${pageNum}&t=` + Date.now();
+    // scrollTop is on the scrollable container, not the img itself
+    document.querySelector('.pdf-viewer-container').scrollTop = 0;
     try {
         const res = await fetch(`/api/ocr/content/${currentCopy}/${pageNum}`);
         const data = await res.json();
@@ -499,6 +536,7 @@ function resetUI() {
     markdownPreview.innerHTML = "";
     pageSelector.innerHTML = "";
     currentPageNum.innerText = "-";
+    studentName.innerText = "";
     hasUnsavedChanges = false;
 }
 

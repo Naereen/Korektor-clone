@@ -154,9 +154,9 @@
                             <tr>
                                 <th>Copie</th>
                                 <th>Étudiant</th>
-                                <th>Note</th>
-                                <th>Note / 20</th>
+                                <th>Note totale</th>
                                 <th>/<span id="stat-max-header">-</span></th>
+                                <th>Note / 20</th>
                                 <th>Questions corrigées</th>
                                 <th>Statut</th>
                             </tr>
@@ -339,8 +339,8 @@ async function loadBilan() {
                 ? Number(n.total || 0) / data.max_points * 20
                 : 0;
             rows += '<td>' + n.total + '</td>';
-            rows += '<td>' + scoreOutOfTwenty.toFixed(2) + '</td>';
             rows += '<td><div class="progress" style="height:6px;"><div class="progress-bar ' + barColor + '" style="width:' + pct + '%"></div></div></td>';
+            rows += '<td>' + scoreOutOfTwenty.toFixed(2) + '</td>';
             rows += '<td><small>' + n.nb_corr + '/' + data.nb_questions + '</small></td>';
             rows += '<td>' + statusBadge + '</td>';
             rows += '</tr>';

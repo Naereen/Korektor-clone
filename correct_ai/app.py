@@ -42,6 +42,7 @@ sys.path.insert(0, PROJECT_ROOT)
 # import batch_correction
 import batch_correction_v2
 import batch_extraction
+import database
 import report_builder
 from database import get_all_extractions
 from database import get_bareme as db_get_bareme
@@ -1891,6 +1892,18 @@ def list_ocr_copies():
     # Deduplicate and sort
     copies = sorted(set(copies), key=lambda x: int(x.replace("Copie_", "")))
     return jsonify(copies)
+
+
+@app.route("/api/ocr/student/<copie_id>")
+def get_ocr_student(copie_id):
+    """Return the student name/id matching a copy, using correspondance.csv."""
+    match = re.search(r"\d+", copie_id)
+    if not match:
+        return jsonify({"name": "", "firstname": "", "id": ""})
+    student = database._find_student_for_copy(int(match.group()), get_ocr_project_dir())
+    if not student:
+        return jsonify({"name": "", "firstname": "", "id": ""})
+    return jsonify(student)
 
 
 @app.route("/api/ocr/pdf/<copie_id>")

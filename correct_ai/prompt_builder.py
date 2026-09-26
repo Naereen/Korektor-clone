@@ -133,7 +133,7 @@ Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudi
 1. Pour CHAQUE question du template, remplace les valeurs par défaut par ta correction réelle.
 2. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
 3. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
-4. Le commentaire doit être pas trop long (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement doit être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
+4. Le commentaire doit être super long, mais assez détaillé quand-même (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement peut être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
 5. Si l'étudiant n'a pas répondu à une question, laisse les valeurs par défaut (note=0.0, commentaire="Non répondu.") et explique dans le raisonnement ce qui était attendu.
 6. NE SUPPRIME AUCUNE CLÉ du template. Ne modifie pas les noms des questions.
 """
