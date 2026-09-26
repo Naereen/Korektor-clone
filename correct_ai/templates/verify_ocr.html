@@ -115,10 +115,10 @@
 <div id="unsaved-modal" class="modal fade" tabindex="-1">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
-            <div class="modal-header"><h6 class="modal-title">Modifications non sauvegardées</h6></div>
+            <div class="modal-header"><h6 class="modal-title">Modifications non enregistrées</h6></div>
             <div class="modal-body small">Voulez-vous sauvegarder les modifications avant de continuer ?</div>
             <div class="modal-footer">
-                <button class="btn btn-outline-danger btn-sm" data-action="discard">Jeter les modifications</button>
+                <button class="btn btn-outline-danger btn-sm" data-action="discard">Abandonner les modifications</button>
                 <button class="btn btn-primary btn-sm" data-action="save">Sauvegarder</button>
             </div>
         </div>
@@ -128,7 +128,9 @@
 <div class="main-container-ocr">
     <div class="toolbar d-flex align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-3">
-            <h5 class="mb-0">Vérification OCR</h5>
+            <h3 class="mb-0">Vérification OCR</h3>
+            <!-- Sélecteur de copie d'examen -->
+            <!-- TODO: ajouter un bouton rapide pour passer à la copie précédente, et un pour passer à la copie suivante -->
             <select id="copy-select" class="form-select form-select-sm" style="width: 200px;">
                 <option value="">Chargement...</option>
             </select>
@@ -137,7 +139,7 @@
             <span id="save-status" class="badge bg-secondary">Prêt</span>
             <button id="cancel-btn" class="btn btn-outline-danger btn-sm">Annuler</button>
             <button id="save-btn" class="btn btn-primary btn-sm">Sauvegarder</button>
-            <button id="rebuild-btn" class="btn btn-success btn-sm">Reconstruire extraction.md</button>
+            <button id="rebuild-btn" class="btn btn-success btn-sm">Reconstruire le <code>extraction.md</code></button>
             <button id="finish-btn" class="btn btn-dark btn-sm">
                 Terminer et lancer la correction <i class="bi bi-arrow-right"></i>
             </button>
@@ -155,7 +157,7 @@
         <div class="editor-panel">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-bold">Page <span id="current-page-num">-</span></span>
-                <button id="toggle-preview-btn" class="btn btn-sm btn-outline-secondary">Apercu</button>
+                <button id="toggle-preview-btn" class="btn btn-sm btn-outline-secondary">Aperçu</button>
             </div>
             <textarea id="markdown-editor" spellcheck="false"></textarea>
             <div id="markdown-preview"></div>
@@ -320,8 +322,9 @@ function populatePageSelector() {
         const pageNum = i.toString();
         const hasContent = pagesData[pageNum] !== undefined && pagesData[pageNum].length > 0;
         const btn = document.createElement('button');
-        btn.className = `page-btn ${hasContent ? 'has-content' : ''}`;
-        btn.innerText = `Page ${i}`;
+        btn.className = `page-btn ${hasContent ? 'has-content' : ''} ${i <= 1 ? 'active' : ''}`;
+        if (i <= 1) { btn.classList.add('active'); }
+        btn.innerText = `Page ${i}/${totalPages}`;
         btn.dataset.page = pageNum;
         btn.addEventListener('click', () => switchPage(pageNum));
         pageSelector.appendChild(btn);
@@ -352,12 +355,12 @@ async function saveCurrentPage() {
         hasUnsavedChanges = false;
         markDirty(false);
         updatePageButton(currentPage, !!content, false);
-        setSaveStatus("Sauvegarde !", "success");
+        setSaveStatus("Enregistré !", "success");
         setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
         return true;
     } catch(e) {
         console.error(e);
-        setSaveStatus("Erreur sauvegarde", "danger");
+        setSaveStatus("Erreur lors de l'enregistrement", "danger");
         return false;
     }
 }
@@ -413,7 +416,7 @@ async function finishVerification() {
 function confirmCancel() {
     if (!currentCopy || !currentPage) return;
     if (!hasUnsavedChanges) { setSaveStatus("Aucune modification", "secondary"); return; }
-    if (!confirm("Annuler les modifications de cette page ? Le contenu reviendra a l'etat de la derniere sauvegarde.")) return;
+    if (!confirm("Annuler les modifications de cette page ? Le contenu reviendra à l'état de la dernière sauvegarde.")) return;
     cancelCurrentPage();
 }
 
@@ -424,7 +427,7 @@ function cancelCurrentPage() {
     hasUnsavedChanges = false;
     markDirty(false);
     updatePageButton(currentPage, !!originalContent, false);
-    setSaveStatus("Modifications annulees", "success");
+    setSaveStatus("Modifications annulées", "success");
     setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
 }
 
@@ -435,7 +438,7 @@ function onEditorChange(instance, change) {
     hasUnsavedChanges = true;
     markDirty(true);
     updatePageButton(currentPage, true, true);
-    setSaveStatus("Modifie", "warning");
+    setSaveStatus("Modifié", "warning");
 }
 
 function markDirty(dirty) {
@@ -466,7 +469,7 @@ function togglePreview() {
         editor.refresh();
         markdownPreview.style.display = 'none';
         latexErrors.style.display = 'none';
-        togglePreviewBtn.innerHTML = "Apercu";
+        togglePreviewBtn.innerHTML = "Aperçu";
         togglePreviewBtn.classList.replace('btn-secondary', 'btn-outline-secondary');
     }
 }

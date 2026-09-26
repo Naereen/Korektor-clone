@@ -6,7 +6,7 @@
         <div class="col-md-8 offset-md-2">
             <div class="card shadow-sm">
                 <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0"><i class="bi bi-gear-fill me-2"></i>Configuration du Projet</h5>
+                    <h5 class="mb-0"><i class="bi bi-gear-fill me-2"></i>Configuration du projet</h5>
                 </div>
                 <div class="card-body">
                     {% if error %}
@@ -17,8 +17,8 @@
 
                     <form method="POST" action="/settings">
                         <div class="mb-4">
-                            <label for="project_dir" class="form-label fw-bold">Dossier du Projet (Session
-                                d'Examen)</label>
+                            <label for="project_dir" class="form-label fw-bold">Dossier du projet (session
+                                d'examen)</label>
                             <input type="text" class="form-control font-monospace" id="project_dir" name="project_dir"
                                 value="{{ current_dir }}" required>
                             <div class="form-text">
@@ -34,8 +34,8 @@
                                 <li><code>corrige.md</code> : Le corrigé type</li>
                                 <li><code>bareme.csv</code> : Le barème de notation</li>
                                 <li><code>liste-etudiants.csv</code> : La liste des étudiants</li>
-                                <li><code>copiesA4_sorted.pdf</code> : (Généré) Le PDF splitté</li>
-                                <li><code>copies_anonymes_validees/</code> : (Généré) Dossier des corrections</li>
+                                <li><code>copiesA4_sorted.pdf</code> : (généré) Le PDF découpé</li>
+                                <li><code>copies_anonymes_validees/</code> : (généré) Dossier des corrections</li>
                             </ul>
                         </div>
 

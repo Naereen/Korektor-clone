@@ -3,7 +3,7 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h3><i class="bi bi-upload"></i> Import - Configuration du projet</h3>
+        <h3><i class="bi bi-upload"></i> Import : configuration du projet</h3>
         <hr>
     </div>
 </div>
@@ -203,7 +203,7 @@ function browseFolder(path) {
             ).join('');
         })
         .catch(err => {
-            folderPickerList.innerHTML = '<div class="text-danger small p-2">Erreur: ' + err + '</div>';
+            folderPickerList.innerHTML = '<div class="text-danger small p-2">Erreur : ' + err + '</div>';
         });
 }
 
@@ -240,7 +240,7 @@ function checkStructure() {
                 'sujet.md': 'Sujet',
                 'corrige.md': 'Corrigé',
                 'bareme.csv': 'Barème',
-                'liste-etudiants.csv': 'Liste étudiants',
+                'liste-etudiants.csv': 'Liste des étudiants',
                 'correspondance.csv': 'Correspondance copies',
                 'copiesA3.pdf': 'PDF A3 original',
                 'copiesA4_sorted.pdf': 'PDF A4 découpé'
@@ -261,7 +261,7 @@ function checkStructure() {
         })
         .catch(err => {
             document.getElementById('structureCheck').innerHTML =
-                '<div class="alert alert-danger small">Erreur: ' + err + '</div>';
+                '<div class="alert alert-danger small">Erreur : ' + err + '</div>';
         });
 }
 
@@ -350,10 +350,10 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
             alert('Import réussi ! Redirection vers le découpage...');
             window.location.href = '/split';
         } else {
-            alert('Erreur: ' + result.error);
+            alert('Erreur : ' + result.error);
         }
     } catch(err) {
-        alert('Erreur réseau: ' + err);
+        alert('Erreur réseau : ' + err);
     } finally {
         document.getElementById('btnUpload').disabled = false;
         document.getElementById('uploadProgress').style.display = 'none';

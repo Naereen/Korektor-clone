@@ -185,7 +185,7 @@
         </div>
         <div>
             <span id="save-status" class="badge bg-secondary status-badge">Prêt</span>
-            <button id="save-btn" class="btn btn-primary btn-sm ms-2">Enregistrer Tout</button>
+            <button id="save-btn" class="btn btn-primary btn-sm ms-2">Tout enregistrer</button>
             <button id="finish-btn" class="btn btn-dark btn-sm ms-2">
                 Terminer et voir le bilan <i class="bi bi-arrow-right"></i>
             </button>
@@ -204,13 +204,13 @@
 
             <!-- Question Selector Row -->
             <div class="question-navigation d-flex align-items-center mb-3 p-2 bg-light border rounded">
-                <button id="prev-question-btn" class="btn btn-outline-secondary btn-sm me-2" title="Question Précédente"
+                <button id="prev-question-btn" class="btn btn-outline-secondary btn-sm me-2" title="Question précédente"
                     disabled>◀</button>
                 <label for="question-select" class="fw-bold me-2 flex-grow-1">Question</label>
                 <select id="question-select" class="form-select form-select-sm flex-grow-1" disabled>
-                    <option value="">Sélectionner une copie d'abord</option>
+                    <option value="">Sélectionner d'abord une copie</option>
                 </select>
-                <button id="next-question-btn" class="btn btn-outline-secondary btn-sm ms-2" title="Question Suivante"
+                <button id="next-question-btn" class="btn btn-outline-secondary btn-sm ms-2" title="Question suivante"
                     disabled>▶</button>
             </div>
 
@@ -218,13 +218,13 @@
 
             <!-- 1. Student Answer -->
             <div class="mb-3">
-                <label class="form-label fw-bold">Réponse Étudiant</label>
+                <label class="form-label fw-bold">Réponse de l'étudiant</label>
                 <textarea id="field-reponse" class="form-control form-control-sm" rows="3" spellcheck="false"></textarea>
             </div>
 
             <!-- 2. Bareme/Expected Answer -->
             <div class="mb-3">
-                <label class="form-label fw-bold">Barème / Réponse Attendue</label>
+                <label class="form-label fw-bold">Barème / réponse attendue</label>
                 <div class="bg-light border rounded" style="font-size: 0.9em; min-height: 60px;">
                     <div id="question-details">Consignes...</div>
                 </div>
@@ -253,11 +253,11 @@
                     <div class="col-md-8 qcm-field">
                         <div class="row">
                             <div class="col-md-4">
-                                <label class="form-label">Bonnes</label>
+                                <label class="form-label">Bonnes réponses</label>
                                 <input type="number" step="0.5" id="field-bonnes" class="form-control form-control-sm">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Mauvaises</label>
+                                <label class="form-label">Mauvaises réponses</label>
                                 <input type="number" step="0.5" id="field-mauvaises" class="form-control form-control-sm">
                             </div>
                             <div class="col-md-4">
@@ -723,7 +723,7 @@
             return true;
         } catch (e) {
             console.error(e);
-            setSaveStatus("Erreur Sauvegarde", "danger");
+            setSaveStatus("Erreur lors de l'enregistrement", "danger");
             return false;
         }
     }

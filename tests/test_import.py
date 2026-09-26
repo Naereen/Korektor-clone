@@ -50,11 +50,12 @@ class TestImportPage:
         assert "Barème" in content
         assert "Import du PDF" in content
 
-    def test_project_selection_updates_navbar_path(self, client):
-        """Ensure selecting a project refreshes the navbar path in place."""
+    def test_project_selection_updates_navbar_project(self, client):
+        """Ensure selecting a project refreshes its navbar label and path tooltip."""
         content = client.get("/import").data.decode("utf-8")
-        assert 'id="currentProjectDir"' in content
-        assert "currentProjectDir.textContent = data.project_dir" in content
+        assert 'id="currentProjectName"' in content
+        assert "currentProjectName.textContent = data.project_name" in content
+        assert "currentProjectName.parentElement.title = data.project_dir" in content
 
     def test_page_defaults_to_preserving_a4_pdf(self, client):
         """Ensure A4 imports are preserved by default in the UI."""

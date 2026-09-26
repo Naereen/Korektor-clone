@@ -89,7 +89,7 @@
             <li><a href="#installation">Installation</a></li>
             <li><a href="#utilisation">Utilisation</a></li>
             <li><a href="#donnees">Structure des données</a></li>
-            <li><a href="#api">Configuration API et endpoints</a></li>
+            <li><a href="#api">Configuration de l'API et des points de terminaison</a></li>
             <li><a href="#cli">Commandes CLI</a></li>
             <li><a href="#ocr">Vérification OCR</a></li>
         </ol>
@@ -188,14 +188,14 @@ uv run python correct_ai/app.py</code></pre>
     </section>
 
     <section id="api" class="documentation-section">
-        <h2>Configuration API et endpoints</h2>
+        <h2>Configuration de l'API et des points de terminaison</h2>
         <p>Les providers sont configurés dans <code>correct_ai/llm_providers.py</code>. Chaque configuration indique l'URL compatible OpenAI, le modèle, la variable de clé API et la vérification TLS.</p>
         <p>Le provider par défaut est défini par <code>DEFAULT_PROVIDER</code>. Les appels disposent d'un timeout de 600 secondes ; les modèles Qwen peuvent utiliser le mode thinking.</p>
 
         <h3>Endpoints de données</h3>
         <ul>
             <li><code>GET /api/db/bareme</code> : récupérer le barème depuis SQLite.</li>
-            <li><code>GET /api/db/copies</code> : lister les copies et les métadonnées étudiants.</li>
+            <li><code>GET /api/db/copies</code> : lister les copies et les métadonnées des étudiants.</li>
             <li><code>GET /api/db/corrections/&lt;copie_id&gt;</code> : récupérer les corrections d'une copie.</li>
             <li><code>POST /api/db/corrections/&lt;copie_id&gt;</code> : enregistrer les corrections professeur.</li>
             <li><code>GET /api/bilan/stats</code> : obtenir les statistiques globales.</li>

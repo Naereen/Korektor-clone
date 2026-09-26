@@ -433,7 +433,7 @@ function renderClassProfile(averages) {
         type: 'line',
         data: { labels: averages.map(row => row.question), datasets: [
             { label: 'Barème', data: averages.map(row => row.points), borderColor: '#1769aa', backgroundColor: '#1769aa', tension: 0.25 },
-            { label: 'Moyenne classe', data: averages.map(row => row.moyenne || 0), borderColor: '#1f6f4a', backgroundColor: '#1f6f4a', tension: 0.25 }
+            { label: 'Moyenne de la classe', data: averages.map(row => row.moyenne || 0), borderColor: '#1f6f4a', backgroundColor: '#1f6f4a', tension: 0.25 }
         ] },
         options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } }, plugins: {
             title: {

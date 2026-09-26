@@ -6,13 +6,13 @@
     <div class="col-md-4">
         <div class="card shadow mb-4">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">Traitement Automatique</h5>
+                <h5 class="mb-0">Traitement automatique</h5>
             </div>
             <div class="card-body">
                 <p>Traitez toutes les copies découpées en lot.</p>
 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Plage de copies (Optionnel)</label>
+                    <label class="form-label fw-bold">Plage de copies (facultatif)</label>
                     <div class="row g-2">
                         <div class="col">
                             <input type="number" id="range-start" class="form-control" placeholder="Début (ex: 1)">
@@ -28,12 +28,12 @@
                 <p class="text-muted small">Convertit les PDF manuscrits en Markdown.</p>
                 <div class="d-grid gap-2">
                     <button id="btn-extract" class="btn btn-warning" onclick="startBatch('extraction')">
-                        <i class="bi bi-file-text"></i> Lancer Extraction
+                        <i class="bi bi-file-text"></i> Lancer l'extraction
                     </button>
                 </div>
 
                 <hr>
-                <h6>2. Correction Automatique</h6>
+                <h6>2. Correction automatique</h6>
                 <p class="text-muted small">Compare l'extraction avec le barème et note.</p>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="force-correct">
@@ -43,14 +43,14 @@
                 </div>
                 <div class="d-grid gap-2">
                     <button id="btn-correct" class="btn btn-success" onclick="startBatch('correction')">
-                        <i class="bi bi-check-circle"></i> Lancer Correction
+                        <i class="bi bi-check-circle"></i> Lancer la correction
                     </button>
                 </div>
 
                 <hr>
                 <div class="d-grid">
                     <button id="btn-stop" class="btn btn-danger" onclick="stopBatch()" disabled>
-                        Stop
+                        Arrêter
                     </button>
                 </div>
             </div>
@@ -61,7 +61,7 @@
     <div class="col-md-8">
         <div class="card shadow h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Console de Sortie</h5>
+                <h5 class="mb-0">Console de sortie</h5>
                 <span id="status-badge" class="badge bg-secondary">Inactif</span>
             </div>
             <div class="card-body p-0 d-flex flex-column" style="height: 500px;">
@@ -91,7 +91,7 @@
 
         let msg = `Confirmez-vous le lancement du traitement : ${type} ?`;
         if (startVal || endVal) {
-            msg += `\nPlage: Copie ${startVal || '?'} à ${endVal || '?'}`;
+            msg += `\nPlage : copie ${startVal || '?'} à ${endVal || '?'}`;
         }
 
         if (!confirm(msg)) return;
@@ -112,7 +112,7 @@
             if (data.success) {
                 startPolling();
             } else {
-                alert("Erreur: " + data.error);
+                alert("Erreur : " + data.error);
             }
         } catch (e) {
             alert("Erreur réseau");

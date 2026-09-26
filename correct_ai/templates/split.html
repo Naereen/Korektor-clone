@@ -86,15 +86,15 @@
 {% block content %}
 <div class="header-ctrl">
     <div>
-        <h3>Découpage & Désanonymisation</h3>
-        <p class="mb-0 text-muted">Par défaut, les pages sont des "Suites". Sélectionnez un étudiant pour créer une
-            <b>Nouvelle Copie</b> (Verte).</p>
+        <h3>Découpage & Anonymisation</h3>
+        <p class="mb-0 text-muted">Par défaut, les pages sont des suites. Sélectionnez un étudiant pour créer une
+            <b>nouvelle copie</b> (en vert).</p>
     </div>
     <div class="header-slider">
         <label for="header-ratio" class="form-label mb-1">Hauteur du bandeau : <strong id="header-ratio-value">15 %</strong></label>
         <input id="header-ratio" type="range" min="0" max="50" value="15" step="1" oninput="updateHeaderRatio(this.value)">
     </div>
-    <button id="submitBtn" class="btn btn-success fw-bold" onclick="submitData()">Valider et Traiter</button>
+    <button id="submitBtn" class="btn btn-success fw-bold" onclick="submitData()">Valider et traiter</button>
 </div>
 
 <div id="grid" class="grid"></div>
@@ -155,8 +155,8 @@
         const grid = document.getElementById('grid');
         let html = '';
 
-        let studentOptions = '<option value="">-- Suite (ou choisir étudiant) --</option>';
-        studentOptions += '<option value="__UNKNOWN__">⚠️ Étudiant Inconnu (Nouvelle Copie)</option>';
+        let studentOptions = '<option value="">-- Suite (ou choisir un étudiant) --</option>';
+        studentOptions += '<option value="__UNKNOWN__">⚠️ Étudiant inconnu (nouvelle copie)</option>';
         students.forEach(s => {
             studentOptions += `<option value="${s.id}">${s.label}</option>`;
         });
@@ -205,7 +205,7 @@
         } else {
             cardsData[index].is_continuation = false;
             cardEl.className = "card new-copy";
-            statusEl.innerText = val === "__UNKNOWN__" ? "NOUVELLE COPIE (Inconnu)" : "NOUVELLE COPIE";
+            statusEl.innerText = val === "__UNKNOWN__" ? "NOUVELLE COPIE (INCONNU)" : "NOUVELLE COPIE";
             statusEl.style.color = "#10b981";
         }
         refreshStudentOptions();
@@ -230,14 +230,14 @@
                 btn.innerText = "Terminé";
                 window.location.href = '/ocr';
             } else {
-                alert("Erreur: " + result.error);
+                alert("Erreur : " + result.error);
                 btn.disabled = false;
-                btn.innerText = "Valider et Traiter";
+                btn.innerText = "Valider et traiter";
             }
         } catch (e) {
-            alert("Erreur réseau: " + e);
+            alert("Erreur réseau : " + e);
             btn.disabled = false;
-            btn.innerText = "Valider et Traiter";
+            btn.innerText = "Valider et traiter";
         } finally {
             hideLoading();
         }
