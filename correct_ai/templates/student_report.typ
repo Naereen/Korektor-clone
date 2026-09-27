@@ -45,7 +45,11 @@
 )[#content]
 #let horizontal-rule = line(length: 100%, stroke: 0.5pt + rgb("#b8c8c3"))
 #let rich-text(source) = eval(
-  source,
+  source.split("\n")
+    .filter(line => not (
+      "**Réponse :**", "**Réponse**", "#strong[Réponse :]", "#strong[Réponse]",
+    ).contains(line.trim()))
+    .join("\n"),
   mode: "markup",
   scope: (
     blockquote: quote-block,

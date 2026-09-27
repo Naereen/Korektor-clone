@@ -25,7 +25,8 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
         "INSERT INTO corrige (contenu) VALUES (?)",
         (
             "**Q1.** **Choisir** :\n\n- une\n  option\n\n```cpp\nint x = 1;\n```\n\n"
-            "Démontrer ∀ x ∈ ℝ.\n\n"
+            "**Réponse :**\n\n**Réponse**\n\nDémontrer ∀ x ∈ ℝ.\n\n"
+            "Une réponse détaillée reste visible.\n\n"
             "> **Explication :** Argument décisif.\n\n---\n",
         ),
     )
@@ -102,6 +103,9 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
         assert text.count("une option") == 1
         assert text.count("int x = 1;") == 1
         assert "Explication :" in text and "Argument décisif." in text
+        assert "Réponse :" not in text
+        assert not re.search(r"(?m)^Réponse\s*$", text)
+        assert "Une réponse détaillée reste visible." in text
         assert "∀" in text
         assert any(page.get_images() for page in document)
         assert any(

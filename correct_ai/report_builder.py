@@ -342,6 +342,7 @@ def build_report_markdown(
     if charts:
         for chart in charts:
             lines.append("")
+            lines.append("")
             lines.append(f"\\begin{{figure}}[!h]")
             lines.append(f"\\centering")
             # Relative path: resolved from the reports directory at compile time.
