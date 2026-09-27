@@ -412,6 +412,41 @@ def test_split_thumbnail_without_document(project_client):
     assert client.get("/api/split/thumbnail/1").status_code == 404
 
 
+def test_split_process_uses_per_copy_banner_heights(project_client, monkeypatch):
+    """The new split payload applies a different banner height to each copy."""
+    client, project = project_client
+    booklet = pymupdf.open()
+    booklet.new_page(width=595, height=842)
+    booklet.new_page(width=595, height=842)
+    monkeypatch.setattr(app_module, "get_splitter_doc", lambda: booklet)
+
+    response = client.post(
+        "/api/split/process",
+        json={
+            "default_banner_height": 150,
+            "copies_config": {
+                "Copie_01.pdf": {"banner_height": 150},
+                "Copie_02.pdf": {"banner_height": 200},
+            },
+            "cards": [
+                {"page_num": 1, "is_continuation": False, "student_id": None},
+                {"page_num": 2, "is_continuation": False, "student_id": None},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    first = pymupdf.open(project / "copies_anonymes_validees" / "Copie_01.pdf")
+    second = pymupdf.open(project / "copies_anonymes_validees" / "Copie_02.pdf")
+    first_header = first[0].get_drawings()[0]["rect"].y1
+    second_header = second[0].get_drawings()[0]["rect"].y1
+    assert first_header == 150
+    assert second_header == 200
+    first.close()
+    second.close()
+    booklet.close()
+
+
 def test_database_copy_listing(project_client):
     """SQLite copy listing should expose initialized database rows."""
     client, project = project_client
