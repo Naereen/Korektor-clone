@@ -164,7 +164,7 @@ def generate_bareme_from_structure(structure_data, project_dir="."):
         f"<corrige>\n{corrige_content}\n</corrige>\n\n"
         "Pour chaque question, tu dois déterminer :\n"
         "1. Est-ce un QCM ? (Oui/Non)\n"
-        "2. Quelle est la réponse attendue (si QCM, indique la bonne case, sinon résume l'attendu).\n"
+        "2. Quelle est la réponse attendue (si QCM, indique la bonne case, sinon donne l'attendu exact comme dans le corrigé, sans résumé). Pour reponse, reprends fidèlement et sans la résumer la réponse correspondante du corrigé officiel. Conserve sa formulation et sa mise en forme Markdown. N'ajoute ni balise <markdown>, ni commentaire.\n"
         "3. Le barème suggéré (points).\n"
         "Suis PRÉCISÉMENT le corrigé officiel pour les réponses attendues.\n"
         "\n"
