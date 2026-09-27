@@ -6,6 +6,7 @@ and streaming progress without requiring API credentials or network access.
 """
 
 import base64
+import io
 import json
 import os
 import sys
@@ -15,6 +16,7 @@ from types import SimpleNamespace
 
 import pymupdf
 import pytest
+from PIL import Image
 
 from correct_ai.llm_providers import (PROVIDERS, ProviderConfig, ask_llm, ask_llm_with_image,
                                       ask_llm_with_image_data, ask_llm_with_pdf,
@@ -121,17 +123,43 @@ def test_ask_llm_rejects_missing_choices(monkeypatch):
 
 
 def test_pdf_to_base64_images(tmp_path):
-    """Each PDF page should become decodable base64 JPEG data."""
+    """Every PDF page should be rendered as a bounded JPEG at 150 DPI."""
     pdf_path = tmp_path / "copy.pdf"
     doc = pymupdf.open()
-    doc.new_page()
+    doc.new_page(width=1000, height=600)
     doc.new_page()
     doc.save(pdf_path)
     doc.close()
 
-    images = pdf_to_base64_images(str(pdf_path), dpi=50, jpg_quality=50)
+    images = pdf_to_base64_images(str(pdf_path))
     assert len(images) == 2
-    assert all(base64.b64decode(image).startswith(b"\xff\xd8") for image in images)
+    with Image.open(io.BytesIO(base64.b64decode(images[0]))) as image:
+        assert image.format == "JPEG"
+        assert image.size == (1800, 1080)
+    with Image.open(io.BytesIO(base64.b64decode(images[1]))) as image:
+        assert image.format == "JPEG"
+        assert max(image.size) <= 1800
+
+
+def test_pdf_to_base64_images_uses_optimized_jpeg_in_memory(monkeypatch, tmp_path):
+    """PDF conversion should encode at quality 85 without writing an image file."""
+    pdf_path = tmp_path / "copy.pdf"
+    with pymupdf.open() as document:
+        document.new_page()
+        document.save(pdf_path)
+
+    original_save = Image.Image.save
+    saves = []
+
+    def capture_save(image, output, **kwargs):
+        saves.append((output, kwargs))
+        return original_save(image, output, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "save", capture_save)
+    pdf_to_base64_images(str(pdf_path))
+    assert len(saves) == 1
+    assert isinstance(saves[0][0], io.BytesIO)
+    assert saves[0][1] == {"format": "JPEG", "quality": 85, "optimize": True}
 
 
 def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):

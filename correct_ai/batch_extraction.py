@@ -24,9 +24,19 @@ import pymupdf
 import requests
 
 try:
-    from .llm_providers import ask_llm_with_image_data, ask_llm_with_user_content, get_provider
+    from .llm_providers import (
+        _render_pdf_page_jpeg,
+        ask_llm_with_image_data,
+        ask_llm_with_user_content,
+        get_provider,
+    )
 except ImportError:  # Support direct execution as a script.
-    from llm_providers import ask_llm_with_image_data, ask_llm_with_user_content, get_provider
+    from llm_providers import (
+        _render_pdf_page_jpeg,
+        ask_llm_with_image_data,
+        ask_llm_with_user_content,
+        get_provider,
+    )
 
 BASE_DIR = "copies_anonymes_validees"
 
@@ -57,14 +67,11 @@ def extract_markdown(response):
     return None
 
 
-def page_to_base64(pdf_path, page_idx, dpi=150):
-    """Render one PDF page at ``dpi`` and return its JPEG as base64 text."""
-    doc = pymupdf.open(pdf_path)
-    page = doc[page_idx]
-    pix = page.get_pixmap(dpi=dpi)
-    img_data = pix.tobytes("jpeg")
-    doc.close()
-    return base64.b64encode(img_data).decode("utf-8")
+def page_to_base64(pdf_path: str, page_idx: int, dpi: int = 150) -> str:
+    """Render a PDF page as an optimized JPEG, capped at 1800 pixels per side."""
+    with pymupdf.open(pdf_path) as doc:
+        image_data = _render_pdf_page_jpeg(doc[page_idx], dpi)
+    return base64.b64encode(image_data).decode("utf-8")
 
 
 def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=600):
@@ -164,8 +171,7 @@ def extract_copy(
     # Extraire la page 1 comme référence si demandé (aide au déchiffrement de l'écriture)
     ref_page1_b64 = None
     if use_ref_page1 and num_pages > 0:
-        pix = doc[0].get_pixmap(dpi=150)
-        ref_page1_b64 = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
+        ref_page1_b64 = base64.b64encode(_render_pdf_page_jpeg(doc[0])).decode("utf-8")
         logger.info(f"Reference page 1 loaded as visual context")
 
     doc.close()

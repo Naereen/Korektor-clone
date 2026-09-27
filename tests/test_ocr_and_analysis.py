@@ -5,10 +5,13 @@ monkeypatched where subject analysis reaches the enrichment step, so malformed
 provider responses and fallback rubric generation can be checked offline.
 """
 
+import base64
+import io
 import json
 from types import SimpleNamespace
 
 import pymupdf
+from PIL import Image
 
 from correct_ai import batch_extraction, rebuild_all_extraction, subject_analysis
 
@@ -20,14 +23,29 @@ def test_extract_markdown_tags_and_missing_tags():
 
 
 def test_page_to_base64_renders_requested_page(tmp_path):
-    """Page rendering should return non-empty base64 image data."""
+    """Page rendering should preserve the JPEG format and the requested DPI."""
     pdf_path = tmp_path / "pages.pdf"
     document = pymupdf.open()
     document.new_page()
     document.save(pdf_path)
     document.close()
     encoded = batch_extraction.page_to_base64(str(pdf_path), 0, dpi=50)
-    assert encoded
+    with Image.open(io.BytesIO(base64.b64decode(encoded))) as image:
+        assert image.format == "JPEG"
+        assert image.size == (414, 585)
+
+
+def test_page_to_base64_caps_oversized_pages(tmp_path):
+    """Oversized PDF pages should be downscaled without changing proportions."""
+    pdf_path = tmp_path / "large.pdf"
+    with pymupdf.open() as document:
+        document.new_page(width=1000, height=600)
+        document.save(pdf_path)
+
+    encoded = batch_extraction.page_to_base64(str(pdf_path), 0)
+    with Image.open(io.BytesIO(base64.b64decode(encoded))) as image:
+        assert image.format == "JPEG"
+        assert image.size == (1800, 1080)
 
 
 def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):

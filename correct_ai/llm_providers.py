@@ -25,6 +25,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pymupdf
 import requests
+from PIL import Image
 
 
 @dataclass
@@ -334,25 +335,27 @@ def ask_llm_with_user_content(
             inference_callback(False)
 
 
+def _render_pdf_page_jpeg(page: pymupdf.Page, dpi: int = 150, jpg_quality: int = 85) -> bytes:
+    """Render one PDF page at the requested DPI as a JPEG limited to 1800 px."""
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(dpi / 72, dpi / 72), alpha=False)
+    image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=jpg_quality, optimize=True)
+    return buffer.getvalue()
+
+
 def pdf_to_base64_images(
     pdf_path: str,
-    dpi: int = 120,
-    jpg_quality: int = 90,
+    dpi: int = 150,
+    jpg_quality: int = 85,
 ) -> List[str]:
-    """Convertit toutes les pages d'un PDF en images base64 (JPEG)."""
-    doc = pymupdf.open(pdf_path)
-    images_b64 = []
-
-    for page in doc:
-        # Render page to pixmap (image)
-        pix = page.get_pixmap(dpi=dpi)
-        img_data = pix.tobytes("jpeg", jpg_quality=jpg_quality)
-        base64_str = base64.b64encode(img_data).decode("utf-8")
-        images_b64.append(base64_str)
-
-    doc.close()
-
-    return images_b64
+    """Convert all PDF pages to capped, optimized base64 JPEG images in memory."""
+    with pymupdf.open(pdf_path) as doc:
+        return [
+            base64.b64encode(_render_pdf_page_jpeg(page, dpi, jpg_quality)).decode("utf-8")
+            for page in doc
+        ]
 
 
 def ask_llm_with_pdf(
