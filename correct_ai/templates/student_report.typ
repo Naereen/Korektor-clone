@@ -47,11 +47,11 @@
       #text(size: 10pt, weight: "bold", fill: ink)[#text(question.note)]
     ]
     #v(6pt)
-    #panel("ÉNONCÉ", question.enonce, rgb("#eef3f6"), rgb("#356b8b"))
+    #panel("Énoncé", question.enonce, rgb("#eef3f6"), rgb("#356b8b"))
     #v(7pt)
-    #panel("CORRIGÉ OFFICIEL", question.corrige, rgb("#edf8f1"), rgb("#207a50"))
+    #panel("Corrigé", question.corrige, rgb("#edf8f1"), rgb("#207a50"))
     #v(7pt)
-    #panel("APPRÉCIATION DU CORRECTEUR", question.appreciation, rgb("#fdf0ef"), rgb("#ba3835"))
+    #panel("Appréciation du correcteur", question.appreciation, rgb("#fdf0ef"), rgb("#ba3835"))
     #if question.crop_image_path != "" {
       v(8pt)
       align(center)[
