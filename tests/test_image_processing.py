@@ -46,9 +46,31 @@ def test_crop_and_annotate_question_adds_margin_and_overlay(tmp_path):
     assert result_path == str(destination)
     with Image.open(destination) as result:
         assert result.format == "PNG"
-        assert result.size == (172, 26)
-        assert result.getpixel((6, 3))[0] > result.getpixel((6, 3))[2]
-        assert result.getpixel((86, 13))[2] > result.getpixel((86, 13))[1]
+        assert result.size == (176, 26)
+        assert result.getpixel((0, 0))[0] > result.getpixel((0, 0))[2]
+        assert 0 < result.getpixel((10, 10))[0] < result.getpixel((10, 10))[2]
+        assert result.getpixel((88, 13))[2] > result.getpixel((88, 13))[1]
+
+
+def test_crop_and_annotate_question_accepts_custom_padding(tmp_path):
+    """Custom page-relative padding controls the crop bounds."""
+    source = tmp_path / "page.png"
+    Image.new("RGB", (200, 100), "white").save(source)
+    destination = tmp_path / "custom-padding.png"
+
+    result_path = crop_and_annotate_question(
+        str(source),
+        [100, 250, 900, 450],
+        str(destination),
+        1,
+        4,
+        padding_x_pct=0.1,
+        padding_y_pct=0.05,
+    )
+
+    assert result_path == str(destination)
+    with Image.open(destination) as result:
+        assert result.size == (200, 30)
 
 
 def test_invalid_box_uses_horizontal_fallback(tmp_path):

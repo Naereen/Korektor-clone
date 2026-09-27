@@ -96,12 +96,14 @@ def crop_and_annotate_question(
     output_path: str,
     q_index: int,
     total_questions: int,
+    padding_x_pct: float = 0.04,
+    padding_y_pct: float = 0.03,
 ) -> str:
     """Save a Qwen crop or a proportional fallback slice without raising.
 
-    Valid boxes receive a three-percent page margin and a translucent red
-    annotation. Invalid or absent boxes use a horizontal page slice based on
-    the one-based question index.
+    Valid boxes receive configurable page-relative margins and a translucent
+    red annotation. Invalid or absent boxes use a horizontal page slice based
+    on the one-based question index.
     """
     try:
         with Image.open(image_path) as source:
@@ -111,8 +113,8 @@ def crop_and_annotate_question(
 
             if is_valid_question_box(bbox_2d) and bbox_2d is not None:
                 target_bounds = qwen_bbox_to_pixels(bbox_2d, width, height)
-                margin_x = int(width * 0.03)
-                margin_y = int(height * 0.03)
+                margin_x = int(width * padding_x_pct)
+                margin_y = int(height * padding_y_pct)
                 left, top, right, bottom = target_bounds
                 crop_bounds = (
                     max(0, left - margin_x),
@@ -131,14 +133,22 @@ def crop_and_annotate_question(
                 draw = ImageDraw.Draw(overlay)
                 draw.rectangle(
                     (
+                        0,
+                        0,
+                        crop.width - 1,
+                        crop.height - 1,
+                    ),
+                    outline="red",
+                    width=3,
+                )
+                draw.rectangle(
+                    (
                         left - crop_left,
                         top - crop_top,
                         right - crop_left - 1,
                         bottom - crop_top - 1,
                     ),
                     fill=(255, 0, 0, 35),
-                    outline="red",
-                    width=3,
                 )
                 crop = Image.alpha_composite(crop, overlay)
 
