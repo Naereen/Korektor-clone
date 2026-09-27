@@ -197,6 +197,7 @@ uv run python correct_ai/app.py</code></pre>
         <h2>Livret PDF individuel (Typst)</h2>
         <p>Le module <code>correct_ai.pdf_builder</code> génère un livret A4 par étudiant depuis <code>korektor.db</code> : nom, prénom, note globale, moyenne des copies notées, énoncé et corrigé par question, appréciation et, si disponible, recadrage du scan avec ses annotations rouges. Les notes validées par le professeur priment sur celles de l'IA.</p>
         <p>La bibliothèque Python <code>typst</code> compile directement le PDF, sans exécutable Typst séparé. Les caractères Unicode et les notations mathématiques sont affichés comme du texte, sans interprétation du contenu comme code Typst.</p>
+        <p>Le livret utilise la police <strong>TeX Gyre Pagella</strong>, proche de Palatino. Sous Debian/Ubuntu, elle est fournie par <code>fonts-texgyre</code> ; en son absence, Typst utilise <code>DejaVu Sans</code> comme police de repli.</p>
         <pre><code>from correct_ai.pdf_builder import generate_student_pdf
 
 generate_student_pdf(

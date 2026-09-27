@@ -66,7 +66,13 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
         text = "\n".join(page.get_text() for page in document)
         assert "Éloi" in text and "Anaïs" in text
         assert "Bonne idée" in text
+        assert "∀" in text
         assert any(page.get_images() for page in document)
+        assert any(
+            "pagella" in font[3].lower() or "pagella" in font[4].lower()
+            for page in document
+            for font in page.get_fonts()
+        )
 
 
 def test_generate_student_pdf_rejects_unknown_copy(tmp_path):

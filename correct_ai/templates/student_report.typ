@@ -3,7 +3,7 @@
 #set page(paper: "a4", margin: 1.5cm, footer: context [
   #align(right)[#text(fill: rgb("#6b7280"), size: 8pt)[Page #counter(page).display()]]
 ])
-#set text(font: "DejaVu Sans", size: 9.5pt, lang: "fr")
+#set text(font: ("TeX Gyre Pagella", "DejaVu Sans"), size: 11pt, lang: "fr")
 #set par(leading: 0.7em)
 #set heading(numbering: none)
 

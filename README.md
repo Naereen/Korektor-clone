@@ -86,6 +86,8 @@ Le système conserve aussi :
 
 Le module `correct_ai.pdf_builder` génère un livret A4 par copie à partir de la base SQLite. Il affiche les notes validées par le professeur en priorité, la moyenne des copies notées, le corrigé par question et, si disponible, le recadrage annoté du scan. Les réponses et appréciations Unicode sont intégrées comme texte, sans être interprétées comme du code Typst. La dépendance Python `typst` compile le rapport directement : aucun exécutable Typst séparé n'est requis.
 
+Le livret utilise **TeX Gyre Pagella**, proche de Palatino. Sur Debian/Ubuntu, la police est fournie par le paquet `fonts-texgyre` ; si elle est absente, Typst se replie sur `DejaVu Sans` pour conserver un PDF lisible.
+
 ```python
 from correct_ai.pdf_builder import generate_student_pdf
 
