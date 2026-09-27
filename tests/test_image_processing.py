@@ -4,7 +4,9 @@ from PIL import Image
 
 from correct_ai.image_processing import (
     crop_and_annotate_question,
+    crop_for_bbox_refinement,
     is_valid_question_box,
+    qwen_crop_bbox_to_page,
     qwen_bbox_to_pixels,
 )
 
@@ -12,6 +14,21 @@ from correct_ai.image_processing import (
 def test_qwen_bbox_to_pixels_uses_xy_order():
     """Qwen bounds use xmin, ymin, xmax, ymax on a 0-1000 scale."""
     assert qwen_bbox_to_pixels([100, 250, 900, 450], 200, 100) == (20, 25, 180, 45)
+
+
+def test_refinement_crop_and_coordinates_map_back_to_page():
+    """Local refinement coordinates are mapped through the crop origin."""
+    image = Image.new("RGB", (1000, 1000), "white")
+    crop, bounds = crop_for_bbox_refinement(image, [100, 100, 500, 500])
+
+    assert bounds == (20, 20, 580, 580)
+    assert crop.size == (560, 560)
+    assert qwen_crop_bbox_to_page([100, 200, 900, 800], bounds, image.size) == [
+        76,
+        132,
+        524,
+        468,
+    ]
 
 
 def test_crop_and_annotate_question_adds_margin_and_overlay(tmp_path):

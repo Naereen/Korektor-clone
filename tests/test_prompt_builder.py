@@ -89,7 +89,11 @@ def previous_corrections_data():
 # Import de la vraie fonction
 # =============================================================================
 
-from correct_ai.prompt_builder import build_incremental_prompt, build_simple_prompt
+from correct_ai.prompt_builder import (
+    build_bbox_refinement_prompt,
+    build_incremental_prompt,
+    build_simple_prompt,
+)
 
 # =============================================================================
 # Tests de build_incremental_prompt (2.1)
@@ -138,7 +142,9 @@ class TestBuildIncrementalPrompt:
         assert '"questions": [' in prompt, "Tableau questions manquant"
         assert prompt.count('"num_question"') == len(bareme_data)
         assert prompt.count('"bbox_2d": null') == len(bareme_data)
+        assert prompt.count('"page": null') == len(bareme_data)
         assert "[xmin, ymin, xmax, ymax]" in prompt
+        assert "numéro de page du PDF, à partir de 1" in prompt
         assert "entiers normalisés entre 0 et 1000" in prompt
         assert "entourer l'encre manuscrite réellement visible" in prompt
         assert "dépasser 20 unités" in prompt
@@ -170,6 +176,16 @@ class TestBuildIncrementalPrompt:
         assert "Note=1.0" in prompt, "Note de la copie 1 manquante"
         assert "Bonne réponse" in prompt, "Commentaire manquant"
         assert "Réponse='Paris'" in prompt, "Réponse étudiante manquante"
+
+    def test_refinement_prompt_uses_ocr_as_context(self):
+        """The focused pass scopes coordinates to its crop and uses OCR context."""
+        prompt = build_bbox_refinement_prompt(
+            "Q2", "Calculer la somme", 3, "La somme vaut 42", "Q2. La somme vaut 42."
+        )
+
+        assert "relatives à CE recadrage" in prompt
+        assert "La somme vaut 42" in prompt
+        assert "Q2. La somme vaut 42." in prompt
 
     def test_prompt_contains_all_bareme_questions(self, bareme_data):
         """2.1 : Vérifier que toutes les questions du barème sont dans le prompt."""

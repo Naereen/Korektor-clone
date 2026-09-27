@@ -17,6 +17,7 @@ from correct_ai.llm_providers import (
     PROVIDERS,
     ProviderConfig,
     ask_llm,
+    ask_llm_with_image,
     ask_llm_with_pdf,
     ask_llm_with_progress,
     get_provider,
@@ -137,9 +138,9 @@ def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
 
     monkeypatch.setattr("correct_ai.llm_providers.requests.post", post)
     provider = ProviderConfig("vision", "http://test", "model")
-    assert ask_llm_with_pdf(
-        provider, str(pdf_path), "read", inference_callback=events.append
-    ) == "ocr"
+    assert (
+        ask_llm_with_pdf(provider, str(pdf_path), "read", inference_callback=events.append) == "ocr"
+    )
     assert events == [True, "post", False]
     content = captured["json"]["messages"][1]["content"]
     assert content[0]["type"] == "text"
@@ -150,6 +151,32 @@ def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
     image_items = [item for item in content if item["type"] == "image_url"]
     assert len(image_items) == 2
     assert all(item["image_url"]["detail"] == "high" for item in image_items)
+
+
+def test_ask_llm_with_image_sends_focused_png(monkeypatch, tmp_path):
+    """Focused refinement sends one high-detail image and balances callbacks."""
+    image_path = tmp_path / "crop.png"
+    image_path.write_bytes(b"png-data")
+    captured = {}
+    events = []
+
+    def post(url, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse({"choices": [{"message": {"content": '{"bbox_2d": [1, 2, 3, 4]}'}}]})
+
+    monkeypatch.setattr("correct_ai.llm_providers.requests.post", post)
+    provider = ProviderConfig("vision", "http://test", "model")
+
+    result = ask_llm_with_image(
+        provider, str(image_path), "refine", "system", inference_callback=events.append
+    )
+
+    assert result == '{"bbox_2d": [1, 2, 3, 4]}'
+    assert events == [True, False]
+    user_content = captured["json"]["messages"][1]["content"]
+    assert user_content[0] == {"type": "text", "text": "refine"}
+    assert user_content[1]["image_url"]["detail"] == "high"
+    assert user_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
 def test_streaming_llm_accumulates_content(monkeypatch):
@@ -166,9 +193,12 @@ def test_streaming_llm_accumulates_content(monkeypatch):
     progress = []
     events = []
     provider = ProviderConfig("test", "http://test", "model")
-    assert ask_llm_with_progress(
-        provider, "prompt", progress_callback=progress.append, inference_callback=events.append
-    ) == "AB"
+    assert (
+        ask_llm_with_progress(
+            provider, "prompt", progress_callback=progress.append, inference_callback=events.append
+        )
+        == "AB"
+    )
     assert events == [True, "post", False]
     assert progress[0].startswith("[Tokens envoyés:")
     assert progress[-1].startswith("[Total:")

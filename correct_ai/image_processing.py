@@ -34,6 +34,51 @@ def qwen_bbox_to_pixels(bbox_2d: list[int], width: int, height: int) -> Tuple[in
     )
 
 
+def crop_for_bbox_refinement(
+    image: Image.Image, bbox_2d: list[int], margin_ratio: float = 0.2
+) -> Tuple[Image.Image, Tuple[int, int, int, int]]:
+    """Crop around a candidate box and return its page-relative pixel bounds."""
+    width, height = image.size
+    left, top, right, bottom = qwen_bbox_to_pixels(bbox_2d, width, height)
+    margin_x = max(16, int((right - left) * margin_ratio))
+    margin_y = max(16, int((bottom - top) * margin_ratio))
+    bounds = (
+        max(0, left - margin_x),
+        max(0, top - margin_y),
+        min(width, right + margin_x),
+        min(height, bottom + margin_y),
+    )
+    return image.crop(bounds), bounds
+
+
+def qwen_crop_bbox_to_page(
+    bbox_2d: list[int],
+    crop_bounds: Tuple[int, int, int, int],
+    page_size: Tuple[int, int],
+) -> list[int]:
+    """Map a normalized crop-relative Qwen box back to page coordinates."""
+    crop_left, crop_top, crop_right, crop_bottom = crop_bounds
+    page_width, page_height = page_size
+    if page_width <= 0 or page_height <= 0:
+        raise ValueError("Image dimensions must be positive")
+    if not is_valid_question_box(bbox_2d):
+        raise ValueError("Invalid Qwen bbox_2d")
+
+    crop_width = crop_right - crop_left
+    crop_height = crop_bottom - crop_top
+    left, top, right, bottom = qwen_bbox_to_pixels(bbox_2d, crop_width, crop_height)
+    page_box = [
+        round((crop_left + left) * 1000 / page_width),
+        round((crop_top + top) * 1000 / page_height),
+        round((crop_left + right) * 1000 / page_width),
+        round((crop_top + bottom) * 1000 / page_height),
+    ]
+    page_box = [min(1000, max(0, value)) for value in page_box]
+    if not is_valid_question_box(page_box):
+        raise ValueError("Refined Qwen bbox is too small in page coordinates")
+    return page_box
+
+
 def _fallback_bounds(
     width: int, height: int, q_index: int, total_questions: int
 ) -> Tuple[int, int, int, int]:
@@ -64,7 +109,7 @@ def crop_and_annotate_question(
             width, height = image.size
             target_bounds: Optional[Tuple[int, int, int, int]] = None
 
-            if is_valid_question_box(bbox_2d):
+            if is_valid_question_box(bbox_2d) and bbox_2d is not None:
                 target_bounds = qwen_bbox_to_pixels(bbox_2d, width, height)
                 margin_x = int(width * 0.03)
                 margin_y = int(height * 0.03)
@@ -91,7 +136,7 @@ def crop_and_annotate_question(
                         right - crop_left - 1,
                         bottom - crop_top - 1,
                     ),
-                    fill=(255, 0, 0, 45),
+                    fill=(255, 0, 0, 35),
                     outline="red",
                     width=3,
                 )

@@ -19,10 +19,13 @@ sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 
 from correct_ai.batch_correction_v2 import (
+    _ocr_text_for_page,
+    _prepare_correction_data,
     correct_copy_incremental,
     correct_copy_incremental_mock,
     parse_llm_response,
 )
+from correct_ai.llm_providers import ProviderConfig
 from correct_ai.database import (
     get_bareme,
     get_corrige,
@@ -279,6 +282,61 @@ def test_missing_pdf_preserves_valid_boxes(tmp_path):
     )
     assert json.loads(prepared["bounding_boxes"]) == [{"bbox_2d": box["bbox_2d"]}]
     assert prepared["crop_image_path"] is None
+
+
+def test_explicit_page_and_refined_bbox_are_saved(tmp_path, monkeypatch):
+    """A page-scoped high-resolution refinement replaces the initial box."""
+    from correct_ai import batch_correction_v2
+
+    pdf_path = tmp_path / "copy.pdf"
+    document = pymupdf.open()
+    document.new_page(width=200, height=200)
+    document.new_page(width=200, height=200)
+    document.save(pdf_path)
+    document.close()
+    calls = []
+    inference_events = []
+
+    def fake_refinement(**kwargs):
+        calls.append(kwargs)
+        kwargs["inference_callback"](True)
+        kwargs["inference_callback"](False)
+        return '{"bbox_2d": [200, 200, 800, 800]}'
+
+    monkeypatch.setattr(batch_correction_v2, "ask_llm_with_image", fake_refinement)
+    extraction = (
+        "<!-- ====== page 1 ====== -->\nQ1 first page\n\n"
+        "<!-- ====== page 2 ====== -->\nQ2 answer on second page\n"
+    )
+    prepared = _prepare_correction_data(
+        {
+            "note": 1,
+            "page": 2,
+            "bbox_2d": [100, 100, 500, 500],
+            "reponse_etudiant": "La réponse vaut 42.",
+        },
+        7,
+        3,
+        "copy.pdf",
+        str(tmp_path),
+        1,
+        2,
+        provider=ProviderConfig("vision", "http://test", "model"),
+        inference_callback=inference_events.append,
+        question_label="Q2",
+        question_text="Calculer la réponse",
+        page_ocr_text=_ocr_text_for_page(extraction, 2),
+    )
+
+    boxes = json.loads(prepared["bounding_boxes"])
+    assert len(calls) == 1
+    assert inference_events == [True, False]
+    assert inference_events == [True, False]
+    assert "Q2 answer on second page" in calls[0]["prompt_text"]
+    assert prepared["crop_image_path"] == "cropped_questions/copie_7_question_3.png"
+    assert (tmp_path / prepared["crop_image_path"]).is_file()
+    assert boxes[0]["page"] == 2
+    assert boxes[0]["bbox_2d"] != [100, 100, 500, 500]
 
 
 # =============================================================================

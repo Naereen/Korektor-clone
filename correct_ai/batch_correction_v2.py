@@ -24,13 +24,19 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import json_repair
 import pymupdf
+from PIL import Image
 
-from correct_ai.image_processing import crop_and_annotate_question, is_valid_question_box
-from correct_ai.llm_providers import ProviderConfig
+from correct_ai.image_processing import (
+    crop_and_annotate_question,
+    crop_for_bbox_refinement,
+    is_valid_question_box,
+    qwen_crop_bbox_to_page,
+)
+from correct_ai.llm_providers import ProviderConfig, ask_llm_with_image
 
 # Ajouter le répertoire parent au path pour importer les autres modules
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -63,15 +69,20 @@ from correct_ai.database import (
     load_sujet,
     save_correction,
 )
-from correct_ai.prompt_builder import build_incremental_prompt, estimate_prompt_tokens
+from correct_ai.prompt_builder import (
+    build_bbox_refinement_prompt,
+    build_incremental_prompt,
+    estimate_prompt_tokens,
+)
 
 CORRECTION_SYSTEM_PROMPT = (
     "Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière "
     "MP2I en France. Note selon le barème et maintiens l'uniformité. Réponds avec un "
-    "unique objet JSON contenant la clé questions. Pour chaque question, bbox_2d est "
-    "exactement [xmin, ymin, xmax, ymax], en entiers normalisés de 0 à 1000 par "
-    "rapport à l'image. La boîte doit entourer toute la réponse manuscrite. Utilise "
-    "null si la localisation visuelle n'est pas fiable."
+    "unique objet JSON contenant la clé questions. Pour chaque question, indique le "
+    "numéro de page du PDF à partir de 1, puis bbox_2d exactement sous la forme "
+    "[xmin, ymin, xmax, ymax], en entiers normalisés de 0 à 1000 par rapport à cette "
+    "page. La boîte doit entourer toute la réponse manuscrite. Utilise null pour page "
+    "et bbox_2d si la localisation visuelle n'est pas fiable."
 )
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", flags=re.DOTALL | re.IGNORECASE)
@@ -112,7 +123,7 @@ def _question_key(value: Any) -> str:
     return text if text.upper().startswith("Q") else f"Q{text}"
 
 
-def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
+def _valid_bounding_boxes(value: Any, page: Any = None) -> List[Dict[str, Any]]:
     """Keep only well-formed, normalized boxes from a model response."""
     if isinstance(value, str):
         try:
@@ -120,7 +131,7 @@ def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
         except (ValueError, TypeError):
             return []
     if is_valid_question_box(value):
-        value = [{"bbox_2d": value}]
+        value = [{"bbox_2d": value, "page": page}]
     if not isinstance(value, list):
         return []
 
@@ -129,18 +140,54 @@ def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         bounds = item.get("bbox_2d")
-        page = item.get("page")
+        item_page = item.get("page", page)
         if not is_valid_question_box(bounds) or (
-            page is not None and (type(page) is not int or page < 1)
+            item_page is not None and (type(item_page) is not int or item_page < 1)
         ):
             continue
         box = {"bbox_2d": bounds}
         if isinstance(item.get("label"), str):
             box["label"] = item["label"]
-        if page is not None:
-            box["page"] = page
+        if item_page is not None:
+            box["page"] = item_page
         boxes.append(box)
     return boxes
+
+
+def _ocr_text_for_page(extraction: Any, page_number: int) -> str:
+    """Extract one page's OCR Markdown from the combined extraction document."""
+    if not isinstance(extraction, str):
+        return ""
+    marker_pattern = re.compile(
+        r"<!--\s*=+\s*page\s+(\d+)(?:\s+\([^>]*\))?\s*=+\s*-->",
+        flags=re.IGNORECASE,
+    )
+    markers = list(marker_pattern.finditer(extraction))
+    for index, marker in enumerate(markers):
+        if int(marker.group(1)) != page_number:
+            continue
+        end = markers[index + 1].start() if index + 1 < len(markers) else len(extraction)
+        return extraction[marker.end() : end].strip()
+    return ""
+
+
+def _integer_page_number(value: Any) -> Optional[int]:
+    """Return an integer page number while rejecting booleans and other values."""
+    return value if type(value) is int else None
+
+
+def _refined_bbox_from_response(response: str) -> Optional[list[int]]:
+    """Return a valid crop-relative box from a refinement response."""
+    payload = _extract_json_payload(response)
+    if not payload:
+        return None
+    try:
+        result = _decode_json(payload)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+    if isinstance(result, dict) and is_valid_question_box(result.get("bbox_2d")):
+        return result["bbox_2d"]
+    return None
 
 
 def _prepare_correction_data(
@@ -151,34 +198,109 @@ def _prepare_correction_data(
     project_dir: str,
     q_index: int,
     total_questions: int,
+    provider: Optional[ProviderConfig] = None,
+    inference_callback: Optional[Callable[[bool], None]] = None,
+    question_label: str = "",
+    question_text: str = "",
+    page_ocr_text: str = "",
 ) -> Dict[str, Any]:
-    """Serialize Qwen bounds and create an annotated or fallback crop."""
+    """Refine explicit-page boxes and create an annotated high-resolution crop."""
     prepared = dict(data)
     raw_boxes = data.get("bbox_2d")
     if raw_boxes is None:
         raw_boxes = data.get("bounding_boxes", [])
-    boxes = _valid_bounding_boxes(raw_boxes)
-    prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
+    boxes = _valid_bounding_boxes(raw_boxes, data.get("page"))
     prepared["crop_image_path"] = None
     if not pdf_path:
+        prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
         return prepared
 
     try:
         with pymupdf.open(os.path.join(project_dir, pdf_path)) as document:
             if not document:
+                prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
                 return prepared
             box = boxes[0] if boxes else None
-            explicit_page = box.get("page") if box else data.get("page")
+            explicit_page = _integer_page_number(box.get("page") if box else data.get("page"))
             estimated_page = 1 + ((max(1, q_index) - 1) * len(document) // max(1, total_questions))
-            page_number = explicit_page if isinstance(explicit_page, int) else estimated_page
-            page_number = min(max(1, page_number), len(document))
+            valid_explicit_page = (
+                explicit_page
+                if explicit_page is not None and 1 <= explicit_page <= len(document)
+                else None
+            )
+            has_explicit_page = valid_explicit_page is not None
+            if explicit_page is not None and not has_explicit_page:
+                logger.warning(
+                    "Page invalide (%s) pour la copie %s, retour à la page estimée",
+                    explicit_page,
+                    copy_id,
+                )
+                boxes = []
+                box = None
+            page_number: int = estimated_page
+            if valid_explicit_page is not None:
+                page_number = valid_explicit_page
             relative_path = os.path.join(
                 "cropped_questions", f"copie_{copy_id}_question_{bareme_id}.png"
             )
             try:
                 with tempfile.TemporaryDirectory() as temp_dir:
+                    page = document[page_number - 1]
                     page_image = os.path.join(temp_dir, "page.png")
-                    document[page_number - 1].get_pixmap(dpi=150, alpha=False).save(page_image)
+                    page.get_pixmap(dpi=300, alpha=False).save(page_image)
+
+                    if box and has_explicit_page and provider:
+                        try:
+                            with Image.open(page_image) as rendered_page:
+                                refinement_crop, crop_bounds = crop_for_bbox_refinement(
+                                    rendered_page, box["bbox_2d"]
+                                )
+                                refinement_image = os.path.join(temp_dir, "refinement.png")
+                                refinement_crop.save(refinement_image, format="PNG")
+                                refinement_prompt = build_bbox_refinement_prompt(
+                                    question_label=question_label,
+                                    question_text=question_text,
+                                    page_number=page_number,
+                                    response_text=str(data.get("reponse_etudiant") or "")[:4000],
+                                    page_ocr_text=page_ocr_text[:12000],
+                                )
+                                refinement_response = ask_llm_with_image(
+                                    provider=provider,
+                                    image_path=refinement_image,
+                                    prompt_text=refinement_prompt,
+                                    system_prompt=(
+                                        "Tu es un outil de localisation visuelle. Retourne uniquement "
+                                        "le JSON demandé et n'invente pas de coordonnées."
+                                    ),
+                                    inference_callback=inference_callback,
+                                )
+                                refined_crop_box = _refined_bbox_from_response(refinement_response)
+                                if refined_crop_box:
+                                    refined_page_box = qwen_crop_bbox_to_page(
+                                        refined_crop_box, crop_bounds, rendered_page.size
+                                    )
+                                    box["bbox_2d"] = refined_page_box
+                                    logger.info(
+                                        "BBox affinée pour la copie %s, question %s, page %s",
+                                        copy_id,
+                                        question_label,
+                                        page_number,
+                                    )
+                                else:
+                                    logger.info(
+                                        "Raffinement incertain pour la copie %s, question %s; "
+                                        "conservation de la bbox initiale",
+                                        copy_id,
+                                        question_label,
+                                    )
+                        except Exception as error:
+                            logger.warning(
+                                "Raffinement bbox impossible pour la copie %s, question %s : %s",
+                                copy_id,
+                                question_label,
+                                error,
+                            )
+
                     result_path = crop_and_annotate_question(
                         page_image,
                         box["bbox_2d"] if box else None,
@@ -189,13 +311,13 @@ def _prepare_correction_data(
                 if result_path and os.path.isfile(result_path):
                     prepared["crop_image_path"] = relative_path
                     if not boxes:
-                        prepared["bounding_boxes"] = json.dumps(
-                            [{"bbox_2d": None, "fallback": True}], ensure_ascii=False
-                        )
+                        boxes = [{"bbox_2d": None, "fallback": True}]
             except (OSError, ValueError, RuntimeError) as error:
                 logger.warning("Boîte non recadrable pour la copie %s : %s", copy_id, error)
+            prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
     except Exception as error:
         logger.warning("Recadrage impossible pour la copie %s : %s", copy_id, error)
+        prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
     return prepared
 
 
@@ -364,6 +486,7 @@ def correct_copy_incremental(
             logger.info(f"📄 Extrait: {prompt[:500]}...")
 
             # 3. Appeler le LLM
+            llm_provider: Optional[ProviderConfig] = None
             # En mode test, utiliser une réponse mockée
             if test_mode:
                 response = '{"Q0": {"note": 1.0, "commentaire": "Test - Mode mock", "raisonnement": "Raisonnement test pour validation du format", "reponse_etudiant": "Test"}}'
@@ -385,6 +508,7 @@ def correct_copy_incremental(
                 if not provider_name:
                     raise ValueError("Configuration provider invalide: nom absent")
                 p = get_provider(provider_name)
+                llm_provider = p
 
                 # Chemin absolu du PDF
                 pdf_abs_path = os.path.join(project_dir, current_copy["pdf_path"])
@@ -495,6 +619,7 @@ def correct_copy_incremental(
             # 5. Sauvegarder dans la base
             # Mapper les questions du JSON vers bareme_id
             bareme_map = {b["question"]: b["id"] for b in bareme}
+            bareme_details = {b["question"]: b for b in bareme}
             question_positions = {b["question"]: index for index, b in enumerate(bareme, start=1)}
             if not any(
                 bareme_map.get(question) and isinstance(data, dict)
@@ -510,6 +635,10 @@ def correct_copy_incremental(
             for question, data in correction_data.items():
                 bareme_id = bareme_map.get(question)
                 if bareme_id and isinstance(data, dict):
+                    ocr_page_number: int = 0
+                    data_page = _integer_page_number(data.get("page"))
+                    if data_page is not None:
+                        ocr_page_number = data_page
                     prepared = _prepare_correction_data(
                         data,
                         copy_id,
@@ -518,6 +647,14 @@ def correct_copy_incremental(
                         project_dir,
                         question_positions[question],
                         len(bareme),
+                        provider=llm_provider,
+                        inference_callback=inference_callback,
+                        question_label=question,
+                        question_text=bareme_details[question]["texte_question"] or question,
+                        page_ocr_text=_ocr_text_for_page(
+                            current_copy["extraction_texte"],
+                            ocr_page_number,
+                        ),
                     )
                     save_correction(db, copy_id, bareme_id, prepared, is_prof=False)
                     saved_count += 1

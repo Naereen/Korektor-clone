@@ -268,6 +268,61 @@ def ask_llm_with_pdf(
         raise
 
 
+def ask_llm_with_image(
+    provider: ProviderConfig,
+    image_path: str,
+    prompt_text: str,
+    system_prompt: str,
+    inference_callback: Optional[Callable[[bool], None]] = None,
+) -> str:
+    """Send one PNG crop to an OpenAI-compatible vision endpoint."""
+    with open(image_path, "rb") as image_file:
+        image_b64 = base64.b64encode(image_file.read()).decode("utf-8")
+
+    payload = {
+        "model": provider.model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{image_b64}",
+                            "detail": "high",
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {provider.api_key()}",
+    }
+
+    if inference_callback:
+        inference_callback(True)
+    try:
+        response = requests.post(
+            provider.url,
+            json=payload,
+            headers=headers,
+            timeout=600,
+            verify=provider.verify_ssl,
+        )
+        response.raise_for_status()
+        try:
+            return response.json()["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise ValueError("Réponse provider au format inattendu") from error
+    finally:
+        if inference_callback:
+            inference_callback(False)
+
+
 def ask_llm(
     provider: ProviderConfig,
     prompt_text: str,

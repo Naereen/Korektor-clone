@@ -40,6 +40,7 @@ def _qwen_output_template(bareme: List[Dict[str, Any]]) -> str:
                 "note": 0.0,
                 "bareme": float(question["points"]),
                 "commentaire": "Non répondu.",
+                "page": None,
                 "bbox_2d": None,
             }
             for question in bareme
@@ -77,7 +78,7 @@ def build_incremental_prompt(
         str: Prompt complet prêt à être envoyé au LLM
     """
     # Section 1: Introduction et contexte global
-    prompt = """Tu es un correcteur expert, en informatique et en mathématiques, en CPGE filière MP2I en France. Ton rôle est de noter les copies d'examen avec JUSTICE et UNIFORMITÉ.
+    prompt = """Tu es un correcteur expert, en informatique et en mathématiques, en CPGE filière MP2I en France. Ton rôle est de noter les copies d'examen avec JUSTICE et UNIFORMITÉ. Corrige cette copie selon les pièces jointes : le sujet, le corrigé et le barème.
 
 ---
 # CONTEXTE GLOBAL (à utiliser pour référence uniquement)
@@ -133,7 +134,7 @@ def build_incremental_prompt(
 ---
 
 Complète EXACTEMENT le template JSON ci-dessous. Tu ne dois NI supprimer NI ajouter de clés.
-Remplace uniquement les valeurs de note, commentaire et bbox_2d.
+Remplace uniquement les valeurs de note, commentaire, page et bbox_2d.
 
 ```json
 """
@@ -147,9 +148,10 @@ Remplace uniquement les valeurs de note, commentaire et bbox_2d.
 2. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
 3. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
 4. Le commentaire doit être assez détaillé pour l'étudiant, et les équations de maths seront entourées de $ ... $.
-5. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu." et bbox_2d=null.
+5. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu.", page=null et bbox_2d=null.
 6. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
-7. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche. La boîte doit entourer l'encre manuscrite réellement visible de toute la réponse. Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
+7. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
+8. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
 """
 
     return prompt
@@ -177,7 +179,7 @@ def build_simple_prompt(
     Returns:
         str: Prompt simple
     """
-    prompt = """Tu es un correcteur expert. Corrige cette copie selon le sujet, le corrigé et le barème.
+    prompt = """Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière MP2I en France. Corrige cette copie selon les pièces jointes : le sujet, le corrigé et le barème.
 
 ---
 # SUJET:
@@ -223,13 +225,34 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
 ---
 # INSTRUCTIONS:
 1. Pour chaque entrée de questions, remplace les valeurs par défaut.
-2. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu." et bbox_2d=null.
+2. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu.", page=null et bbox_2d=null.
 3. Le commentaire doit être assez détaillé pour l'étudiant, et les équations de maths seront entourées de $ ... $.
 4. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
-5. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche. La boîte doit entourer l'encre manuscrite réellement visible de toute la réponse. Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
+5. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
+6. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
 """
 
     return prompt
+
+
+def build_bbox_refinement_prompt(
+    question_label: str,
+    question_text: str,
+    page_number: int,
+    response_text: str,
+    page_ocr_text: str,
+) -> str:
+    """Build a focused prompt for refining a candidate answer box in one crop."""
+    return f"""Localise précisément dans l'image fournie l'encre manuscrite de la réponse à {question_label}.
+L'image est un recadrage haute résolution de la page {page_number}; toutes les coordonnées demandées sont relatives à CE recadrage, pas à la page complète.
+
+Énoncé de la question : {question_text or question_label}
+Transcription OCR attendue de la réponse : {response_text or "non fournie"}
+Texte OCR de la page pour contexte :
+{page_ocr_text or "non disponible"}
+
+Retourne uniquement un objet JSON de la forme {{"bbox_2d": [xmin, ymin, xmax, ymax]}} avec des entiers normalisés de 0 à 1000 et l'origine en haut à gauche du crop. La boîte doit couvrir toute l'encre manuscrite correspondant à cette réponse, sans inclure les réponses voisines. Si la réponse ne peut pas être identifiée avec confiance, retourne {{"bbox_2d": null}}.
+"""
 
 
 def estimate_prompt_tokens(

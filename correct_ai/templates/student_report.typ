@@ -103,7 +103,7 @@
     #if question.crop_image_path != "" {
       v(8pt)
       align(center)[
-        #image(question.crop_image_path, width: 100%)
+        #image(question.crop_image_path, width: 85%)
       ]
     }
     #v(13pt)
