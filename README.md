@@ -11,6 +11,7 @@
         <li><strong>Extraction (OCR)</strong> : Transcription du contenu manuscrit en Markdown avec structuration assistée (questions, réponses).</li>
         <li><strong>Correction IA</strong> : Notation assistée générant des notes et des commentaires. La correction considère à la fois le texte et l'image et l'historique des corrections des copies précédentes.</li>
         <li><strong>Vérification Professeur</strong> : Interface (relativement) ergonomique pour relire les copies, ajuster les notes et annoter.</li>
+        <li><strong>Gestion des étudiants</strong> : Affichage, recherche, tri et édition du roster CSV associé au projet actif.</li>
         <li><strong>Bilan graphique</strong> : Affichage de plusieurs visualisations de l'évaluation, avec téléchargement individuel ou export global en PNG.</li>
       </ol>
     </td>
@@ -48,8 +49,10 @@
     *   Les dossiers validés sont mémorisés dans ce navigateur. Double-cliquez dans le champ ou appuyez sur ↓ pour retrouver les chemins récemment utilisés ; la saisie manuelle et le sélecteur de dossier restent disponibles.
     *   Fichiers requis : `sujet.md`, `corrige.md`, `liste-etudiants.csv`.
     *   Le `bareme.csv` est **généré automatiquement** depuis l'onglet Import (via `subject_analysis.py`). L'onglet **Vérif Barème** permet de contrôler et modifier chaque question, y compris les réponses multilignes, avant la correction. Les changements enregistrés sont aussi reportés dans `korektor.db` si la base existe déjà.
+    *   L'onglet **Étudiants** permet de consulter, rechercher, trier, ajouter, modifier et supprimer les étudiants dans `liste-etudiants.csv`. L'identifiant est conservé lors d'une modification car il sert aux associations entre copies et étudiants.
 
 3.  **Procédure** :
+    *   **Étudiants** : Gérez la liste des étudiants du projet actif ; nom, prénom et identifiant sont requis, le groupe et l'e-mail sont facultatifs.
     *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné et indiquez le nombre de pages A4 constituant une copie. La valeur proposée est 2 pour un PDF déjà en A4 et 4 pour un livret A3.
     *   **Vérif Barème** : Recherchez, filtrez et modifiez les questions, leur type, leurs points et leurs réponses. Ajoutez ou réordonnez des questions, puis enregistrez avant de poursuivre vers Découpage. Une question déjà corrigée ne peut pas être supprimée.
     *   **Découpage** : Choisissez l'import direct A4 ou le découpage A3→A4, puis validez les débuts de copie et l'identification des étudiants. Le nombre de pages choisi à l'import détermine les aperçus et les PDF individuels générés.

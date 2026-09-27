@@ -29,8 +29,10 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 from collections import defaultdict
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -599,82 +601,264 @@ def api_bareme_editor():
 
 
 # --- UTILS: Student Loading ---
+@dataclass(frozen=True)
+class Student:
+    """Typed student metadata stored in the active project's roster CSV."""
+
+    id: str
+    name: str
+    firstname: str
+    group: str = ""
+    email: str = ""
+
+    def to_dict(self):
+        """Return the public API representation of this student."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "firstname": self.firstname,
+            "group": self.group,
+            "email": self.email,
+        }
+
+
+def _normalize_student_header(value):
+    normalized = unicodedata.normalize("NFKD", value or "")
+    without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]", "", without_accents.casefold())
+
+
+def _student_column_indexes(headers):
+    aliases = {
+        "id": {"id", "num", "numero", "netudiant", "numeroetudiant", "idetudiant", "identifiant"},
+        "name": {"nom", "nomdefamille"},
+        "firstname": {"prenom", "prenomdus", "firstname"},
+        "group": {"td", "groupe", "group", "classe", "class"},
+        "email": {"email", "mail", "courriel"},
+    }
+    normalized_headers = [_normalize_student_header(header) for header in headers]
+    indexes = {}
+    for field, candidates in aliases.items():
+        indexes[field] = next(
+            (index for index, header in enumerate(normalized_headers) if header in candidates),
+            None,
+        )
+    return indexes
+
+
+def _read_student_roster():
+    """Read roster rows while retaining the source CSV columns and preamble."""
+    csv_path = config.get_path("liste-etudiants.csv")
+    if not os.path.exists(csv_path):
+        headers = ["N° étudiant", "Nom", "Prénom", "Groupe", "Email"]
+        return "", headers, ";", _student_column_indexes(headers), []
+
+    with open(csv_path, "r", newline="", encoding="utf-8-sig") as roster_file:
+        lines = roster_file.readlines()
+
+    header_index = None
+    delimiter = ";"
+    indexes = {}
+    for index, line in enumerate(lines):
+        for candidate_delimiter in (";", ","):
+            fields = next(csv.reader([line], delimiter=candidate_delimiter), [])
+            candidate_indexes = _student_column_indexes(fields)
+            if all(candidate_indexes[field] is not None for field in ("id", "name", "firstname")):
+                header_index = index
+                delimiter = candidate_delimiter
+                indexes = candidate_indexes
+                break
+        if header_index is not None:
+            break
+
+    if header_index is None:
+        raise ValueError("En-tête étudiant introuvable dans liste-etudiants.csv")
+
+    reader = csv.reader(lines[header_index:], delimiter=delimiter)
+    headers = next(reader)
+    indexes = _student_column_indexes(headers)
+    entries = []
+    for values in reader:
+        values = values[:len(headers)] + [""] * max(0, len(headers) - len(values))
+        student_id = values[indexes["id"]].strip()
+        name = values[indexes["name"]].strip()
+        if not student_id or not name:
+            continue
+        student = Student(
+            id=student_id,
+            name=name,
+            firstname=values[indexes["firstname"]].strip(),
+            group=values[indexes["group"]].strip() if indexes["group"] is not None else "",
+            email=values[indexes["email"]].strip() if indexes["email"] is not None else "",
+        )
+        entries.append((student, values))
+
+    return "".join(lines[:header_index]), headers, delimiter, indexes, entries
+
+
+def _ensure_student_columns(headers):
+    """Add optional fields when an older roster does not yet contain them."""
+    indexes = _student_column_indexes(headers)
+    if indexes["group"] is None:
+        headers.append("Groupe")
+    if indexes["email"] is None:
+        headers.append("Email")
+    return _student_column_indexes(headers)
+
+
+def _write_student_roster(prefix, headers, delimiter, rows):
+    """Atomically replace the roster, retaining its preamble and extra columns."""
+    csv_path = config.get_path("liste-etudiants.csv")
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="", dir=os.path.dirname(csv_path),
+            prefix=".students-", delete=False,
+        ) as roster_file:
+            temp_path = roster_file.name
+            roster_file.write(prefix)
+            writer = csv.writer(roster_file, delimiter=delimiter, lineterminator="\n")
+            writer.writerow(headers)
+            writer.writerows(rows)
+            roster_file.flush()
+            os.fsync(roster_file.fileno())
+        os.replace(temp_path, csv_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _student_from_payload(data) -> tuple[Student | None, str | None]:
+    """Validate and normalize a student payload from an API request."""
+    if not isinstance(data, dict):
+        return None, "Les données de l’étudiant sont invalides."
+
+    values = {}
+    limits = {"id": 64, "name": 100, "firstname": 100, "group": 100, "email": 254}
+    for field, limit in limits.items():
+        value = data.get(field, "")
+        if not isinstance(value, str):
+            return None, f"Le champ {field} doit être du texte."
+        values[field] = value.strip()
+        if len(values[field]) > limit:
+            return None, f"Le champ {field} dépasse {limit} caractères."
+
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", values["id"]):
+        return None, "L’identifiant doit contenir 1 à 64 lettres, chiffres, points, tirets ou tirets bas."
+    if not values["name"] or not values["firstname"]:
+        return None, "Le nom et le prénom sont obligatoires."
+    if values["email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", values["email"]):
+        return None, "L’adresse e-mail n’est pas valide."
+    return Student(**values), None
+
+
 def load_students():
     """Load student metadata from the project's CSV file."""
-    # Student exports are produced by several tools, hence the tolerant header
-    # and delimiter detection instead of assuming one fixed CSV dialect.
-    csv_path = config.get_path("liste-etudiants.csv")
+    try:
+        entries = _read_student_roster()[4]
+    except (OSError, ValueError, csv.Error) as error:
+        app.logger.warning("Impossible de lire le roster étudiant : %s", error)
+        return []
+
     students = []
-    if os.path.exists(csv_path):
+    for student, _ in entries:
+        value = student.to_dict()
+        value["td"] = student.group
+        value["label"] = f"{student.name} {student.firstname} ({student.id})"
+        students.append(value)
+    return sorted(students, key=lambda student: student["label"].casefold())
+
+
+@app.route("/students")
+def students_page():
+    """Render the active project's student roster manager."""
+    return render_template("students.html", active_page="students")
+
+
+@app.route("/api/students", methods=["GET", "POST"])
+def api_students():
+    """List students or create one in the active project's CSV roster."""
+    if request.method == "GET":
         try:
-            with open(csv_path, "r", newline="", encoding="utf-8") as f:
-                # Read all lines to find the header
-                lines = f.readlines()
+            entries = _read_student_roster()[4]
+            students = [student.to_dict() for student, _ in entries]
+            students.sort(key=lambda student: (student["name"].casefold(), student["firstname"].casefold()))
+            return jsonify(students)
+        except (OSError, ValueError, csv.Error):
+            app.logger.exception("Impossible de lire la liste des étudiants")
+            return jsonify({"error": "Lecture de la liste des étudiants impossible."}), 500
 
-            header_index = -1
-            delimiter = ";"  # default
+    student, error = _student_from_payload(request.get_json(silent=True))
+    if error or student is None:
+        return jsonify({"error": error or "Les données de l’étudiant sont invalides."}), 400
+    try:
+        prefix, headers, delimiter, indexes, entries = _read_student_roster()
+        if any(current.id.casefold() == student.id.casefold() for current, _ in entries):
+            return jsonify({"error": "Cet identifiant étudiant existe déjà."}), 409
+        indexes = _ensure_student_columns(headers)
+        row = [""] * len(headers)
+        for field in ("id", "name", "firstname", "group", "email"):
+            if indexes[field] is not None:
+                row[indexes[field]] = getattr(student, field)
+        rows = [values + [""] * max(0, len(headers) - len(values)) for _, values in entries]
+        rows.append(row)
+        _write_student_roster(prefix, headers, delimiter, rows)
+        return jsonify(student.to_dict()), 201
+    except (OSError, ValueError, csv.Error):
+        app.logger.exception("Impossible d’ajouter l’étudiant")
+        return jsonify({"error": "Enregistrement de l’étudiant impossible."}), 500
 
-            # 1. Detect header line and delimiter
-            for i, line in enumerate(lines):
-                # Check for comma or semi-colon
-                if "Nom" in line and ("Prénom" in line or "Prenom" in line):
-                    header_index = i
-                    if line.count(",") > line.count(";"):
-                        delimiter = ","
-                    else:
-                        delimiter = ";"
-                    break
 
-            if header_index != -1:
-                # Re-open or use the lines from header_index
-                # We can just parse the list of lines starting from header_index
-                reader = csv.DictReader(lines[header_index:], delimiter=delimiter)
+@app.route("/api/students/<student_id>", methods=["PUT", "DELETE"])
+def api_student(student_id):
+    """Update or delete one student from the active project's CSV roster."""
+    try:
+        prefix, headers, delimiter, indexes, entries = _read_student_roster()
+    except (OSError, ValueError, csv.Error):
+        app.logger.exception("Impossible de lire la liste des étudiants")
+        return jsonify({"error": "Lecture de la liste des étudiants impossible."}), 500
 
-                for row in reader:
-                    # Robust field detection
-                    keys = list(row.keys())  # keys are from the header line
+    target_index = next(
+        (index for index, (student, _) in enumerate(entries) if student.id == student_id), None
+    )
+    if target_index is None:
+        return jsonify({"error": "Étudiant introuvable."}), 404
 
-                    # Safe helper to find key
-                    def find_key(keywords):
-                        """Find the first CSV column containing one keyword."""
-                        for k in keys:
-                            if k and any(sub in k.lower() for sub in keywords):
-                                return k
-                        return None
+    if request.method == "DELETE":
+        entries.pop(target_index)
+        try:
+            _write_student_roster(prefix, headers, delimiter, [values for _, values in entries])
+            return jsonify({"success": True})
+        except OSError:
+            app.logger.exception("Impossible de supprimer l’étudiant")
+            return jsonify({"error": "Suppression de l’étudiant impossible."}), 500
 
-                    id_key = find_key(["num", "etu", "n° étudiant"])
-                    nom_key = find_key(["nom"])
-                    prenom_key = find_key(["prénom", "prenom"])
-                    td_key = find_key(["td"])
+    student, error = _student_from_payload(request.get_json(silent=True))
+    if error or student is None:
+        return jsonify({"error": error or "Les données de l’étudiant sont invalides."}), 400
+    if student.id != student_id:
+        return jsonify({"error": "L’identifiant ne peut pas être modifié."}), 400
+    if any(
+        index != target_index and current.id.casefold() == student.id.casefold()
+        for index, (current, _) in enumerate(entries)
+    ):
+        return jsonify({"error": "Cet identifiant étudiant existe déjà."}), 409
 
-                    if id_key and nom_key:
-                        s_id = row[id_key].strip()
-                        s_name = row[nom_key].strip()
-                        s_first = row[prenom_key].strip() if prenom_key and row[prenom_key] else ""
-                        s_td = row[td_key].strip() if td_key and row[td_key] else ""
-
-                        # Filter out empty or header-like repetitions if any
-                        if s_id and s_name and s_id.lower() != "n° étudiant":
-                            students.append(
-                                {
-                                    "id": s_id,
-                                    "label": f"{s_name} {s_first} ({s_id})",
-                                    "name": s_name,
-                                    "firstname": s_first,
-                                    "td": s_td,
-                                }
-                            )
-            else:
-                print("Could not find header in students CSV")
-
-        except Exception as e:
-            print(f"Error loading students: {e}")
-            import traceback
-
-            traceback.print_exc()
-
-    students.sort(key=lambda x: x["label"])
-    return students
+    indexes = _ensure_student_columns(headers)
+    rows = []
+    for index, (current, values) in enumerate(entries):
+        row = values + [""] * max(0, len(headers) - len(values))
+        if index == target_index:
+            for field in ("name", "firstname", "group", "email"):
+                if indexes[field] is not None:
+                    row[indexes[field]] = getattr(student, field)
+        rows.append(row)
+    try:
+        _write_student_roster(prefix, headers, delimiter, rows)
+        return jsonify(student.to_dict())
+    except OSError:
+        app.logger.exception("Impossible de modifier l’étudiant")
+        return jsonify({"error": "Enregistrement des modifications impossible."}), 500
 
 
 # --- UTILS: A3 Split Logic (Refactored from sortpdf.py) ---

@@ -1,0 +1,281 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-1">Étudiants</h1>
+            <p class="text-muted mb-0">Gérez la liste associée au projet actif.</p>
+        </div>
+        <button class="btn btn-primary" id="add-student-button" type="button">
+            <i class="bi bi-person-plus me-1" aria-hidden="true"></i> Ajouter un étudiant
+        </button>
+    </div>
+
+    <div id="student-status" class="alert d-none" role="status" aria-live="polite"></div>
+
+    <div class="row g-2 align-items-end mb-3">
+        <div class="col-12 col-md-8 col-lg-9">
+            <label class="form-label" for="student-search">Rechercher</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                <input class="form-control" id="student-search" type="search"
+                    placeholder="Nom, prénom, identifiant ou groupe" autocomplete="off">
+            </div>
+        </div>
+        <div class="col-12 col-md-4 col-lg-3">
+            <label class="form-label" for="student-sort">Trier par</label>
+            <select class="form-select" id="student-sort">
+                <option value="name">Nom</option>
+                <option value="group">Groupe</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="student-loading" class="py-5 text-center text-muted" role="status">
+        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Chargement de la liste…
+    </div>
+    <div id="student-empty" class="border rounded bg-white p-4 p-md-5 text-center d-none">
+        <i class="bi bi-people display-6 text-secondary" aria-hidden="true"></i>
+        <h2 class="h5 mt-3">Aucun étudiant dans cette liste</h2>
+        <p class="text-muted">Ajoutez le premier étudiant au projet actif.</p>
+        <button class="btn btn-primary" id="empty-add-student-button" type="button">
+            <i class="bi bi-person-plus me-1" aria-hidden="true"></i> Ajouter un étudiant
+        </button>
+    </div>
+    <div id="student-no-results" class="alert alert-light border d-none" role="status">
+        Aucun étudiant ne correspond à cette recherche.
+    </div>
+    <div id="student-table-wrapper" class="table-responsive d-none">
+        <table class="table table-hover align-middle bg-white mb-0" aria-label="Liste des étudiants">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Identifiant</th>
+                    <th scope="col">Nom</th>
+                    <th scope="col">Prénom</th>
+                    <th scope="col">Classe / Groupe</th>
+                    <th scope="col">Adresse e-mail</th>
+                    <th scope="col" class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="student-table-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="student-modal" tabindex="-1" aria-labelledby="student-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="student-form" novalidate>
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="student-modal-title">Ajouter un étudiant</h2>
+                    <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="student-id">Identifiant <span class="text-danger">*</span></label>
+                        <input class="form-control" id="student-id" name="id" required maxlength="64"
+                            pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" autocomplete="off"
+                            aria-describedby="student-id-help">
+                        <div class="form-text" id="student-id-help">Lettres, chiffres, point, tiret et tiret bas.</div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="student-name">Nom <span class="text-danger">*</span></label>
+                            <input class="form-control" id="student-name" name="name" required maxlength="100" autocomplete="family-name">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="student-firstname">Prénom <span class="text-danger">*</span></label>
+                            <input class="form-control" id="student-firstname" name="firstname" required maxlength="100" autocomplete="given-name">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label" for="student-group">Classe / Groupe</label>
+                        <input class="form-control" id="student-group" name="group" maxlength="100">
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label" for="student-email">Adresse e-mail</label>
+                        <input class="form-control" id="student-email" name="email" type="email" maxlength="254" autocomplete="email">
+                    </div>
+                    <p class="form-text mt-3 mb-0"><span class="text-danger">*</span> Champ obligatoire</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+                    <button class="btn btn-primary" id="student-save-button" type="submit">
+                        <i class="bi bi-check2 me-1" aria-hidden="true"></i> Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const studentModal = new bootstrap.Modal(document.getElementById('student-modal'));
+    const studentForm = document.getElementById('student-form');
+    const studentIdInput = document.getElementById('student-id');
+    const studentStatus = document.getElementById('student-status');
+    let students = [];
+    let editingStudentId = null;
+
+    function showStudentStatus(message, type = 'success') {
+        studentStatus.textContent = message;
+        studentStatus.className = `alert alert-${type}`;
+    }
+
+    function makeCell(value) {
+        const cell = document.createElement('td');
+        cell.textContent = value || '—';
+        return cell;
+    }
+
+    function makeActionButton(iconName, label, action, studentId, style) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `btn btn-sm ${style} me-1`;
+        button.title = label;
+        button.setAttribute('aria-label', `${label} ${studentId}`);
+        button.dataset.action = action;
+        button.dataset.studentId = studentId;
+        const icon = document.createElement('i');
+        icon.className = `bi ${iconName}`;
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon);
+        return button;
+    }
+
+    function renderStudents() {
+        const query = document.getElementById('student-search').value.trim().toLocaleLowerCase('fr');
+        const sortBy = document.getElementById('student-sort').value;
+        const matching = students
+            .filter(student => [student.id, student.name, student.firstname, student.group, student.email]
+                .some(value => (value || '').toLocaleLowerCase('fr').includes(query)))
+            .sort((left, right) => {
+                const primary = sortBy === 'group' ? 'group' : 'name';
+                return (left[primary] || '').localeCompare(right[primary] || '', 'fr', {sensitivity: 'base'})
+                    || left.name.localeCompare(right.name, 'fr', {sensitivity: 'base'})
+                    || left.firstname.localeCompare(right.firstname, 'fr', {sensitivity: 'base'});
+            });
+
+        const isEmpty = students.length === 0;
+        document.getElementById('student-empty').classList.toggle('d-none', !isEmpty);
+        document.getElementById('student-table-wrapper').classList.toggle('d-none', isEmpty || matching.length === 0);
+        document.getElementById('student-no-results').classList.toggle('d-none', isEmpty || matching.length > 0);
+        const body = document.getElementById('student-table-body');
+        body.replaceChildren();
+
+        matching.forEach(student => {
+            const row = document.createElement('tr');
+            row.append(makeCell(student.id), makeCell(student.name), makeCell(student.firstname));
+            row.append(makeCell(student.group), makeCell(student.email));
+            const actions = document.createElement('td');
+            actions.className = 'text-end text-nowrap';
+            actions.append(
+                makeActionButton('bi-pencil', 'Modifier', 'edit', student.id, 'btn-outline-primary'),
+                makeActionButton('bi-trash', 'Supprimer', 'delete', student.id, 'btn-outline-danger')
+            );
+            row.append(actions);
+            body.append(row);
+        });
+    }
+
+    async function loadStudents() {
+        document.getElementById('student-loading').classList.remove('d-none');
+        try {
+            const response = await fetch('/api/students');
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Impossible de charger la liste.');
+            students = result;
+            renderStudents();
+        } catch (error) {
+            showStudentStatus(error.message, 'danger');
+        } finally {
+            document.getElementById('student-loading').classList.add('d-none');
+        }
+    }
+
+    function openStudentForm(student = null) {
+        editingStudentId = student ? student.id : null;
+        studentForm.reset();
+        studentForm.classList.remove('was-validated');
+        document.getElementById('student-modal-title').textContent = student ? 'Modifier un étudiant' : 'Ajouter un étudiant';
+        studentIdInput.disabled = Boolean(student);
+        studentIdInput.value = student ? student.id : '';
+        document.getElementById('student-name').value = student ? student.name : '';
+        document.getElementById('student-firstname').value = student ? student.firstname : '';
+        document.getElementById('student-group').value = student ? student.group : '';
+        document.getElementById('student-email').value = student ? student.email : '';
+        studentModal.show();
+        document.getElementById('student-modal').addEventListener('shown.bs.modal', () => {
+            (student ? document.getElementById('student-name') : studentIdInput).focus();
+        }, {once: true});
+    }
+
+    document.getElementById('add-student-button').addEventListener('click', () => openStudentForm());
+    document.getElementById('empty-add-student-button').addEventListener('click', () => openStudentForm());
+    document.getElementById('student-search').addEventListener('input', renderStudents);
+    document.getElementById('student-sort').addEventListener('change', renderStudents);
+
+    document.getElementById('student-table-body').addEventListener('click', async event => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const student = students.find(entry => entry.id === button.dataset.studentId);
+        if (!student) return;
+        if (button.dataset.action === 'edit') {
+            openStudentForm(student);
+            return;
+        }
+        if (!window.confirm(`Supprimer ${student.firstname} ${student.name} (${student.id}) de la liste ?`)) return;
+        try {
+            const response = await fetch(`/api/students/${encodeURIComponent(student.id)}`, {method: 'DELETE'});
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Suppression impossible.');
+            showStudentStatus('Étudiant supprimé.');
+            await loadStudents();
+        } catch (error) {
+            showStudentStatus(error.message, 'danger');
+        }
+    });
+
+    studentForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!studentForm.checkValidity()) {
+            studentForm.classList.add('was-validated');
+            studentForm.reportValidity();
+            return;
+        }
+        const payload = {
+            id: editingStudentId || studentIdInput.value.trim(),
+            name: document.getElementById('student-name').value.trim(),
+            firstname: document.getElementById('student-firstname').value.trim(),
+            group: document.getElementById('student-group').value.trim(),
+            email: document.getElementById('student-email').value.trim()
+        };
+        const saveButton = document.getElementById('student-save-button');
+        saveButton.disabled = true;
+        try {
+            const url = editingStudentId
+                ? `/api/students/${encodeURIComponent(editingStudentId)}`
+                : '/api/students';
+            const response = await fetch(url, {
+                method: editingStudentId ? 'PUT' : 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Enregistrement impossible.');
+            studentModal.hide();
+            showStudentStatus(editingStudentId ? 'Modifications enregistrées.' : 'Étudiant ajouté.');
+            await loadStudents();
+        } catch (error) {
+            showStudentStatus(error.message, 'danger');
+        } finally {
+            saveButton.disabled = false;
+        }
+    });
+
+    loadStudents();
+</script>
+{% endblock %}

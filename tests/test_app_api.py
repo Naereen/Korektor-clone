@@ -70,6 +70,92 @@ def test_settings_get_and_post(project_client):
     assert client.post("/settings", data={"project_dir": str(project)}).status_code == 302
 
 
+def test_student_roster_page_and_csv_crud(project_client):
+    """Student CRUD should preserve roster preamble and existing CSV columns."""
+    client, project = project_client
+    roster = project / "liste-etudiants.csv"
+    roster.write_text(
+        "Export de la promotion,2026\n\n,TD,N° étudiant,Nom,Prénom,Email\n"
+        "L3 MAP,TD1,21922865,Dupont,Jean,jean@example.fr\n",
+        encoding="utf-8",
+    )
+
+    page = client.get("/students")
+    assert page.status_code == 200
+    assert "Ajouter un étudiant" in page.get_data(as_text=True)
+    assert "href=\"/students\"" in page.get_data(as_text=True)
+
+    response = client.get("/api/students")
+    assert response.status_code == 200
+    assert response.get_json() == [
+        {
+            "id": "21922865",
+            "name": "Dupont",
+            "firstname": "Jean",
+            "group": "TD1",
+            "email": "jean@example.fr",
+        }
+    ]
+
+    added = client.post(
+        "/api/students",
+        json={
+            "id": "ETU-2",
+            "name": "Martin",
+            "firstname": "Alice",
+            "group": "TD2",
+            "email": "alice@example.fr",
+        },
+    )
+    assert added.status_code == 201
+    assert "Export de la promotion,2026" in roster.read_text(encoding="utf-8")
+
+    updated = client.put(
+        "/api/students/ETU-2",
+        json={
+            "id": "ETU-2",
+            "name": "Martin",
+            "firstname": "Zoé",
+            "group": "TD3",
+            "email": "zoe@example.fr",
+        },
+    )
+    assert updated.status_code == 200
+    assert client.get("/api/students").get_json()[1]["firstname"] == "Zoé"
+
+    deleted = client.delete("/api/students/ETU-2")
+    assert deleted.status_code == 200
+    assert [row["id"] for row in client.get("/api/students").get_json()] == ["21922865"]
+
+
+def test_student_roster_rejects_invalid_and_duplicate_students(project_client):
+    """Student APIs should validate required fields, IDs, mail, and uniqueness."""
+    client, project = project_client
+    (project / "liste-etudiants.csv").write_text(
+        "Num;Nom;Prénom\n42;Durand;Camille\n", encoding="utf-8"
+    )
+    valid = {"id": "42", "name": "Durand", "firstname": "Camille", "group": "", "email": ""}
+
+    assert client.post("/api/students", json=valid).status_code == 409
+    assert client.post(
+        "/api/students",
+        json={**valid, "id": "bad id"},
+    ).status_code == 400
+    assert client.post(
+        "/api/students",
+        json={**valid, "id": "43", "email": "pas-une-adresse"},
+    ).status_code == 400
+    assert client.post(
+        "/api/students",
+        json={**valid, "id": "43", "firstname": ""},
+    ).status_code == 400
+    assert client.put(
+        "/api/students/42",
+        json={**valid, "id": "43"},
+    ).status_code == 400
+    assert client.delete("/api/students/inconnu").status_code == 404
+
+
 def test_batch_api_rejects_invalid_payload(project_client):
     """Batch start should reject malformed JSON and non-integer bounds."""
     client, project = project_client
