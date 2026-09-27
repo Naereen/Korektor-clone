@@ -84,6 +84,23 @@
         background-color: #f8f9fa;
         font-family: system-ui, -apple-system, sans-serif;
     }
+    #markdown-preview pre {
+        position: relative;
+        overflow-x: auto;
+        border-radius: 0.25rem;
+    }
+    #markdown-preview pre[data-language]::before {
+        content: attr(data-language);
+        position: absolute;
+        top: 0.4rem;
+        right: 0.65rem;
+        color: #9da7b3;
+        font: 0.7rem/1.2 system-ui, -apple-system, sans-serif;
+        text-transform: lowercase;
+    }
+    #markdown-preview pre code.hljs {
+        padding-top: 2rem;
+    }
     .action-bar {
         display: flex;
         gap: 10px;
@@ -102,6 +119,10 @@
     .latex-errors.has-errors { display: block; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/ocaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/latex.min.js"></script>
 <script>
     MathJax = {
         tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']], processEscapes: true },
@@ -484,6 +505,7 @@ function cancelCurrentPage() {
 function onEditorChange(instance, change) {
     if (change.origin === 'setValue') return;
     if (!currentCopy || !currentPage) return;
+    if (isPreviewMode) renderMarkdownPreview(editor.getValue());
     hasUnsavedChanges = true;
     markDirty(true);
     updatePageButton(currentPage, true, true);
@@ -499,11 +521,23 @@ function markDirty(dirty) {
 }
 
 // === Preview + LaTeX check ===
+function renderMarkdownPreview(markdownText) {
+    markdownPreview.innerHTML = marked.parse(markdownText);
+    markdownPreview.querySelectorAll('pre code').forEach((block) => {
+        const languageClass = Array.from(block.classList).find(name => name.startsWith('language-'));
+        const requestedLanguage = languageClass ? languageClass.slice('language-'.length) : '';
+        const language = requestedLanguage && hljs.getLanguage(requestedLanguage) ? requestedLanguage : 'plaintext';
+        if (languageClass) block.classList.remove(languageClass);
+        block.classList.add(`language-${language}`);
+        block.parentElement.dataset.language = language;
+        hljs.highlightElement(block);
+    });
+}
+
 function togglePreview() {
     isPreviewMode = !isPreviewMode;
     if (isPreviewMode) {
-        const md = editor.getValue();
-        markdownPreview.innerHTML = marked.parse(md);
+        renderMarkdownPreview(editor.getValue());
         if (window.MathJax) {
             MathJax.typesetPromise([markdownPreview]).then(() => {
                 checkLatexErrors();

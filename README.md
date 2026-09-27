@@ -215,7 +215,7 @@ L'onglet **Vérif OCR** permet de vérifier et corriger manuellement l'extractio
 
 - Visualisation page par page des PDF
 - Édition du contenu Markdown extrait avec CodeMirror, coloration Markdown, numéros de ligne et retour automatique à la ligne
-- Prévisualisation en temps réel avec rendu LaTeX (MathJax)
+- Prévisualisation Markdown avec rendu LaTeX (MathJax) et coloration des blocs de code
 - **Bouton Sauvegarder** pour enregistrer la page courante
 - **Bouton Annuler** pour revenir à la dernière version sauvegardée
 - **Détection d'erreurs LaTeX** (dollars impairs, backslashs non échappés)

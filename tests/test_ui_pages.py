@@ -84,6 +84,19 @@ class TestVerifyOcrPage:
         assert "CodeMirror.fromTextArea(markdownEditor" in content
         assert "mode: 'markdown'" in content
 
+    def test_markdown_preview_highlights_fenced_code(self, client):
+        content = client.get("/verify_ocr").get_data(as_text=True)
+
+        assert "highlight.js/11.11.1/styles/github-dark.min.css" in content
+        assert "highlight.js/11.11.1/highlight.min.js" in content
+        assert "highlight.js/11.11.1/languages/ocaml.min.js" in content
+        assert "highlight.js/11.11.1/languages/latex.min.js" in content
+        assert "function renderMarkdownPreview(markdownText)" in content
+        assert "hljs.highlightElement(block)" in content
+        assert "hljs.getLanguage(requestedLanguage)" in content
+        assert "block.classList.add(`language-${language}`)" in content
+        assert "renderMarkdownPreview(editor.getValue())" in content
+
     def test_finish_action_advances_to_correction(self, client):
         """Ensure OCR review has an explicit save-aware next action."""
         content = client.get("/verify_ocr").data.decode("utf-8")
