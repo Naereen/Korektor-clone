@@ -202,12 +202,17 @@
     <div class="toolbar d-flex align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-3">
             <h5 class="mb-0">Validateur</h5>
-            <select id="copy-select" class="form-select form-select-sm" style="width: 200px;">
-                <option value="">Chargement...</option>
-            </select>
+            <div class="d-flex align-items-center gap-1">
+                <button id="prev-copy-btn" class="btn btn-outline-secondary btn-sm" title="Copie précédente" aria-label="Copie précédente" disabled>◀</button>
+                <select id="copy-select" class="form-select form-select-sm" style="width: 200px;">
+                    <option value="">Chargement...</option>
+                </select>
+                <button id="next-copy-btn" class="btn btn-outline-secondary btn-sm" title="Copie suivante" aria-label="Copie suivante" disabled>▶</button>
+            </div>
         </div>
         <div class="student-summary" aria-live="polite">
             <div id="student-name" class="student-name">Sélectionnez une copie</div>
+            <div id="correction-built-at" class="small text-muted" aria-live="polite"></div>
             <div id="student-score" class="student-score">Note totale : -</div>
             <div class="progress student-progress" role="progressbar" aria-label="Note totale">
                 <div id="student-progress-bar" class="progress-bar" style="width: 0%"></div>
@@ -330,6 +335,8 @@
     let currentCopyInfo = null;
 
     const copySelect = document.getElementById('copy-select');
+    const prevCopyBtn = document.getElementById('prev-copy-btn');
+    const nextCopyBtn = document.getElementById('next-copy-btn');
     const questionSelect = document.getElementById('question-select');
     const pdfViewer = document.getElementById('pdf-viewer');
     const saveStatus = document.getElementById('save-status');
@@ -351,6 +358,7 @@
     const noteLabel = document.getElementById('note-label');
     const qcmFields = document.querySelectorAll('.qcm-field');
     const studentName = document.getElementById('student-name');
+    const correctionBuiltAt = document.getElementById('correction-built-at');
     const studentScore = document.getElementById('student-score');
     const studentProgressBar = document.getElementById('student-progress-bar');
     const cropPreview = document.getElementById('crop-preview');
@@ -377,6 +385,8 @@
         await loadCopies();
 
         copySelect.addEventListener('change', loadCopyData);
+        prevCopyBtn.addEventListener('click', () => navigateCopy(-1));
+        nextCopyBtn.addEventListener('click', () => navigateCopy(1));
         questionSelect.addEventListener('change', updateFormFromSelection);
 
         // Listen for form changes to update local state immediately
@@ -390,6 +400,20 @@
         prevQuestionBtn.addEventListener('click', () => navigateQuestion(-1));
         nextQuestionBtn.addEventListener('click', () => navigateQuestion(1));
     });
+
+    function navigateCopy(delta) {
+        const targetIndex = copySelect.selectedIndex + delta;
+        if (targetIndex <= 0 || targetIndex >= copySelect.options.length) return;
+        copySelect.selectedIndex = targetIndex;
+        copySelect.dispatchEvent(new Event('change'));
+    }
+
+    function updateCopyNavButtons() {
+        const index = copySelect.selectedIndex;
+        const lastIndex = copySelect.options.length - 1;
+        prevCopyBtn.disabled = index <= 1;
+        nextCopyBtn.disabled = index < 1 || index >= lastIndex;
+    }
 
     function navigateQuestion(delta) {
         const currentIndex = questionSelect.selectedIndex;
@@ -456,6 +480,7 @@
                 opt.dataset.name = [c.prenom, c.nom].filter(Boolean).join(' ');
                 copySelect.appendChild(opt);
             });
+            updateCopyNavButtons();
         } catch (e) {
             console.error("Erreur chargement copies", e);
         }
@@ -467,8 +492,10 @@
         if (!copyId) {
             currentCopy = null;
             resetUI();
+            updateCopyNavButtons();
             return;
         }
+        updateCopyNavButtons();
         currentCopy = copyId;
         studentPdfBtn.disabled = false;
         currentCopyInfo = [...copySelect.options].find(option => option.value === copyId);
@@ -494,6 +521,7 @@
 
 
     function resetUI() {
+        correctionBuiltAt.textContent = '';
         studentPdfBtn.disabled = true;
         showCropPreview(null);
         currentCopyInfo = null;
@@ -521,6 +549,11 @@
         const copyLabel = currentCopy ? `Copie ${currentCopy}` : "Sélectionnez une copie";
         const name = currentCopyInfo && currentCopyInfo.dataset.name;
         studentName.innerText = name || copyLabel;
+
+        const builtAt = currentCorrectionData.map(row => row.date_correction_llm).filter(Boolean).sort().at(-1);
+        correctionBuiltAt.textContent = builtAt
+            ? `Correction construite le ${new Date(builtAt.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', {dateStyle: 'short', timeStyle: 'short'})}`
+            : 'Correction : date indisponible';
 
         const total = currentCorrectionData.reduce((sum, row) => {
             const note = Number(row.note);

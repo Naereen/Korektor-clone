@@ -219,6 +219,27 @@ class TestProjectSet:
 
 
 class TestBaremeEditor:
+    def test_built_at_tracks_rubric_file(self, client, original_dir, tmp_path):
+        """The rubric build time follows the CSV, including after a save."""
+        from datetime import datetime, timezone
+
+        from app import config
+
+        config.project_dir = str(tmp_path)
+        path = tmp_path / "bareme.csv"
+        path.write_text("question,qcm (oui/non),réponse attendue,points\nQ1,Non,Oui,1\n", encoding="utf-8")
+        timestamp = 1700000000
+        os.utime(path, (timestamp, timestamp))
+        initial = client.get("/api/bareme/editor").get_json()
+        assert initial["built_at"] == datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+        saved = client.put(
+            "/api/bareme/editor",
+            json={"revision": initial["revision"], "fields": initial["fields"], "rows": initial["rows"]},
+        )
+        assert saved.status_code == 200
+        assert saved.get_json()["built_at"] == client.get("/api/bareme/editor").get_json()["built_at"]
+
     def test_missing_rubric_points_back_to_import(self, client, original_dir, tmp_path):
         """A new project shows a useful empty state before rubric generation."""
         from app import config

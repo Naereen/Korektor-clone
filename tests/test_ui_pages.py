@@ -68,6 +68,11 @@ class TestOcrPage:
 
 
 class TestVerifyOcrPage:
+    def test_displays_rebuild_time_near_student(self, client):
+        content = client.get("/verify_ocr").get_data(as_text=True)
+        assert 'id="ocr-built-at"' in content
+        assert 'showOcrBuiltAt(data.built_at);' in content
+
     def test_markdown_editor_uses_codemirror(self, client):
         """Ensure OCR text editing uses CodeMirror in Markdown mode."""
         response = client.get("/verify_ocr")
@@ -149,6 +154,22 @@ def test_console_copy_control(client, page):
 
 
 class TestVerifyCorrectionPage:
+    def test_copy_navigation_uses_previous_and_next_options(self, client):
+        """The correction validator exposes bounded copy navigation controls."""
+        content = client.get("/verify").get_data(as_text=True)
+
+        assert 'id="prev-copy-btn"' in content
+        assert 'id="next-copy-btn"' in content
+        assert "function navigateCopy(delta)" in content
+        assert "copySelect.dispatchEvent(new Event('change'))" in content
+        assert "prevCopyBtn.disabled = index <= 1" in content
+        assert "nextCopyBtn.disabled = index < 1 || index >= lastIndex" in content
+
+    def test_displays_llm_time_near_student(self, client):
+        content = client.get("/verify").get_data(as_text=True)
+        assert 'id="correction-built-at"' in content
+        assert 'row.date_correction_llm' in content
+
     def test_finish_action_advances_to_bilan(self, client):
         """Ensure correction review saves before advancing to the dashboard."""
         response = client.get("/verify")

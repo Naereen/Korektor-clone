@@ -371,12 +371,14 @@ def test_legacy_correction_endpoint(project_client):
 def test_ocr_page_content_and_rebuild(project_client):
     """OCR page content should persist and rebuild the aggregate extraction."""
     client, project = project_client
+    assert client.get("/api/ocr/pages/Copie_01").get_json()["built_at"] is None
     assert client.post("/api/ocr/content/Copie_01/1", json={"content": "Q1"}).status_code == 200
     assert client.get("/api/ocr/content/Copie_01/01").get_json()["content"] == "Q1"
     response = client.post("/api/ocr/rebuild_extraction/Copie_01")
     assert response.get_json()["success"] is True
     extraction = project / "copies_anonymes_validees" / "Copie_01" / "extraction.md"
     assert "page 01" in extraction.read_text(encoding="utf-8")
+    assert response.get_json()["built_at"] == client.get("/api/ocr/pages/Copie_01").get_json()["built_at"]
 
 
 def test_ocr_pages_and_pdf_routes(project_client):

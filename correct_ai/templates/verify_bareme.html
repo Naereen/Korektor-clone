@@ -84,6 +84,7 @@
         <div>
             <h1 id="rubricTitle"><i class="bi bi-ui-checks me-2" aria-hidden="true"></i>Vérif Barème</h1>
             <div class="rubric-file mt-1">{{ current_project_name }} <span aria-hidden="true">·</span> bareme.csv</div>
+            <div id="baremeBuiltAt" class="rubric-file" aria-live="polite">Barème : date indisponible</div>
         </div>
         <div class="rubric-actions">
             <button type="button" id="reloadBareme" class="btn btn-sm btn-outline-secondary" title="Recharger le fichier" aria-label="Recharger le fichier"><i class="bi bi-arrow-clockwise"></i></button>
@@ -176,6 +177,12 @@ const rubricNodes = {
     search: document.getElementById('baremeSearch')
 };
 const primaryFields = ['question', 'qcm (oui/non)', 'réponse attendue', 'points'];
+const baremeBuiltAt = document.getElementById('baremeBuiltAt');
+function showBaremeBuiltAt(value) {
+    baremeBuiltAt.textContent = value
+        ? `Barème construit le ${new Date(value).toLocaleString('fr-FR', {dateStyle: 'short', timeStyle: 'short'})}`
+        : 'Barème : date indisponible';
+}
 let rubric = null;
 let savedRows = '';
 let selectedIndex = 0;
@@ -332,12 +339,14 @@ async function loadRubric() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Lecture impossible.');
         rubric = data;
+        showBaremeBuiltAt(data.built_at);
         savedRows = JSON.stringify(data.rows);
         selectedIndex = 0;
         renderRubric();
         showRubricStatus('');
     } catch (error) {
         rubric = null;
+        showBaremeBuiltAt(null);
         rubricNodes.workspace.hidden = true;
         document.getElementById('baremeMetrics').hidden = true;
         rubricNodes.empty.hidden = false;
@@ -380,6 +389,7 @@ async function saveRubric() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Enregistrement impossible.');
         rubric.revision = data.revision;
+        showBaremeBuiltAt(data.built_at);
         savedRows = snapshot;
         showRubricStatus('Barème enregistré.', 'success');
         return true;

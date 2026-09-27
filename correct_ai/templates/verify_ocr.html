@@ -143,7 +143,10 @@
             </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <h5 id="student-name" class="mb-0 text-muted"></h5>
+            <div class="text-center">
+                <h5 id="student-name" class="mb-0 text-muted"></h5>
+                <div id="ocr-built-at" class="small text-muted" aria-live="polite"></div>
+            </div>
         </div>
         <div class="d-flex align-items-center gap-2">
             <span id="save-status" class="badge bg-secondary">Prêt</span>
@@ -195,6 +198,12 @@ const copySelect = document.getElementById('copy-select');
 const prevCopyBtn = document.getElementById('prev-copy-btn');
 const nextCopyBtn = document.getElementById('next-copy-btn');
 const studentName = document.getElementById('student-name');
+const ocrBuiltAt = document.getElementById('ocr-built-at');
+function showOcrBuiltAt(value) {
+    ocrBuiltAt.textContent = value
+        ? `OCR construit le ${new Date(value).toLocaleString('fr-FR', {dateStyle: 'short', timeStyle: 'short'})}`
+        : 'OCR : date indisponible';
+}
 const pageSelector = document.getElementById('page-selector');
 const pdfViewer = document.getElementById('pdf-viewer');
 const markdownEditor = document.getElementById('markdown-editor');
@@ -252,7 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // === Copies ===
 async function loadStudentName(copyId) {
-    studentName.innerText = "";
+    studentName.innerText = copyId;
     try {
         const res = await fetch(`/api/ocr/student/${copyId}`);
         const data = await res.json();
@@ -281,7 +290,7 @@ function switchToAdjacentCopy(offset) {
 }
 
 async function switchCopy(copyId) {
-    if (!copyId) { currentCopy = null; resetUI(); return; }
+    if (!copyId) { currentCopy = null; studentName.innerText = ''; showOcrBuiltAt(null); resetUI(); return; }
     if (hasUnsavedChanges && currentCopy !== copyId) {
         pendingAction = { type: 'copy', target: copyId };
         unsavedModal.show();
@@ -292,6 +301,7 @@ async function switchCopy(copyId) {
 
 async function doSwitchCopy(copyId) {
     currentCopy = copyId;
+    showOcrBuiltAt(null);
     hasUnsavedChanges = false;
     setSaveStatus("Chargement...", "info");
     loadStudentName(copyId);
@@ -299,6 +309,7 @@ async function doSwitchCopy(copyId) {
         pdfViewer.src = "";
         const res = await fetch(`/api/ocr/pages/${copyId}`);
         const data = await res.json();
+        showOcrBuiltAt(data.built_at);
         pagesData = {...data.pages};
         originalPagesData = {...data.pages};
         totalPages = data.total_pages || Object.keys(pagesData).length;
@@ -423,6 +434,7 @@ async function doRebuild() {
         });
         const data = await res.json();
         if (data.success) {
+            showOcrBuiltAt(data.built_at);
             setSaveStatus("extraction.md reconstruit !", "success");
             setTimeout(() => setSaveStatus("Prêt", "secondary"), 2000);
             return true;

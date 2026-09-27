@@ -34,7 +34,7 @@ import unicodedata
 from collections import defaultdict
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -516,7 +516,12 @@ def api_bareme_editor():
 
     revision = hashlib.sha256(raw).hexdigest()
     if request.method == "GET":
-        return jsonify({"fields": fields, "rows": rows, "revision": revision})
+        return jsonify({
+            "fields": fields,
+            "rows": rows,
+            "revision": revision,
+            "built_at": datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).isoformat(),
+        })
 
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or data.get("revision") != revision:
@@ -637,6 +642,7 @@ def api_bareme_editor():
         {
             "success": True,
             "revision": hashlib.sha256(buffer.getvalue().encode(encoding)).hexdigest(),
+            "built_at": datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).isoformat(),
         }
     )
 
@@ -2055,6 +2061,7 @@ def get_db_corrections(copie_id):
                 c.nb_bonnes_llm,
                 c.nb_mauvaises_llm,
                 c.bonus_redaction_llm,
+                c.date_correction_llm,
                 c.validee_par_prof,
                 c.crop_image_path,
                 c.bounding_boxes
@@ -2086,6 +2093,7 @@ def get_db_corrections(copie_id):
                     "note": row["note"],
                     "commentaires eventuels du correcteur": row["commentaire"],
                     "raisonnement_llm": row["raisonnement"],
+                    "date_correction_llm": row["date_correction_llm"],
                     "nbre de bonnes reponses si QCM": row["nb_bonnes_llm"],
                     "nbre de mauvaises reponses si QCM": row["nb_mauvaises_llm"],
                     "Redaction si QCM": row["bonus_redaction_llm"],
@@ -2657,6 +2665,11 @@ def get_ocr_pages(copie_id):
     """Return page Markdown content and PDF page count for one copy."""
     """Get list of pages with markdown content for a copy"""
     copy_dir = get_ocr_copy_dir(copie_id)
+    extraction_path = os.path.join(copy_dir, "extraction.md")
+    built_at = (
+        datetime.fromtimestamp(os.path.getmtime(extraction_path), timezone.utc).isoformat()
+        if os.path.isfile(extraction_path) else None
+    )
     pages = {}
 
     if os.path.exists(copy_dir):
@@ -2685,7 +2698,7 @@ def get_ocr_pages(copie_id):
         except:
             pass
 
-    return jsonify({"pages": pages, "total_pages": total_pages})
+    return jsonify({"pages": pages, "total_pages": total_pages, "built_at": built_at})
 
 
 @app.route("/api/ocr/content/<copie_id>/<page_num>", methods=["GET", "POST"])
@@ -2752,6 +2765,7 @@ def rebuild_extraction(copie_id):
             {
                 "success": True,
                 "message": f"extraction.md regénérée avec {len(parts)} pages",
+                "built_at": datetime.fromtimestamp(os.path.getmtime(extraction_path), timezone.utc).isoformat(),
             }
         )
     except Exception as e:

@@ -120,6 +120,14 @@ class TestValidationApi:
             {"id": 1, "etudiant_id": "42", "nom": "DUPONT", "prenom": "Alice"}
         ]
 
+    def test_correction_build_time_survives_professor_validation(self, database_client):
+        """Teacher validation must not replace the LLM construction time."""
+        before = database_client.get("/api/db/corrections/1").get_json()[0]
+        assert before["date_correction_llm"]
+        database_client.post("/api/db/corrections/1", json=[{"question": "Q1", "note": "1.5"}])
+        after = database_client.get("/api/db/corrections/1").get_json()[0]
+        assert after["date_correction_llm"] == before["date_correction_llm"]
+
     def test_professor_note_becomes_final_note(self, database_client):
         """Ensure a saved teacher score overrides the LLM score."""
         response = database_client.post(
