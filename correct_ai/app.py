@@ -33,6 +33,7 @@ from collections import defaultdict
 from contextlib import closing
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import pymupdf
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
@@ -55,6 +56,7 @@ from database import get_corrige as db_get_corrige
 from database import get_db
 from database import get_sujet as db_get_sujet
 from llm_providers import get_provider
+from correct_ai.pdf_builder import generate_student_pdf
 
 # This module is deliberately an orchestration layer rather than a domain layer.
 # Routes translate browser requests into calls to the PDF, OCR, correction, and
@@ -1430,6 +1432,104 @@ def get_pdf(copie_id):
     if os.path.exists(path):
         return send_file(path)
     return "Not found", 404
+
+
+@app.route("/api/copies/<int:copie_id>/pdf")
+def api_student_pdf(copie_id):
+    """Generate or serve a student's Typst report inline."""
+    db_path = Path(config.get_path("korektor.db")).resolve()
+    if not db_path.is_file():
+        return jsonify({"error": "Base de données introuvable pour ce projet"}), 404
+
+    try:
+        with closing(get_db(config.project_dir)) as db:
+            copy = db.execute("SELECT 1 FROM copies WHERE id = ?", (copie_id,)).fetchone()
+        if copy is None:
+            return jsonify({"error": f"Copie {copie_id} introuvable"}), 404
+
+        pdf_path = Path(config.get_path("exports_pdf", f"Copie_{copie_id:02d}.pdf")).resolve()
+        if not pdf_path.is_file():
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            generate_student_pdf(copie_id, str(db_path), str(pdf_path))
+        return send_file(pdf_path, mimetype="application/pdf", as_attachment=False)
+    except (OSError, RuntimeError, sqlite3.Error) as error:
+        app.logger.exception("Impossible de générer le PDF de la copie %s", copie_id)
+        return jsonify({"error": f"Génération du PDF impossible : {error}"}), 500
+
+
+@app.route("/api/copies/generate-all-pdfs", methods=["POST"])
+def api_generate_all_student_pdfs():
+    """Regenerate the current promotion's Typst reports in exports_pdf."""
+    db_path = Path(config.get_path("korektor.db")).resolve()
+    if not db_path.is_file():
+        return jsonify({"error": "Base de données introuvable pour ce projet"}), 404
+
+    try:
+        with closing(get_db(config.project_dir)) as db:
+            copy_ids = [row[0] for row in db.execute("SELECT id FROM copies ORDER BY id")]
+    except (OSError, sqlite3.Error) as error:
+        app.logger.exception("Impossible de lister les copies du projet")
+        return jsonify({"error": f"Lecture des copies impossible : {error}"}), 500
+
+    output_dir = Path(config.get_path("exports_pdf")).resolve()
+    try:
+        if copy_ids:
+            output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        app.logger.exception("Impossible de créer le dossier des PDF")
+        return jsonify({"error": f"Création du dossier des PDF impossible : {error}"}), 500
+
+    generated = 0
+    errors = []
+    for copy_id in copy_ids:
+        try:
+            generate_student_pdf(
+                copy_id, str(db_path), str(output_dir / f"Copie_{copy_id:02d}.pdf")
+            )
+            generated += 1
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            app.logger.exception("Échec du PDF de la copie %s", copy_id)
+            errors.append({"copie_id": copy_id, "error": str(error)})
+
+    result = {
+        "success": not errors,
+        "generated": generated,
+        "total": len(copy_ids),
+        "errors": errors,
+        "message": f"{generated} PDF générés, {len(errors)} échec(s)",
+    }
+    return jsonify(result), 500 if errors else 200
+
+
+@app.route("/api/corrections/<int:correction_id>/crop")
+def api_correction_crop(correction_id):
+    """Serve an annotated PNG only when it belongs to the active project."""
+    db_path = Path(config.get_path("korektor.db")).resolve()
+    if not db_path.is_file():
+        return jsonify({"error": "Base de données introuvable pour ce projet"}), 404
+
+    try:
+        with closing(get_db(config.project_dir)) as db:
+            row = db.execute(
+                "SELECT crop_image_path FROM corrections WHERE id = ?", (correction_id,)
+            ).fetchone()
+        if row is None:
+            return jsonify({"error": f"Correction {correction_id} introuvable"}), 404
+        if not isinstance(row["crop_image_path"], str) or not row["crop_image_path"].strip():
+            return jsonify({"error": "Aucun extrait annoté pour cette correction"}), 404
+
+        project_dir = Path(config.project_dir).resolve()
+        crop = (project_dir / row["crop_image_path"]).resolve()
+        if (
+            not crop.is_relative_to(project_dir)
+            or crop.suffix.lower() != ".png"
+            or not crop.is_file()
+        ):
+            return jsonify({"error": "Extrait PNG introuvable pour cette correction"}), 404
+        return send_file(crop, mimetype="image/png", as_attachment=False)
+    except (OSError, sqlite3.Error) as error:
+        app.logger.exception("Impossible de servir l'extrait de la correction %s", correction_id)
+        return jsonify({"error": f"Lecture de l'extrait impossible : {error}"}), 500
 
 
 # Use subfolders for data to keep clean

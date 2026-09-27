@@ -10,6 +10,7 @@ import io
 
 import pymupdf
 import pytest
+from PIL import Image
 
 from correct_ai import app as app_module
 from correct_ai.database import get_db, init_db
@@ -141,3 +142,175 @@ def test_database_copy_listing(project_client):
     db.commit()
     db.close()
     assert client.get("/api/db/copies").get_json()[0]["nom"] == "Doe"
+
+
+def test_student_pdf_is_generated_inline_then_reused(project_client, monkeypatch):
+    """A copy's Typst PDF is generated once and served inline on later requests."""
+    client, project = project_client
+    db = get_db(str(project))
+    init_db(db)
+    db.execute("INSERT INTO copies (id, nom) VALUES (1, 'Doe')")
+    db.commit()
+    db.close()
+    calls = []
+
+    def fake_generate(copy_id, db_path, output_path):
+        calls.append((copy_id, db_path, output_path))
+        make_pdf(output_path)
+        return str(output_path)
+
+    monkeypatch.setattr(app_module, "generate_student_pdf", fake_generate, raising=False)
+    for _ in range(2):
+        response = client.get("/api/copies/1/pdf")
+        assert response.status_code == 200
+        assert response.mimetype == "application/pdf"
+        assert "attachment" not in response.headers.get("Content-Disposition", "")
+    assert len(calls) == 1
+    assert calls[0][0] == 1
+    assert calls[0][2] == str(project / "exports_pdf" / "Copie_01.pdf")
+
+
+def test_generate_all_student_pdfs_reports_partial_failure(project_client, monkeypatch):
+    """Batch generation reports successes and failures without stopping early."""
+    client, project = project_client
+    db = get_db(str(project))
+    init_db(db)
+    db.executemany("INSERT INTO copies (id) VALUES (?)", [(1,), (2,), (3,)])
+    db.commit()
+    db.close()
+
+    def fake_generate(copy_id, db_path, output_path):
+        if copy_id == 2:
+            raise RuntimeError("Typst indisponible pour cette copie")
+        make_pdf(output_path)
+        return str(output_path)
+
+    monkeypatch.setattr(app_module, "generate_student_pdf", fake_generate, raising=False)
+    response = client.post("/api/copies/generate-all-pdfs")
+    assert response.status_code == 500
+    data = response.get_json()
+    assert data["generated"] == 2
+    assert data["total"] == 3
+    assert data["errors"][0]["copie_id"] == 2
+    assert (project / "exports_pdf" / "Copie_01.pdf").exists()
+    assert (project / "exports_pdf" / "Copie_03.pdf").exists()
+
+
+def test_correction_crop_is_inline_and_cannot_escape_project(project_client, tmp_path):
+    """Only an existing PNG inside the active project can be returned."""
+    client, project = project_client
+    db = get_db(str(project))
+    init_db(db)
+    crop = project / "cropped_questions" / "question.png"
+    crop.parent.mkdir()
+    Image.new("RGB", (16, 16), "white").save(crop)
+    db.execute(
+        "INSERT INTO corrections (id, copie_id, bareme_id, reponse_etudiant, crop_image_path) "
+        "VALUES (1, 1, 1, 'x', 'cropped_questions/question.png')"
+    )
+    db.commit()
+    response = client.get("/api/corrections/1/crop")
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
+    assert response.data.startswith(b"\x89PNG")
+    assert client.get("/api/corrections/999/crop").status_code == 404
+    outside = tmp_path.parent / "outside.png"
+    Image.new("RGB", (16, 16), "white").save(outside)
+    db.execute("UPDATE corrections SET crop_image_path = ? WHERE id = 1", ("../outside.png",))
+    db.commit()
+    assert client.get("/api/corrections/1/crop").status_code == 404
+    db.execute("UPDATE corrections SET crop_image_path = 42 WHERE id = 1")
+    db.commit()
+    invalid = client.get("/api/corrections/1/crop")
+    assert invalid.status_code == 404
+    assert "extrait" in invalid.get_json()["error"].lower()
+    db.close()
+
+
+def test_student_pdf_missing_copy_and_compilation_error(project_client, monkeypatch):
+    """Absent copies are 404; Typst failures are explicit 500 JSON replies."""
+    client, project = project_client
+    assert client.get("/api/copies/1/pdf").status_code == 404
+    db = get_db(str(project))
+    init_db(db)
+    db.execute("INSERT INTO copies (id) VALUES (1)")
+    db.commit()
+    db.close()
+    missing = client.get("/api/copies/999/pdf")
+    assert missing.status_code == 404
+    assert "introuvable" in missing.get_json()["error"]
+
+    def fail_generation(*args):
+        raise RuntimeError("Échec Typst")
+
+    monkeypatch.setattr(app_module, "generate_student_pdf", fail_generation)
+    failed = client.get("/api/copies/1/pdf")
+    assert failed.status_code == 500
+    assert "Échec Typst" in failed.get_json()["error"]
+
+
+def test_student_pdf_route_compiles_real_typst_report(project_client):
+    """The Flask endpoint compiles and serves a readable PDF without mocks."""
+    client, project = project_client
+    db = get_db(str(project))
+    init_db(db)
+    db.execute("INSERT INTO sujet (contenu) VALUES ('# Contrôle')")
+    db.execute("INSERT INTO corrige (contenu) VALUES ('**Q1.** Bonne réponse')")
+    db.execute("INSERT INTO bareme (id, question, type_qcm, points) VALUES (1, 'Q1', 0, 2)")
+    db.execute("INSERT INTO copies (id, nom, prenom) VALUES (1, 'Éloi', 'Zoé')")
+    db.execute(
+        "INSERT INTO corrections (copie_id, bareme_id, reponse_etudiant, note_llm) "
+        "VALUES (1, 1, 'Réponse', 1.5)"
+    )
+    db.commit()
+    db.close()
+
+    response = client.get("/api/copies/1/pdf")
+    assert response.status_code == 200
+    assert response.data.startswith(b"%PDF")
+    with pymupdf.open(stream=response.data, filetype="pdf") as document:
+        assert "Éloi" in " ".join(page.get_text() for page in document)
+
+
+def test_generate_all_student_pdfs_success(project_client, monkeypatch):
+    """A complete promotion returns its successful generation count."""
+    client, project = project_client
+    db = get_db(str(project))
+    init_db(db)
+    db.executemany("INSERT INTO copies (id) VALUES (?)", [(1,), (2,)])
+    db.commit()
+    db.close()
+
+    def fake_generate(copy_id, db_path, output_path):
+        make_pdf(output_path)
+        return str(output_path)
+
+    monkeypatch.setattr(app_module, "generate_student_pdf", fake_generate)
+    response = client.post("/api/copies/generate-all-pdfs")
+    assert response.status_code == 200
+    assert response.get_json()["generated"] == 2
+    assert response.get_json()["success"] is True
+    assert response.get_json()["errors"] == []
+
+
+def test_correction_crop_missing_data_returns_json_404(project_client):
+    """Missing database, correction and image all return clear JSON errors."""
+    client, project = project_client
+    assert "Base de données" in client.get("/api/corrections/1/crop").get_json()["error"]
+    db = get_db(str(project))
+    init_db(db)
+    db.execute(
+        "INSERT INTO corrections (id, copie_id, bareme_id, reponse_etudiant) "
+        "VALUES (1, 1, 1, 'x')"
+    )
+    db.commit()
+    assert client.get("/api/corrections/999/crop").status_code == 404
+    no_image = client.get("/api/corrections/1/crop")
+    assert no_image.status_code == 404
+    assert "Aucun extrait" in no_image.get_json()["error"]
+    db.execute("UPDATE corrections SET crop_image_path = 'missing.png' WHERE id = 1")
+    db.commit()
+    missing = client.get("/api/corrections/1/crop")
+    assert missing.status_code == 404
+    assert "introuvable" in missing.get_json()["error"]
+    db.close()

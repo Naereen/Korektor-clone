@@ -222,7 +222,11 @@ generate_student_pdf(
             <li><code>GET /api/bilan/stats</code> : obtenir les statistiques globales.</li>
             <li><code>POST /api/bilan/export-graphs</code> : sauvegarder les graphiques PNG exportés dans <code>graphiques_notes/</code>.</li>
             <li><code>GET /api/project/check</code> : vérifier les fichiers du projet et compter les copies.</li>
+            <li><code>GET /api/copies/&lt;copie_id&gt;/pdf</code> : générer ou afficher dans le navigateur le livret Typst individuel ; le PDF existant dans <code>exports_pdf/</code> est réutilisé et peut être téléchargé depuis le navigateur.</li>
+            <li><code>POST /api/copies/generate-all-pdfs</code> : régénérer tous les livrets dans <code>exports_pdf/</code> et renvoyer le nombre de réussites.</li>
+            <li><code>GET /api/corrections/&lt;correction_id&gt;/crop</code> : afficher le PNG manuscrit annoté associé à une correction.</li>
         </ul>
+        <p>Le lot renvoie un JSON avec <code>generated</code>, <code>total</code> et <code>errors</code>. Une ressource absente produit une erreur JSON 404 ; un échec de génération, y compris partiel, renvoie une erreur JSON 500 détaillant les copies concernées.</p>
     </section>
 
     <section id="cli" class="documentation-section">

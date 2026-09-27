@@ -135,7 +135,7 @@ Des nouvelles routes permettent d'accéder directement aux données depuis la ba
 # Récupérer le barème depuis la DB
 GET /api/db/bareme
 
-# Lister toutes les copies depuis la DB  
+# Lister toutes les copies depuis la DB
 GET /api/db/copies
 
 # Récupérer toutes les corrections d'une copie (avec raisonnement_llm)
@@ -143,7 +143,18 @@ GET /api/db/corrections/<copie_id>
 
 # Statistiques de correction
 GET /api/bilan/stats
+
+# Afficher ou télécharger le livret Typst d'une copie (PDF inline, mis en cache)
+GET /api/copies/1/pdf
+
+# Régénérer les livrets de toutes les copies dans exports_pdf/
+POST /api/copies/generate-all-pdfs
+
+# Afficher le recadrage manuscrit annoté d'une correction (PNG inline)
+GET /api/corrections/1/crop
 ```
+
+La génération en lot renvoie un JSON avec `generated`, `total` et `errors`. Les ressources absentes donnent une erreur JSON 404 ; une erreur de génération, y compris partielle dans le lot, renvoie un JSON 500 contenant les copies concernées. Les livrets déjà générés sont réutilisés lors d'un GET individuel ; le POST de génération en lot les actualise.
 
 ## Commandes CLI
 
