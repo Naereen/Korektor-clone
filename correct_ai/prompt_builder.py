@@ -151,7 +151,7 @@ Remplace uniquement les valeurs de note, commentaire, page et bbox_2d.
 5. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu.", page=null et bbox_2d=null.
 6. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
 7. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
-8. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
+8. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse, y compris les codes (réponse contenant de la programmation), et le numéro de question avant (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
 """
 
     return prompt

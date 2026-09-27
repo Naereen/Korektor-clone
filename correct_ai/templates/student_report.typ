@@ -66,6 +66,8 @@
 ]
 
 #text(size: 21pt, weight: "bold", fill: ink)[Compte rendu de correction]
+
+#text(size: 17pt, fill: rgb("#61716d"))[#text(data.titre) - Copie #text(data.copie_id)]
 #v(14pt)
 
 #block(width: 100%, fill: rgb("#f0f6f3"), inset: 13pt, radius: 3pt)[
@@ -79,8 +81,6 @@
     [*Moyenne sur 20 :* #text(data.moyenne_sur_20)],
   )
 ]
-#v(11pt)
-#text(size: 8pt, fill: rgb("#61716d"))[#text(data.titre) · Copie #text(data.copie_id)]
 #v(15pt)
 
 #for question in data.questions {

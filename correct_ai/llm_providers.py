@@ -178,7 +178,7 @@ def get_provider(
 
 def pdf_to_base64_images(
     pdf_path: str,
-    dpi: int = 150,
+    dpi: int = 120,
     jpg_quality: int = 90,
 ) -> List[str]:
     """Convertit toutes les pages d'un PDF en images base64 (JPEG)."""
