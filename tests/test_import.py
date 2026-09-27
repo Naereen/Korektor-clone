@@ -198,6 +198,22 @@ class TestProjectCheck:
             data = json.loads(resp.data)
             assert data["files"]["sujet.md"] is False
 
+    def test_check_detects_a4_original_without_a3(self, client, original_dir):
+        """Verify an original A4 PDF is reported when no A3 PDF is present."""
+        import tempfile
+
+        from app import config
+
+        with tempfile.TemporaryDirectory() as td:
+            open(os.path.join(td, "copiesA4.pdf"), "wb").close()
+            config.project_dir = td
+            config.save()
+            resp = client.get("/api/project/check")
+            assert resp.status_code == 200
+            data = json.loads(resp.data)
+            assert data["files"]["copiesA3.pdf"] is False
+            assert data["files"]["copiesA4.pdf"] is True
+
 
 class TestProjectSet:
     def test_set_valid_dir(self, client, original_dir):

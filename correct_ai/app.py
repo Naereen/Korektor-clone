@@ -387,6 +387,7 @@ def api_project_check():
         "liste-etudiants.csv": os.path.exists(os.path.join(project_dir, "liste-etudiants.csv")),
         "correspondance.csv": os.path.exists(os.path.join(project_dir, "correspondance.csv")),
         "copiesA3.pdf": os.path.exists(os.path.join(project_dir, "copiesA3.pdf")),
+        "copiesA4.pdf": os.path.exists(os.path.join(project_dir, "copiesA4.pdf")),
         "copiesA4_sorted.pdf": os.path.exists(os.path.join(project_dir, "copiesA4_sorted.pdf")),
     }
     # Count both generated PDFs and extracted-copy directories: they represent
