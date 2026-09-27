@@ -143,7 +143,9 @@ class TestBuildIncrementalPrompt:
         assert prompt.count('"num_question"') == len(bareme_data)
         assert prompt.count('"locations": []') == len(bareme_data)
         assert prompt.count('"reponse_etudiant": ""') == len(bareme_data)
+        assert prompt.count('"raisonnement": ""') == len(bareme_data)
         assert "Transcris fidèlement dans reponse_etudiant" in prompt
+        assert "Pour chaque question, renseigne raisonnement avec une justification concise" in prompt
         assert "[xmin, ymin, xmax, ymax]" in prompt
         assert "Chaque page est numérotée à partir de 1" in prompt
         assert "entiers normalisés entre 0 et 1000" in prompt
@@ -366,6 +368,8 @@ class TestPromptConsistency:
             assert "Réponse OCR" in prompt
             assert "les pages de la copie sont fournies en images" in prompt
             assert '"Q1.1"' in prompt
+            assert '"raisonnement": ""' in prompt
+            assert "Renseigne raisonnement avec une justification concise" in prompt
 
         def test_prompt_token_fallback_without_tiktoken(self, bareme_data, monkeypatch):
             """Token estimation should use its character fallback when tiktoken is absent."""
