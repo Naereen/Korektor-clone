@@ -758,7 +758,3 @@ void BinTree::affiche() {
 }
 ```
 
-compilé avec: pandoc -i sujet.md -o sujet.pdf -V geometry:margin=2.5cm
--V papersize:a4\
-pandoc -i corrige.md -o corrige.pdf -V geometry:margin=2.5cm -V
-papersize:a4
