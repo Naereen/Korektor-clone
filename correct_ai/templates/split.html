@@ -35,6 +35,29 @@
         background: #eee;
     }
 
+    .preview {
+        position: relative;
+        line-height: 0;
+        cursor: ns-resize;
+    }
+
+    .cut-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: #dc3545;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+        pointer-events: auto;
+        cursor: ns-resize;
+        z-index: 2;
+    }
+
+    .banner-state {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
     .card-body {
         padding: 15px;
     }
@@ -91,7 +114,7 @@
             <b>nouvelle copie</b> (en vert).</p>
     </div>
     <div class="header-slider">
-        <label for="header-ratio" class="form-label mb-1">Hauteur du bandeau : <strong id="header-ratio-value">{{ header_ratio_percent }} %</strong></label>
+        <label for="header-ratio" class="form-label mb-1">Hauteur du bandeau par défaut : <strong id="header-ratio-value">{{ header_ratio_percent }} %</strong></label>
         <input id="header-ratio" type="range" min="0" max="50" value="{{ header_ratio_percent }}" step="1" oninput="updateHeaderRatio(this.value)">
     </div>
     <button id="submitBtn" class="btn btn-success fw-bold" onclick="submitData()">Valider et traiter</button>
@@ -113,6 +136,7 @@
     const cardsData = [];
     let headerRatio = Number(document.getElementById('header-ratio').value) / 100;
     let headerRatioSaveTimer = null;
+    const fallbackPageHeight = 842;
 
     async function persistHeaderRatio() {
         clearTimeout(headerRatioSaveTimer);
@@ -133,12 +157,58 @@
     function updateHeaderRatio(value) {
         headerRatio = Number(value) / 100;
         document.getElementById('header-ratio-value').innerText = `${value} %`;
-        document.querySelectorAll('.card-img').forEach((image) => {
-            const baseUrl = image.src.split('?')[0];
-            image.src = `${baseUrl}?header_ratio=${headerRatio}&t=${Date.now()}`;
+        cardsData.forEach((card, index) => {
+            if (card.banner_custom) return;
+            const image = document.querySelector(`#card-${index} .card-img`);
+            card.banner_height = Math.round((image?.naturalHeight || fallbackPageHeight) * headerRatio);
+            updateBannerControl(index);
         });
         clearTimeout(headerRatioSaveTimer);
         headerRatioSaveTimer = setTimeout(persistHeaderRatio, 250);
+    }
+
+    function updateBannerControl(index) {
+        const card = cardsData[index];
+        const cardEl = document.getElementById(`card-${index}`);
+        const image = cardEl.querySelector('.card-img');
+        const line = cardEl.querySelector('.cut-line');
+        const state = cardEl.querySelector('.banner-state');
+        const input = cardEl.querySelector('.banner-height');
+        const height = card.banner_height || 0;
+        const imageHeight = image.naturalHeight || fallbackPageHeight;
+        line.style.top = `${Math.min(100, (height / imageHeight) * 100)}%`;
+        input.value = Math.round(height);
+        state.textContent = `H = ${Math.round(height)} px (${card.banner_custom ? 'personnalisé' : 'défaut'})`;
+        state.classList.toggle('text-danger', card.banner_custom);
+    }
+
+    function setBannerHeight(index, value, custom = true) {
+        const height = Math.max(0, Number(value) || 0);
+        cardsData[index].banner_height = Math.round(height);
+        cardsData[index].banner_custom = custom;
+        updateBannerControl(index);
+    }
+
+    function resetBannerHeight(index) {
+        const image = document.querySelector(`#card-${index} .card-img`);
+        setBannerHeight(index, (image.naturalHeight || fallbackPageHeight) * headerRatio, false);
+    }
+
+    function dragBanner(event, index) {
+        event.preventDefault();
+        const preview = document.querySelector(`#card-${index} .preview`);
+        const image = preview.querySelector('.card-img');
+        const move = (moveEvent) => {
+            const bounds = image.getBoundingClientRect();
+            const height = (moveEvent.clientY - bounds.top) * (image.naturalHeight || fallbackPageHeight) / bounds.height;
+            setBannerHeight(index, height);
+        };
+        const stop = () => {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', stop);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', stop, { once: true });
     }
 
     function refreshStudentOptions() {
@@ -185,12 +255,17 @@
             cardsData.push({
                 page_num: pageNum,
                 is_continuation: true,
-                student_id: null
+                student_id: null,
+                banner_height: Math.round(fallbackPageHeight * headerRatio),
+                banner_custom: false
             });
 
             html += `
                 <div class="card continuation" id="card-${i}">
-                    <img src="/api/split/thumbnail/${pageNum}?header_ratio=${headerRatio}" class="card-img" alt="Page ${pageNum}" loading="lazy">
+                    <div class="preview">
+                        <img src="/api/split/thumbnail/${pageNum}?header_ratio=0" class="card-img" alt="Page ${pageNum}" loading="lazy" onload="updateBannerControl(${i})">
+                        <div class="cut-line" role="slider" aria-label="Seuil du bandeau" tabindex="0" onpointerdown="dragBanner(event, ${i})"></div>
+                    </div>
                     <div class="card-body">
                         <div class="card-title">
                             <span>Page ${pageNum}</span>
@@ -201,11 +276,19 @@
                                 ${studentOptions}
                             </select>
                         </div>
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <label class="small mb-0" for="banner-height-${i}">Bandeau</label>
+                            <input id="banner-height-${i}" class="form-control form-control-sm banner-height" type="number" min="0" step="1" value="0" onchange="setBannerHeight(${i}, this.value)">
+                            <span class="small">px</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetBannerHeight(${i})">Réinitialiser</button>
+                        </div>
+                        <div class="banner-state mt-1" aria-live="polite"></div>
                     </div>
                 </div>
             `;
         }
         grid.innerHTML = html;
+        cardsData.forEach((card, index) => updateBannerControl(index));
         refreshStudentOptions();
     }
 
@@ -238,7 +321,22 @@
 
         try {
             await persistHeaderRatio();
-            const payload = cardsData.map((card) => ({ ...card, header_ratio: headerRatio }));
+            const cards = cardsData.map((card) => ({ ...card, header_ratio: headerRatio }));
+            const copiesConfig = {};
+            let copyNumber = 1;
+            cards.forEach((card, index) => {
+                if (index > 0 && !card.is_continuation) copyNumber += 1;
+                if (index === 0 || !card.is_continuation) {
+                    copiesConfig[`Copie_${String(copyNumber).padStart(2, '0')}.pdf`] = {
+                        banner_height: card.banner_height
+                    };
+                }
+            });
+            const payload = {
+                cards,
+                default_banner_height: Math.round(fallbackPageHeight * headerRatio),
+                copies_config: copiesConfig
+            };
             const response = await fetch('/api/split/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

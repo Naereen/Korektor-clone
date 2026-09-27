@@ -1569,21 +1569,36 @@ def split_process():
         return jsonify({"success": False, "error": "No data"}), 400
 
     try:
-        if not isinstance(data, list):
+        if isinstance(data, list):
+            cards = data
+            default_header_ratio = cards[0].get("header_ratio", 0.15) if cards else 0.15
+            try:
+                default_header_ratio = float(default_header_ratio)
+            except (TypeError, ValueError):
+                return jsonify({"success": False, "error": "Le pourcentage doit être numérique"}), 400
+            if not 0 <= default_header_ratio <= 0.5:
+                return jsonify({"success": False, "error": "Le pourcentage doit être compris entre 0 et 50 %"}), 400
+            copies_config = {}
+            default_banner_height = None
+        elif isinstance(data, dict):
+            cards = data.get("cards", data.get("assignments", []))
+            copies_config = data.get("copies_config", {})
+            raw_default_banner_height = data.get("default_banner_height")
+            if not isinstance(cards, list) or not isinstance(copies_config, dict):
+                return jsonify({"success": False, "error": "Format de données invalide"}), 400
+            if isinstance(raw_default_banner_height, bool) or not isinstance(
+                raw_default_banner_height, (int, float, str)
+            ):
+                return jsonify({"success": False, "error": "La hauteur du bandeau doit être numérique"}), 400
+            try:
+                default_banner_height = float(str(raw_default_banner_height))
+            except (TypeError, ValueError):
+                return jsonify({"success": False, "error": "La hauteur du bandeau doit être numérique"}), 400
+            if default_banner_height < 0:
+                return jsonify({"success": False, "error": "La hauteur du bandeau doit être positive"}), 400
+            default_header_ratio = None
+        else:
             return jsonify({"success": False, "error": "Format de données invalide"}), 400
-
-        header_ratio = data[0].get("header_ratio", 0.15) if data else 0.15
-        try:
-            header_ratio = float(header_ratio)
-        except (TypeError, ValueError):
-            return jsonify({"success": False, "error": "Le pourcentage doit être numérique"}), 400
-        if not 0 <= header_ratio <= 0.5:
-            return (
-                jsonify(
-                    {"success": False, "error": "Le pourcentage doit être compris entre 0 et 50 %"}
-                ),
-                400,
-            )
 
         doc = get_splitter_doc()
         if not doc:
@@ -1598,7 +1613,7 @@ def split_process():
         current_student_id = None
         copy_students = []
 
-        for item in data:
+        for item in cards:
             page_num = item["page_num"]
             is_continuation = item.get("is_continuation", False)
             student_id = item.get("student_id", None)
@@ -1653,6 +1668,23 @@ def split_process():
 
                 new_doc = pymupdf.open()
                 total_pages = 0
+                filename = f"Copie_{copy_id:02d}.pdf"
+
+                if default_banner_height is not None:
+                    copy_settings = copies_config.get(
+                        filename, copies_config.get(filename.removesuffix(".pdf"), {})
+                    )
+                    if not isinstance(copy_settings, dict):
+                        return jsonify({"success": False, "error": f"Configuration invalide pour {filename}"}), 400
+                    raw_height = copy_settings.get("banner_height", default_banner_height)
+                    try:
+                        banner_height = float(raw_height)
+                    except (TypeError, ValueError):
+                        return jsonify({"success": False, "error": f"Hauteur invalide pour {filename}"}), 400
+                    if banner_height < 0:
+                        return jsonify({"success": False, "error": f"Hauteur invalide pour {filename}"}), 400
+                else:
+                    banner_height = None
 
                 # Range
                 if segments:
@@ -1670,7 +1702,8 @@ def split_process():
                     # Header mask & Numbering
                     segment_first_page = new_doc[total_pages]
                     rect = segment_first_page.rect
-                    header_rect = pymupdf.Rect(0, 0, rect.width, rect.height * header_ratio)
+                    header_size = banner_height if banner_height is not None else rect.height * default_header_ratio
+                    header_rect = pymupdf.Rect(0, 0, rect.width, min(rect.height, header_size))
 
                     shape = segment_first_page.new_shape()
                     shape.draw_rect(header_rect)
@@ -1684,7 +1717,6 @@ def split_process():
 
                     total_pages += end_idx - start_idx
 
-                filename = f"Copie_{copy_id:02d}.pdf"
                 filepath = os.path.join(output_dir, filename)
                 new_doc.save(filepath)
                 new_doc.close()
