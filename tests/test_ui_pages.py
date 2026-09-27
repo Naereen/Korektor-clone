@@ -114,6 +114,18 @@ class TestCorrectionPage:
         assert "window.location.href = '/verify';" in content
 
 
+@pytest.mark.parametrize("page", ["/ocr", "/correction"])
+def test_console_copy_control(client, page):
+    """Both batch pages expose a working clipboard action for their logs."""
+    content = client.get(page).data.decode("utf-8")
+
+    assert 'id="btn-copy-console"' in content
+    assert 'onclick="copyConsoleOutput()"' in content
+    assert "document.getElementById('log-console').innerText" in content
+    assert "navigator.clipboard.writeText(text)" in content
+    assert "document.execCommand('copy')" in content
+
+
 class TestVerifyCorrectionPage:
     def test_finish_action_advances_to_bilan(self, client):
         """Ensure correction review saves before advancing to the dashboard."""

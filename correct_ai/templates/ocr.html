@@ -48,7 +48,13 @@
         <div class="card shadow h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Console</h5>
-                <span id="status-badge" class="badge bg-secondary">Inactif</span>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" id="btn-copy-console" class="btn btn-sm btn-outline-secondary"
+                        title="Copier la sortie de la console" onclick="copyConsoleOutput()">
+                        <i class="bi bi-clipboard"></i> <span aria-live="polite">Copier</span>
+                    </button>
+                    <span id="status-badge" class="badge bg-secondary">Inactif</span>
+                </div>
             </div>
             <div class="card-body p-0 d-flex flex-column" style="height: 500px;">
                 <pre id="log-console" class="flex-grow-1 bg-dark text-light p-3 m-0"
@@ -89,6 +95,29 @@ function updateProgress(data) {
     bar.setAttribute('aria-valuenow', data.progress);
     document.getElementById('progress-text').innerText = data.progress + '%' +
         (data.inference_elapsed_seconds == null ? '' : ' : ' + formatElapsed(data.inference_elapsed_seconds));
+}
+
+async function copyConsoleOutput() {
+    const text = document.getElementById('log-console').innerText;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const copied = document.execCommand('copy');
+            textarea.remove();
+            if (!copied) throw new Error('Copie impossible');
+        }
+        const label = document.querySelector('#btn-copy-console span');
+        label.textContent = 'Copié !';
+        setTimeout(() => { label.textContent = 'Copier'; }, 2000);
+    } catch (error) {
+        alert('Impossible de copier la sortie de la console.');
+    }
 }
 
 function updateRangeLimits() {
