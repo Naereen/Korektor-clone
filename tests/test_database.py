@@ -172,7 +172,7 @@ class TestSchema:
 
         conn = get_db(str(tmp_path))
         init_db(conn)
-        boxes = [{"box_2d": [250, 100, 750, 900], "label": "Q1"}]
+        boxes = [{"bbox_2d": [250, 100, 750, 900], "label": "Q1"}]
         conn.execute(
             """INSERT INTO corrections
                (copie_id, bareme_id, reponse_etudiant, crop_image_path, bounding_boxes)
@@ -703,7 +703,7 @@ class TestSaveCorrection:
             {
                 "reponse_etudiant": "A",
                 "note": 0,
-                "bounding_boxes": '[{"box_2d": [10, 20, 30, 40], "label": "Erreur"}]',
+                "bounding_boxes": '[{"bbox_2d": [10, 20, 30, 40], "label": "Erreur"}]',
                 "crop_image_path": "cropped_questions/copie_1_question_1.png",
             },
         )

@@ -147,7 +147,9 @@ def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
         "Page 1",
         "Page 2",
     ]
-    assert len([item for item in content if item["type"] == "image_url"]) == 2
+    image_items = [item for item in content if item["type"] == "image_url"]
+    assert len(image_items) == 2
+    assert all(item["image_url"]["detail"] == "high" for item in image_items)
 
 
 def test_streaming_llm_accumulates_content(monkeypatch):

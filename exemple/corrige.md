@@ -5,7 +5,7 @@
 **Q0.** Soit le code C++ suivant. Sélectionner les affirmations vraies
 concernant l'état final (après la dernière accolade)
 
-``` cpp
+```cpp
 int j = 0;
 for(int i=0; j<=3; i++){
     j += i;
@@ -34,7 +34,7 @@ for(int i=0; j<=3; i++){
 **Q1.** Soit le code C++ suivant. Quelles sont les affirmations vraies
 concernant l'état de la mémoire et l'affichage final ?
 
-``` cpp
+```cpp
 int a = 10;
 int *p = &a;
 int b = *p;
@@ -68,7 +68,7 @@ std::cout << "a=" << a << ", b=" << b << std::endl;
 
 **Q2.** Quelle est la sortie du programme suivant ?
 
-``` cpp
+```cpp
 int tab[] = {10, 20, 30, 40, 50};
 int *p = tab;
 p += 2;
@@ -119,7 +119,7 @@ correctes ?
 
 **Q4.** Quelle est la valeur finale de j après l'exécution de ce code ?
 
-``` cpp
+```cpp
 int j = 0;
 for (int i = 0; i < 5; i++) {
     if (i == 2) continue;
@@ -202,7 +202,7 @@ for (int i = 0; i < 5; i++) {
 **Q7.** Quelle est la complexité temporelle asymptotique de l'algorithme
 suivant en fonction de n ?
 
-``` cpp
+```cpp
 // n est la taille du tableau
 for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
@@ -370,7 +370,7 @@ la plus faible (la moins restrictive) ?
 
 **Q14.** On considère le code suivant :
 
-``` cpp
+```cpp
 // Précondition : { x >= 0 }
 y = 1;
 z = 0;
@@ -565,7 +565,7 @@ définit pas de destructeur explicitement ?
 Le destructeur doit libérer récursivement tous les nœuds de l'arbre pour
 éviter les fuites de mémoire. Voici une implémentation possible :
 
-``` cpp
+```cpp
 ~BinTree() {
     if (left != nullptr) {
         delete left;
@@ -618,10 +618,10 @@ une feuille sans sous-arbre par :
 
 Voici un début d'implémentation en C++ d'un ABR stockant des entiers :
 
-``` cpp
+```cpp
 class BinTree {
 public:
-    BinTree(int n) : value(n), left(nullptr), right(nullptr) {}    
+    BinTree(int n) : value(n), left(nullptr), right(nullptr) {}
     void insert(int val);
     void affiche();
     bool contient(int val);
@@ -637,7 +637,7 @@ private:
 qui insère une valeur dans l'arbre, mais toujours dans le sous-arbre
 gauche.
 
-``` cpp
+```cpp
 void BinTree::insert(int val) {
     if (left == nullptr) {
         left = new BinTree(val);
@@ -658,7 +658,7 @@ gauche (vide) -\> on crée le noeud 8 ici.
 
 Représentation de l'arbre :
 
-``` text
+```text
            10
          /    \
         3    nullptr
@@ -678,7 +678,7 @@ méthode.
 
 Implémentation correcte de `insert` respectant les propriétés ABR :
 
-``` cpp
+```cpp
 void BinTree::insert(int val) {
     if (val < value) {
         if (left == nullptr) {
@@ -702,7 +702,7 @@ va à gauche vers le noeud 3. - 3 \< 5 : on va à droite vers le noeud
 5. - 5 \<= 5 : on va à droite. Le pointeur est null, on insère le
 nouveau 5.
 
-``` text
+```text
            10
          /    \
         3    nullptr
@@ -721,7 +721,7 @@ de l'ABR.
 
 Implémentation de `contient` (recherche dichotomique récursive) :
 
-``` cpp
+```cpp
 bool BinTree::contient(int val) {
     if (val == value) return true;
     if (val < value) {
@@ -746,7 +746,7 @@ Implémentation de `affiche` (parcours infixe) :
 Pour afficher les valeurs dans l'ordre croissant, il faut effectuer un
 parcours récursif des sous-arbre: gauche, racine, droite.
 
-``` cpp
+```cpp
 void BinTree::affiche() {
     if (left != nullptr) {
         left->affiche();

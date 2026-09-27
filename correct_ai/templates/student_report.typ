@@ -15,9 +15,24 @@
 #let data-path = sys.inputs.at("report-data-path", default: none)
 #let data = if data-path == none { default-data } else { json(data-path) }
 
-#set page(paper: "a4", margin: 1.5cm, footer: context [
-  #align(right)[#text(fill: rgb("#6b7280"), size: 8pt)[Page #counter(page).display()]]
-])
+#set page(
+  paper: "a4",
+  margin: 1.8cm,
+  header: context [
+    #grid(
+      columns: (1fr, auto),
+      column-gutter: 12pt,
+      text(fill: rgb("#54766d"), size: 9pt)[Bilan individuel de correction : #data.nom #data.prenom],
+      text(fill: rgb("#54766d"), size: 9pt)[#datetime.today().display("[day]/[month]/[year]")],
+    )
+  ],
+  footer: context [
+    #align(right)[
+      #text(fill: rgb("#6b7280"), size: 9pt)[#counter(page).display("1 / 1", both: true)]
+    ]
+  ],
+)
+
 #set text(font: ("TeX Gyre Pagella", "DejaVu Sans"), size: 11pt, lang: "fr")
 #set par(leading: 0.7em)
 #set heading(numbering: none)
@@ -50,9 +65,6 @@
   #content
 ]
 
-#align(left)[#text(size: 8pt, fill: rgb("#54766d"))[Bilan individuel de correction]]
-#align(right)[#text(size: 8pt, fill: rgb("#54766d"))[#datetime.today().display("[day]/[month]/[year]")]]
-#v(6pt)
 #text(size: 21pt, weight: "bold", fill: ink)[Compte rendu de correction]
 #v(14pt)
 
@@ -73,10 +85,14 @@
 
 #for question in data.questions {
   [
+    #for title in question.section_titles {
+      text(size: 15pt, weight: "bold", fill: ink)[#rich-text(title)]
+      v(8pt)
+    }
     #block(breakable: false)[
       #text(size: 13pt, weight: "bold", fill: ink)[#text(question.titre)]
       #h(1fr)
-      #text(size: 10pt, weight: "bold", fill: ink)[#text(question.note)]
+      #text(size: 15pt, weight: "bold", fill: ink)[#text(question.note)]
     ]
     #v(6pt)
     #panel("Énoncé", rich-text(question.enonce), rgb("#eef3f6"), rgb("#356b8b"))

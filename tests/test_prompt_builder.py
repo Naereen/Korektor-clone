@@ -135,13 +135,13 @@ class TestBuildIncrementalPrompt:
         # Vérifier les instructions
         assert "INSTRUCTIONS STRICTES" in prompt, "Instructions manquantes"
         assert "TEMPLATE JSON" in prompt, "Template JSON manquant"
-        assert '"Q1.1": {"note": 0.0' in prompt, "Template Q1.1 manquant"
-        assert "raisonnement" in prompt.lower(), "Le prompt doit demander un raisonnement"
-        assert prompt.count('"bounding_boxes": []') == len(bareme_data)
-        assert '"box_2d": [ymin, xmin, ymax, xmax]' in prompt
+        assert '"questions": [' in prompt, "Tableau questions manquant"
+        assert prompt.count('"num_question"') == len(bareme_data)
+        assert prompt.count('"bbox_2d": null') == len(bareme_data)
+        assert "[xmin, ymin, xmax, ymax]" in prompt
         assert "entiers normalisés entre 0 et 1000" in prompt
         assert "entourer l'encre manuscrite réellement visible" in prompt
-        assert "80 unités normalisées en hauteur" in prompt
+        assert "dépasser 20 unités" in prompt
 
     def test_prompt_with_previous_corrections(self, bareme_data, previous_corrections_data):
         """2.2 : Tester le prompt avec corrections précédentes."""

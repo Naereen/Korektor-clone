@@ -1,6 +1,7 @@
 """Integration tests for the student Typst PDF generated from SQLite."""
 
 import json
+import re
 from pathlib import Path
 
 import pymupdf
@@ -16,17 +17,27 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     """Teacher priority, class average, Unicode, and cropped images reach the PDF."""
     db = get_db(str(tmp_path))
     init_db(db)
-    db.execute("INSERT INTO sujet (contenu) VALUES (?)", ("# Évaluation ∑\nÉnoncé Q1 (--Q1)",))
+    db.execute(
+        "INSERT INTO sujet (contenu) VALUES (?)",
+        ("# Évaluation ∑\n## Thème **test**\n**Q1.** Énoncé Q1 (--Q1)",),
+    )
     db.execute(
         "INSERT INTO corrige (contenu) VALUES (?)",
         (
-            "**Q1.** Démontrer ∀ x ∈ ℝ.\n\n"
+            "**Q1.** **Choisir** :\n\n- une\n  option\n\n```cpp\nint x = 1;\n```\n\n"
+            "Démontrer ∀ x ∈ ℝ.\n\n"
             "> **Explication :** Argument décisif.\n\n---\n",
         ),
     )
     db.execute(
         "INSERT INTO bareme (id, question, type_qcm, texte_question, points) VALUES (?, ?, ?, ?, ?)",
-        (1, "Q1", 0, "**Choisir** :\n\n- une option\n\n```cpp\nint x = 1;\n```", 2),
+        (
+            1,
+            "Q1",
+            0,
+            "## Thème **test**\n**Q1.** **Choisir** :\n\n- une option\n\n```cpp\nint x = 1;\n```",
+            2,
+        ),
     )
     db.execute(
         "INSERT INTO bareme (id, question, type_qcm, reponse_attendue, points) "
@@ -37,10 +48,14 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     image_dir = tmp_path / "cropped_questions"
     image_dir.mkdir()
     Image.new("RGB", (160, 80), "white").save(image_dir / "q1.png")
-    db.execute("""INSERT INTO corrections
+    db.execute(
+        """INSERT INTO corrections
            (copie_id, bareme_id, reponse_etudiant, note_llm, commentaire_llm,
-            validee_par_prof, note_prof, commentaire_prof, crop_image_path)
-           VALUES (1, 1, 'x', 0, 'IA', 1, 1.5, 'Bonne idée : ∀ x', 'cropped_questions/q1.png')""")
+            validee_par_prof, note_prof, commentaire_prof, crop_image_path, bounding_boxes)
+           VALUES (1, 1, 'x', 0, 'IA', 1, 1.5, 'Bonne idée : ∀ x',
+                   'cropped_questions/q1.png', ?)""",
+        (json.dumps([{"bbox_2d": [100, 100, 500, 500], "label": "Bonne idée"}]),),
+    )
     db.execute(
         "INSERT INTO corrections (copie_id, bareme_id, reponse_etudiant, note_llm) "
         "VALUES (1, 2, 'B', 0.5)"
@@ -69,15 +84,23 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     assert captured["moyenne_promotion"] == "1.5 / 3"
     assert captured["note_sur_20"] == "13.33 / 20"
     assert captured["moyenne_sur_20"] == "10.00 / 20"
+    assert captured["questions"][0]["section_titles"] == ["Thème #strong[test]"]
+    assert "Thème" not in captured["questions"][0]["enonce"]
     assert "Démontrer" in captured["questions"][0]["corrige"]
+    assert "Choisir" not in captured["questions"][0]["corrige"]
+    assert "int x = 1;" not in captured["questions"][0]["corrige"]
     assert captured["questions"][0]["appreciation"] == "Bonne idée : ∀ x"
     assert captured["questions"][0]["crop_image_path"] == "question-1.png"
     assert captured["questions"][1]["crop_image_path"] == ""
     with pymupdf.open(result) as document:
-        text = "\n".join(page.get_text() for page in document)
+        page_texts = [page.get_text() for page in document]
+        text = "\n".join(page_texts)
         assert "Éloi" in text and "Anaïs" in text
         assert "Bonne idée" in text
-        assert "Choisir" in text and "une option" in text and "int x = 1;" in text
+        assert text.index("Thème test") < text.index("Q1") < text.index("Énoncé")
+        assert text.count("Choisir") == 1
+        assert text.count("une option") == 1
+        assert text.count("int x = 1;") == 1
         assert "Explication :" in text and "Argument décisif." in text
         assert "∀" in text
         assert any(page.get_images() for page in document)
@@ -86,6 +109,11 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
             for page in document
             for font in page.get_fonts()
         )
+        total_pages = len(document)
+        for page_number, page_text in enumerate(page_texts, start=1):
+            assert "Bilan individuel de correction : Éloi Anaïs" in page_text
+            assert re.search(r"\d{2}/\d{2}/\d{4}", page_text)
+            assert f"{page_number} / {total_pages}" in page_text
 
 
 def test_student_report_template_has_fallback_without_data():

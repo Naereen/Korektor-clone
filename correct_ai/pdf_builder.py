@@ -12,9 +12,12 @@ from typing import Any
 
 import typst
 
+from correct_ai.image_processing import is_valid_question_box
+
 TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "student_report.typ"
 _QUESTION_HEADING = re.compile(r"(?m)^\s*\*\*(Q[\w.-]+)\.\*\*\s*")
 _SUBJECT_MARKER = re.compile(r"\(--(Q[\w.-]+)\)")
+_ATX_HEADING = re.compile(r"(?m)^(#{1,6})[ \t]+(.+?)\s*$")
 
 
 def _sections(content: str, pattern: re.Pattern[str]) -> dict[str, str]:
@@ -33,6 +36,39 @@ def _sections(content: str, pattern: re.Pattern[str]) -> dict[str, str]:
         ].strip()
         for index, match in enumerate(matches)
     }
+
+
+def _section_titles(content: str, pattern: re.Pattern[str]) -> dict[str, list[str]]:
+    """Map questions to level-two-or-lower headings that introduce them."""
+    matches = list(pattern.finditer(content))
+    titles = {}
+    for index, match in enumerate(matches):
+        start = matches[index - 1].end() if index else 0
+        section = content[start : match.start()]
+        headings = [
+            heading.group(2).strip()
+            for heading in _ATX_HEADING.finditer(section)
+            if len(heading.group(1)) >= 2
+        ]
+        if headings:
+            titles[match.group(1)] = headings
+    return titles
+
+
+def _strip_section_markers(content: str) -> str:
+    """Remove headings and a leading question label from panel content."""
+    without_headings = _ATX_HEADING.sub("", content)
+    return _QUESTION_HEADING.sub("", without_headings, count=1).strip()
+
+
+def _strip_repeated_statement(answer: str, statement: str) -> str:
+    """Remove exact Typst markup duplicated at the start of an answer key."""
+    if not statement or not answer.startswith(statement):
+        return answer
+    remainder = answer[len(statement) :]
+    if remainder and not remainder[0].isspace():
+        return answer
+    return remainder.lstrip()
 
 
 def _score(value: Any, total: float) -> str:
@@ -69,12 +105,28 @@ def _image_path(project_dir: Path, crop_path: str | None, work_dir: Path, index:
     """Copy an existing in-project crop into Typst's isolated working directory."""
     if not crop_path:
         return ""
-    source = (project_dir / crop_path).resolve()
-    if not source.is_relative_to(project_dir) or not source.is_file():
+    try:
+        source = (project_dir / crop_path).resolve()
+        if not source.is_relative_to(project_dir) or not source.is_file():
+            return ""
+        destination = work_dir / f"question-{index}{source.suffix.lower()}"
+        shutil.copyfile(source, destination)
+    except (OSError, RuntimeError, ValueError):
         return ""
-    destination = work_dir / f"question-{index}{source.suffix.lower()}"
-    shutil.copyfile(source, destination)
     return destination.name
+
+
+def _has_usable_crop_metadata(value: str | None) -> bool:
+    """Accept valid Qwen boxes and explicitly generated fallback crops."""
+    try:
+        boxes = json.loads(value or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(boxes, list) and any(
+        isinstance(box, dict)
+        and (is_valid_question_box(box.get("bbox_2d")) or box.get("fallback") is True)
+        for box in boxes
+    )
 
 
 def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> str:
@@ -106,7 +158,7 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
         rubric = db.execute(
             """SELECT b.id, b.question, b.texte_question, b.reponse_attendue, b.points,
                       c.commentaire_llm, c.commentaire_prof, c.validee_par_prof,
-                      c.note_llm, c.note_prof, c.crop_image_path
+                      c.note_llm, c.note_prof, c.crop_image_path, c.bounding_boxes
                FROM bareme b LEFT JOIN corrections c
                  ON c.bareme_id = b.id AND c.copie_id = ? ORDER BY b.id""",
             (copie_id,),
@@ -123,8 +175,18 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
         ).fetchall()
         averages = [float(row["total"]) for row in totals]
 
-    subject_sections = _sections(subject, _SUBJECT_MARKER)
-    answer_sections = _sections(answer_key, _QUESTION_HEADING)
+    raw_subject_sections = _sections(subject, _SUBJECT_MARKER)
+    raw_answer_sections = _sections(answer_key, _QUESTION_HEADING)
+    subject_titles = _section_titles(subject, _SUBJECT_MARKER)
+    answer_titles = _section_titles(answer_key, _QUESTION_HEADING)
+    subject_sections = {
+        question: _strip_section_markers(section)
+        for question, section in raw_subject_sections.items()
+    }
+    answer_sections = {
+        question: _strip_section_markers(section)
+        for question, section in raw_answer_sections.items()
+    }
     scores = [
         float(row["note_prof"] if row["validee_par_prof"] else row["note_llm"])
         for row in rubric
@@ -139,23 +201,45 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
         for index, row in enumerate(rubric, start=1):
             grade = row["note_prof"] if row["validee_par_prof"] else row["note_llm"]
             comment = row["commentaire_prof"] if row["validee_par_prof"] else row["commentaire_llm"]
+            statement = _strip_section_markers(
+                row["texte_question"]
+                or subject_sections.get(row["question"])
+                or "Énoncé indisponible."
+            )
+            answer = _strip_section_markers(
+                answer_sections.get(row["question"])
+                or row["reponse_attendue"]
+                or "Corrigé indisponible."
+            )
+            statement_typst = _markdown_to_typst(statement)
+            answer_typst = _markdown_to_typst(answer)
+            answer_typst = _strip_repeated_statement(answer_typst, statement_typst)
+            if not answer_typst:
+                answer_typst = _markdown_to_typst("Corrigé indisponible.")
             questions.append(
                 {
                     "titre": row["question"],
-                    "enonce": _markdown_to_typst(
-                        row["texte_question"]
-                        or subject_sections.get(row["question"])
-                        or "Énoncé indisponible."
-                    ),
-                    "corrige": _markdown_to_typst(
-                        answer_sections.get(row["question"])
-                        or row["reponse_attendue"]
-                        or "Corrigé indisponible."
-                    ),
+                    "section_titles": [
+                        _markdown_to_typst(title)
+                        for title in (
+                            subject_titles.get(row["question"])
+                            or answer_titles.get(row["question"])
+                            or []
+                        )
+                    ],
+                    "enonce": statement_typst,
+                    "corrige": answer_typst,
                     "appreciation": comment or "Aucune appréciation.",
                     "note": _score(grade, float(row["points"])),
                     "crop_image_path": _image_path(
-                        project_dir, row["crop_image_path"], work_dir, index
+                        project_dir,
+                        (
+                            row["crop_image_path"]
+                            if _has_usable_crop_metadata(row["bounding_boxes"])
+                            else None
+                        ),
+                        work_dir,
+                        index,
                     ),
                 }
             )

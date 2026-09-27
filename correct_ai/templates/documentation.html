@@ -180,7 +180,7 @@ uv run python correct_ai/app.py</code></pre>
             <li><code>stats</code> : statistiques de traitement disponibles pour les extensions futures.</li>
         </ul>
         <p>Une note professeur validée est prioritaire sur la note LLM dans l'interface et dans le bilan.</p>
-        <p>Les zones annotées sont enregistrées en JSON sous la forme <code>[{"box_2d": [ymin, xmin, ymax, xmax], "label": "Erreur", "page": 2}]</code>. Les coordonnées entières vont de 0 à 1000 sur chaque page ; le numéro de page commence à 1 et est nécessaire pour recadrer un PDF multipage. La première zone exploitable de chaque question peut produire un PNG dans <code>cropped_questions/</code>. Si le PDF manque ou que la page ne peut pas être identifiée, les boîtes restent enregistrées sans chemin d'image.</p>
+        <p>Les zones annotées sont enregistrées en JSON sous la forme <code>[{"bbox_2d": [ymin, xmin, ymax, xmax], "label": "Erreur", "page": 2}]</code>. Les coordonnées entières vont de 0 à 1000 sur chaque page ; le numéro de page commence à 1 et est nécessaire pour recadrer un PDF multipage. La première zone exploitable de chaque question peut produire un PNG dans <code>cropped_questions/</code>. Si le PDF manque ou que la page ne peut pas être identifiée, les boîtes restent enregistrées sans chemin d'image.</p>
 
         <h3>Fichiers d'une copie</h3>
         <p>Dans <code>copies_anonymes_validees/Copie_01/</code>, l'application conserve notamment :</p>

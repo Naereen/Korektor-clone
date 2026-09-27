@@ -131,6 +131,27 @@ class TestParseLlmResponse:
         assert isinstance(result, dict), "Résultat devrait être un dict"
         assert "Q0" in result, "Q0 devrait être dans le résultat"
 
+    def test_parse_qwen_thinking_and_fenced_questions(self):
+        """Qwen thinking is discarded and its questions array is normalized."""
+        response = """<think>{\"ignored\": true}</think>
+```json
+{"questions": [{"num_question": 1, "note": 2.5, "bareme": 4.0,
+"commentaire": "Erreur", "bbox_2d": [100, 250, 900, 450]}]}
+```
+Texte final."""
+
+        result = parse_llm_response(response)
+
+        assert list(result) == ["Q1"]
+        assert result["Q1"]["bbox_2d"] == [100, 250, 900, 450]
+        assert result["Q1"]["reponse_etudiant"] == ""
+        assert result["Q1"]["raisonnement"] == ""
+
+    def test_parse_uses_first_valid_json_fence(self):
+        """An invalid fenced candidate is skipped in favor of the first valid one."""
+        response = '```json\nnot json\n```\n```json\n{"Q2": {"note": 1}}\n```'
+        assert parse_llm_response(response) == {"Q2": {"note": 1}}
+
     def test_parse_empty_response(self):
         """3.1 : Parser une réponse vide."""
         response = ""
@@ -170,20 +191,21 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
     )
     db.commit()
 
-    boxes = [
-        {"box_2d": [0, 0, 1, 1], "label": "Trop petit", "page": 2},
-        {"box_2d": [100, 100, 500, 500], "label": "Erreur", "page": 2},
-        {"box_2d": [100, 100, 500, 500], "label": "Sans page"},
-    ]
     response = {
-        "Q1": {"note": 0, "reponse_etudiant": "x", "bounding_boxes": boxes},
-        "Q2": {
-            "note": 1,
-            "reponse_etudiant": "y",
-            "bounding_boxes": [{"box_2d": [2000, 0, 5, 5], "label": "Hors cadre"}],
-        },
-        "Q3": {"note": 1, "reponse_etudiant": "z"},
-        "Q4": {"note": 1, "reponse_etudiant": "w", "bounding_boxes": [boxes[-1]]},
+        "questions": [
+            {
+                "num_question": number,
+                "note": 0 if number == 1 else 1,
+                "bareme": 1.0,
+                "commentaire": "Erreur" if number == 1 else "OK",
+                "bbox_2d": (
+                    [100, 250, 900, 450]
+                    if number in (1, 4)
+                    else ([0, 0, 20, 20] if number == 2 else None)
+                ),
+            }
+            for number in range(1, 5)
+        ]
     }
     prompts = []
     inference_events = []
@@ -192,7 +214,7 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
         prompts.append((kwargs["prompt_text"], kwargs["system_prompt"]))
         kwargs["inference_callback"](True)
         kwargs["inference_callback"](False)
-        return json.dumps(response, ensure_ascii=False)[:-1]
+        return f"<think>analyse privée</think>\n```json\n{json.dumps(response)}\n```"
 
     monkeypatch.setattr(llm_providers, "ask_llm_with_pdf", fake_ask_llm_with_pdf)
     try:
@@ -200,8 +222,9 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
             1, "ILAAS_OSS", db, str(tmp_path), inference_callback=inference_events.append
         )
         assert inference_events == [True, False]
-        assert '"bounding_boxes": []' in prompts[0][0]
-        assert "bounding_boxes" in prompts[0][1]
+        assert '"questions": [' in prompts[0][0]
+        assert '"bbox_2d": null' in prompts[0][0]
+        assert "[xmin, ymin, xmax, ymax]" in prompts[0][1]
         rows = {
             row["question"]: row
             for row in db.execute(
@@ -210,15 +233,14 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
             )
         }
         assert len(rows) == 4
-        assert json.loads(rows["Q1"]["bounding_boxes"]) == boxes
-        crop = tmp_path / rows["Q1"]["crop_image_path"]
-        assert crop.is_file() and crop.suffix == ".png"
-        assert json.loads(rows["Q2"]["bounding_boxes"]) == []
-        assert rows["Q2"]["crop_image_path"] is None
-        assert json.loads(rows["Q3"]["bounding_boxes"]) == []
-        assert rows["Q3"]["crop_image_path"] is None
-        assert json.loads(rows["Q4"]["bounding_boxes"]) == [boxes[-1]]
-        assert rows["Q4"]["crop_image_path"] is None
+        assert json.loads(rows["Q1"]["bounding_boxes"]) == [{"bbox_2d": [100, 250, 900, 450]}]
+        fallback_metadata = [{"bbox_2d": None, "fallback": True}]
+        assert json.loads(rows["Q2"]["bounding_boxes"]) == fallback_metadata
+        assert json.loads(rows["Q3"]["bounding_boxes"]) == fallback_metadata
+        assert json.loads(rows["Q4"]["bounding_boxes"]) == [{"bbox_2d": [100, 250, 900, 450]}]
+        for row in rows.values():
+            crop = tmp_path / row["crop_image_path"]
+            assert crop.is_file() and crop.suffix == ".png"
     finally:
         db.close()
 
@@ -245,11 +267,17 @@ def test_missing_pdf_preserves_valid_boxes(tmp_path):
     """Failure to render a page must not discard valid location data."""
     from correct_ai.batch_correction_v2 import _prepare_correction_data
 
-    box = {"box_2d": [100, 100, 500, 500], "label": "Erreur"}
+    box = {"bbox_2d": [100, 100, 500, 500], "label": "Erreur"}
     prepared = _prepare_correction_data(
-        {"note": 0, "bounding_boxes": [box]}, 1, 1, "missing.pdf", str(tmp_path)
+        {"note": 0, "bbox_2d": box["bbox_2d"]},
+        1,
+        1,
+        "missing.pdf",
+        str(tmp_path),
+        1,
+        1,
     )
-    assert json.loads(prepared["bounding_boxes"]) == [box]
+    assert json.loads(prepared["bounding_boxes"]) == [{"bbox_2d": box["bbox_2d"]}]
     assert prepared["crop_image_path"] is None
 
 

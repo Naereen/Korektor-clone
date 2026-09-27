@@ -10,7 +10,7 @@ Consignes:
 
 - Afin d'améliorer la reconnaissance d'écriture par l'IA, il est recommandé de recopier la question avant de répondre et d'écrire **clairement et lisiblement**
 
-- Justifier votre réponse. Puis, dans le cas de question à choix multiple **encadrer** votre choix final sur la copie (et non sur le sujet).  Par exemple, écrire, après le raisonnement: (...) "les réponses correctes sont donc **$\boxed{A, B}$**"
+- Justifier votre réponse. Puis, dans le cas de question à choix multiple **encadrer** votre choix final sur la copie (et non sur le sujet).  Par exemple, écrire, après le raisonnement: (...) "les réponses correctes sont donc $\boxed{A, B}$"
 
 ## Échauffement:  exercice corrigé, **recopier la question et la réponse intégralement**
 
@@ -22,14 +22,15 @@ for(int i=0; j<=3; i++){
 }
 ```
 - [ ] A. j=6, i est inaccessible
-- [ ] B. j=6, i=3 
+- [ ] B. j=6, i=3
 - [ ] C. j=4, i=3
 
-Réponse: 
-À la sortie de la boucle, où i a été déclaré, i devient inaccessible.
-Les valeurs successives du couple (j,i) à la fin de chaque itération sont:
-(0,0), (1,1), (2,3), (3,6). Comme j=6 >= 3, on sort de la boucle.
-La bonne réponse est donc **$\boxed{A}$** (--Q0)
+Réponse :
+
+À la sortie de la boucle, où $i$ a été déclaré, $i$ devient inaccessible.
+Les valeurs successives du couple $(j,i)$ à la fin de chaque itération sont:
+$(0,0)$, $(1,1)$, $(2,3)$, $(3,6)$. Comme $j=6 \geq 3$, on sort de la boucle.
+La bonne réponse est donc $\boxed{A}$ (--Q0)
 
 ## Thème 1 : Bases du C (Types, Syntaxe, Pointeurs, Boucles)
 
@@ -346,7 +347,7 @@ Voici un début d'implémentation en C++ d'un ABR stockant des entiers :
 ```cpp
 class BinTree {
 public:
-    BinTree(int n) : value(n), left(nullptr), right(nullptr) {}    
+    BinTree(int n) : value(n), left(nullptr), right(nullptr) {}
     void insert(int val);
     void affiche();
     bool contient(int val);

@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import random
+import re
 import sqlite3
 import sys
 import tempfile
@@ -28,7 +29,7 @@ from typing import Any, Dict, List, Optional, Union
 import json_repair
 import pymupdf
 
-from correct_ai.image_processing import crop_and_annotate_question
+from correct_ai.image_processing import crop_and_annotate_question, is_valid_question_box
 from correct_ai.llm_providers import ProviderConfig
 
 # Ajouter le répertoire parent au path pour importer les autres modules
@@ -66,16 +67,49 @@ from correct_ai.prompt_builder import build_incremental_prompt, estimate_prompt_
 
 CORRECTION_SYSTEM_PROMPT = (
     "Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière "
-    "MP2I en France. Note selon le barème et maintiens l'uniformité. Pour chaque "
-    "question, renseigne bounding_boxes en entourant l'encre manuscrite réellement "
-    "visible pour la réponse sur les images des pages, ou [] si aucune zone n'est "
-    "identifiable. N'indique pas une bande étroite ou une position déduite du seul "
-    "texte OCR ; vérifie que la boîte couvre l'écriture et laisse une marge lisible "
-    "(au moins 80 unités normalisées en hauteur pour une réponse sur une ligne). "
-    "Chaque boîte JSON a "
-    "box_2d=[ymin, xmin, ymax, xmax] en entiers normalisés de 0 à 1000 et "
-    "label ; indique page (à partir de 1) pour les PDF multipages."
+    "MP2I en France. Note selon le barème et maintiens l'uniformité. Réponds avec un "
+    "unique objet JSON contenant la clé questions. Pour chaque question, bbox_2d est "
+    "exactement [xmin, ymin, xmax, ymax], en entiers normalisés de 0 à 1000 par "
+    "rapport à l'image. La boîte doit entourer toute la réponse manuscrite. Utilise "
+    "null si la localisation visuelle n'est pas fiable."
 )
+
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", flags=re.DOTALL | re.IGNORECASE)
+_JSON_FENCE = re.compile(r"```json\s*(.*?)```", flags=re.DOTALL | re.IGNORECASE)
+
+
+def _decode_json(candidate: str) -> Any:
+    """Decode JSON strictly first, then use json-repair as a bounded fallback."""
+    try:
+        return json.loads(candidate)
+    except (json.JSONDecodeError, TypeError):
+        return json_repair.loads(candidate)
+
+
+def _extract_json_payload(raw_response: str) -> str:
+    """Remove Qwen thinking and isolate the first decodable JSON payload."""
+    clean_text = _THINK_BLOCK.sub("", raw_response).strip()
+    for match in _JSON_FENCE.finditer(clean_text):
+        candidate = match.group(1).strip()
+        try:
+            if isinstance(json.loads(candidate), (dict, list)):
+                return candidate
+        except (TypeError, json.JSONDecodeError):
+            continue
+
+    start = clean_text.find("{")
+    end = clean_text.rfind("}")
+    if start < 0 or end < start:
+        return ""
+    return clean_text[start : end + 1]
+
+
+def _question_key(value: Any) -> str:
+    """Normalize Qwen question identifiers to the rubric's Q-prefixed keys."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    text = str(value).strip()
+    return text if text.upper().startswith("Q") else f"Q{text}"
 
 
 def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
@@ -85,6 +119,8 @@ def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
             value = json_repair.loads(value)
         except (ValueError, TypeError):
             return []
+    if is_valid_question_box(value):
+        value = [{"bbox_2d": value}]
     if not isinstance(value, list):
         return []
 
@@ -92,20 +128,15 @@ def _valid_bounding_boxes(value: Any) -> List[Dict[str, Any]]:
     for item in value:
         if not isinstance(item, dict):
             continue
-        bounds = item.get("box_2d")
-        label = item.get("label")
+        bounds = item.get("bbox_2d")
         page = item.get("page")
-        if (
-            not isinstance(bounds, list)
-            or len(bounds) != 4
-            or any(type(coord) is not int for coord in bounds)
-            or not (0 <= bounds[0] < bounds[2] <= 1000)
-            or not (0 <= bounds[1] < bounds[3] <= 1000)
-            or not isinstance(label, str)
-            or (page is not None and (type(page) is not int or page < 1))
+        if not is_valid_question_box(bounds) or (
+            page is not None and (type(page) is not int or page < 1)
         ):
             continue
-        box = {"box_2d": bounds, "label": label}
+        box = {"bbox_2d": bounds}
+        if isinstance(item.get("label"), str):
+            box["label"] = item["label"]
         if page is not None:
             box["page"] = page
         boxes.append(box)
@@ -118,41 +149,51 @@ def _prepare_correction_data(
     bareme_id: int,
     pdf_path: str,
     project_dir: str,
+    q_index: int,
+    total_questions: int,
 ) -> Dict[str, Any]:
-    """Serialize model boxes and crop the first box with a known source page."""
+    """Serialize Qwen bounds and create an annotated or fallback crop."""
     prepared = dict(data)
-    boxes = _valid_bounding_boxes(data.get("bounding_boxes", []))
+    raw_boxes = data.get("bbox_2d")
+    if raw_boxes is None:
+        raw_boxes = data.get("bounding_boxes", [])
+    boxes = _valid_bounding_boxes(raw_boxes)
     prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
     prepared["crop_image_path"] = None
-    if not boxes or not pdf_path:
+    if not pdf_path:
         return prepared
 
     try:
         with pymupdf.open(os.path.join(project_dir, pdf_path)) as document:
-            for box in boxes:
-                page_number = box.get("page", 1)
-                if (len(document) > 1 and "page" not in box) or page_number > len(document):
-                    logger.warning("Page inconnue pour la boîte de la copie %s", copy_id)
-                    continue
-
-                relative_path = os.path.join(
-                    "cropped_questions", f"copie_{copy_id}_question_{bareme_id}.png"
-                )
-                try:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        page_image = os.path.join(temp_dir, "page.png")
-                        document[page_number - 1].get_pixmap(dpi=150, alpha=False).save(page_image)
-                        crop_and_annotate_question(
-                            page_image,
-                            box["box_2d"],
-                            os.path.join(project_dir, relative_path),
-                            label=box["label"],
+            if not document:
+                return prepared
+            box = boxes[0] if boxes else None
+            explicit_page = box.get("page") if box else data.get("page")
+            estimated_page = 1 + ((max(1, q_index) - 1) * len(document) // max(1, total_questions))
+            page_number = explicit_page if isinstance(explicit_page, int) else estimated_page
+            page_number = min(max(1, page_number), len(document))
+            relative_path = os.path.join(
+                "cropped_questions", f"copie_{copy_id}_question_{bareme_id}.png"
+            )
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    page_image = os.path.join(temp_dir, "page.png")
+                    document[page_number - 1].get_pixmap(dpi=150, alpha=False).save(page_image)
+                    result_path = crop_and_annotate_question(
+                        page_image,
+                        box["bbox_2d"] if box else None,
+                        os.path.join(project_dir, relative_path),
+                        q_index,
+                        total_questions,
+                    )
+                if result_path and os.path.isfile(result_path):
+                    prepared["crop_image_path"] = relative_path
+                    if not boxes:
+                        prepared["bounding_boxes"] = json.dumps(
+                            [{"bbox_2d": None, "fallback": True}], ensure_ascii=False
                         )
-                except (OSError, ValueError, RuntimeError) as error:
-                    logger.warning("Boîte non recadrable pour la copie %s : %s", copy_id, error)
-                    continue
-                prepared["crop_image_path"] = relative_path
-                break
+            except (OSError, ValueError, RuntimeError) as error:
+                logger.warning("Boîte non recadrable pour la copie %s : %s", copy_id, error)
     except Exception as error:
         logger.warning("Recadrage impossible pour la copie %s : %s", copy_id, error)
     return prepared
@@ -200,14 +241,27 @@ def parse_llm_response(response: str) -> Dict[str, Any]:
         Dict: Dictionnaire parsé avec {question: {note: ..., commentaire: ..., reponse_etudiant: ...}}
 
     """
-    if not response or not response.strip():
+    if not isinstance(response, str) or not response.strip():
         return {}
 
     try:
-        result = json_repair.loads(response)
-    except (ValueError, TypeError) as error:
+        payload = _extract_json_payload(response)
+        if not payload:
+            return {}
+        result = _decode_json(payload)
+    except (ValueError, TypeError, json.JSONDecodeError) as error:
         logger.warning("Réponse JSON du LLM inexploitable : %s", error)
         return {}
+    if isinstance(result, dict) and isinstance(result.get("questions"), list):
+        normalized: Dict[str, Any] = {}
+        for item in result["questions"]:
+            if not isinstance(item, dict) or "num_question" not in item:
+                continue
+            correction = dict(item)
+            correction.setdefault("reponse_etudiant", "")
+            correction.setdefault("raisonnement", "")
+            normalized[_question_key(item["num_question"])] = correction
+        return normalized
     if isinstance(result, list):
         return {
             item.get("question", str(index)): item
@@ -441,6 +495,7 @@ def correct_copy_incremental(
             # 5. Sauvegarder dans la base
             # Mapper les questions du JSON vers bareme_id
             bareme_map = {b["question"]: b["id"] for b in bareme}
+            question_positions = {b["question"]: index for index, b in enumerate(bareme, start=1)}
             if not any(
                 bareme_map.get(question) and isinstance(data, dict)
                 for question, data in correction_data.items()
@@ -456,7 +511,13 @@ def correct_copy_incremental(
                 bareme_id = bareme_map.get(question)
                 if bareme_id and isinstance(data, dict):
                     prepared = _prepare_correction_data(
-                        data, copy_id, bareme_id, current_copy["pdf_path"], project_dir
+                        data,
+                        copy_id,
+                        bareme_id,
+                        current_copy["pdf_path"],
+                        project_dir,
+                        question_positions[question],
+                        len(bareme),
                     )
                     save_correction(db, copy_id, bareme_id, prepared, is_prof=False)
                     saved_count += 1
@@ -591,13 +652,20 @@ def correct_copy_incremental_mock(
 
         # 4. Sauvegarder dans la base
         bareme_map = {b["question"]: b["id"] for b in bareme}
+        question_positions = {b["question"]: index for index, b in enumerate(bareme, start=1)}
 
         saved_count = 0
         for question, data in correction_data.items():
             bareme_id = bareme_map.get(question)
             if bareme_id and isinstance(data, dict):
                 prepared = _prepare_correction_data(
-                    data, copy_id, bareme_id, current_copy["pdf_path"], project_dir
+                    data,
+                    copy_id,
+                    bareme_id,
+                    current_copy["pdf_path"],
+                    project_dir,
+                    question_positions[question],
+                    len(bareme),
                 )
                 save_correction(db, copy_id, bareme_id, prepared, is_prof=False)
                 saved_count += 1

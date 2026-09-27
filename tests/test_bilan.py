@@ -149,7 +149,7 @@ class TestValidationApi:
             "UPDATE corrections SET crop_image_path = ?, bounding_boxes = ? WHERE copie_id = 1",
             (
                 "cropped_questions/q1.png",
-                '[{"box_2d": [100, 200, 300, 400], "label": "Erreur"}]',
+                '[{"bbox_2d": [100, 200, 300, 400], "label": "Erreur"}]',
             ),
         )
         db.commit()

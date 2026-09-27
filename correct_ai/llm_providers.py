@@ -178,7 +178,7 @@ def get_provider(
 
 def pdf_to_base64_images(
     pdf_path: str,
-    dpi: int = 100,
+    dpi: int = 150,
     jpg_quality: int = 90,
 ) -> List[str]:
     """Convertit toutes les pages d'un PDF en images base64 (JPEG)."""
@@ -219,7 +219,10 @@ def ask_llm_with_pdf(
         user_content.append(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"},
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{b64_img}",
+                    "detail": "high",
+                },
             }
         )
 
