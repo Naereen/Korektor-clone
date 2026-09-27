@@ -57,6 +57,15 @@ class TestOcrPage:
         assert "data.action === 'Terminé'" in content
         assert "window.location.href = '/verify_ocr';" in content
 
+    def test_successful_batch_uses_browser_notification(self, client):
+        """OCR completion requests browser permission and sends a native notification."""
+        content = client.get("/ocr").data.decode("utf-8")
+
+        assert "Notification.requestPermission()" in content
+        assert "new Notification('Extraction OCR terminée'" in content
+        assert "notifyJobComplete(data);" in content
+        assert "Notification système non autorisée ou indisponible." in content
+
 
 class TestVerifyOcrPage:
     def test_markdown_editor_uses_codemirror(self, client):
@@ -117,6 +126,15 @@ class TestCorrectionPage:
         assert "data.action === 'Terminé'" in content
         assert "window.location.href = '/verify';" in content
 
+    def test_successful_batch_uses_browser_notification(self, client):
+        """Correction completion requests browser permission and sends a native notification."""
+        content = client.get("/correction").data.decode("utf-8")
+
+        assert "Notification.requestPermission()" in content
+        assert "new Notification('Correction terminée'" in content
+        assert "notifyJobComplete(data);" in content
+        assert "Notification système non autorisée ou indisponible." in content
+
 
 @pytest.mark.parametrize("page", ["/ocr", "/correction"])
 def test_console_copy_control(client, page):
@@ -139,6 +157,25 @@ class TestVerifyCorrectionPage:
         assert response.status_code == 200
         assert 'id="finish-btn"' in content
         assert "window.location.href = '/bilan';" in content
+
+
+def test_split_page_uses_persisted_header_ratio(client, monkeypatch):
+    """The split slider should render the saved value with the supported maximum."""
+    from app import config, get_splitter_doc
+
+    class FakeDocument:
+        def __len__(self):
+            return 1
+
+    monkeypatch.setattr("app.get_splitter_doc", lambda: FakeDocument())
+    monkeypatch.setattr("app.load_students", lambda: [])
+    monkeypatch.setattr(config, "get_pages_per_copy", lambda: 1)
+    monkeypatch.setattr(config, "header_ratio", 0.32)
+
+    content = client.get("/split").data.decode("utf-8")
+    assert 'id="header-ratio" type="range" min="0" max="50" value="32"' in content
+    assert 'id="header-ratio-value">32 %</strong>' in content
+    assert "api/split/header-ratio" in content
 
     def test_crop_preview_and_student_pdf_action(self, client):
         """Correction review exposes an accessible crop preview and PDF action."""

@@ -76,8 +76,44 @@
 <script>
 let pollInterval = null;
 let advanceWhenComplete = false;
+let completionNotificationShown = false;
+let notificationsEnabled = false;
 const rangeStart = document.getElementById('range-start');
 const rangeEnd = document.getElementById('range-end');
+
+async function enableSystemNotifications() {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    try {
+        return await Notification.requestPermission() === 'granted';
+    } catch (error) {
+        console.warn('Permission de notification indisponible', error);
+        return false;
+    }
+}
+
+function notifyJobComplete(data) {
+    if (completionNotificationShown) return;
+    completionNotificationShown = true;
+    if (notificationsEnabled && 'Notification' in window) {
+        try {
+            const notification = new Notification('Extraction OCR terminée', {
+                body: `${data.completed_copies ?? 0} copie(s) traitée(s).`
+            });
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+            return;
+        } catch (error) {
+            console.warn('Création de la notification impossible', error);
+        }
+    }
+    document.getElementById('jobInfo').innerHTML =
+        '<span class="text-success"><i class="bi bi-check-circle"></i> Extraction terminée.</span> ' +
+        '<span class="text-muted">Notification système non autorisée ou indisponible.</span>';
+}
 
 function formatElapsed(seconds) {
     const pad = value => String(value).padStart(2, '0');
@@ -179,6 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.running) {
                 advanceWhenComplete = true;
+                notificationsEnabled = 'Notification' in window && Notification.permission === 'granted';
                 document.getElementById('log-console').innerText = data.logs.join('');
                 updateProgress(data);
                 document.getElementById('status-badge').innerText = data.action;
@@ -194,6 +231,8 @@ async function startJob() {
     const forceVal = document.getElementById('force-ocr').checked;
     const msg = 'Lancer l\'extraction OCR' + (endVal ? ' (Copies ' + (startVal || '1') + '-' + endVal + ')' : ' sur toutes les copies') + (forceVal ? ' en forçant le recalcul' : '') + ' ?';
     if (!confirm(msg)) return;
+    completionNotificationShown = false;
+    notificationsEnabled = await enableSystemNotifications();
 
     try {
         const res = await fetch('/api/batch/start', {
@@ -248,6 +287,7 @@ async function updateStatus() {
             document.getElementById('jobInfo').innerHTML = data.progress >= 100 ?
                 '<span class="text-success"><i class="bi bi-check-circle"></i> Extraction terminée</span>' : '';
             if (advanceWhenComplete && data.progress >= 100 && data.action === 'Terminé') {
+                notifyJobComplete(data);
                 // copyConsoleOutput();
                 // sleep for 10 seconds then redirect
                 await new Promise(resolve => setTimeout(resolve, 10000));

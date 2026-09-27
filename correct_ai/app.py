@@ -81,6 +81,7 @@ class ProjectConfig:
         self.project_dir = os.path.join(APP_ROOT, "exemple")
         self.project_name = "exemple"
         self.inference_provider = DEFAULT_PROVIDER
+        self.header_ratio = 0.15
         self.load()
 
     @staticmethod
@@ -123,6 +124,11 @@ class ProjectConfig:
                     self.inference_provider = (
                         provider_name if provider_name in PROVIDERS else DEFAULT_PROVIDER
                     )
+                    try:
+                        self.header_ratio = float(data.get("header_ratio", 0.15))
+                    except (TypeError, ValueError):
+                        self.header_ratio = 0.15
+                    self.header_ratio = max(0.0, min(0.5, self.header_ratio))
             except:
                 pass
 
@@ -134,6 +140,7 @@ class ProjectConfig:
                     "project_dir": self.project_dir,
                     "project_name": self.project_name,
                     "inference_provider": self.inference_provider,
+                    "header_ratio": self.header_ratio,
                 },
                 f,
                 ensure_ascii=False,
@@ -958,6 +965,7 @@ def split_page():
         total_items=total_items,
         pages_per_copy=pages_per_copy,
         students=students,
+        header_ratio_percent=round(config.header_ratio * 100),
     )
 
 
@@ -1473,6 +1481,27 @@ def api_import():
 
 
 # --- ROUTES: API Splitter ---
+
+
+@app.route("/api/split/header-ratio", methods=["POST"])
+def save_split_header_ratio():
+    """Persist the split-page header ratio in the global application config."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "error": "Payload JSON invalide"}), 400
+    raw_header_ratio = data.get("header_ratio")
+    if isinstance(raw_header_ratio, bool) or not isinstance(raw_header_ratio, (int, float, str)):
+        return jsonify({"success": False, "error": "Le pourcentage doit être numérique"}), 400
+    try:
+        header_ratio = float(raw_header_ratio)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Le pourcentage doit être numérique"}), 400
+    if not 0 <= header_ratio <= 0.5:
+        return jsonify({"success": False, "error": "Le pourcentage doit être compris entre 0 et 50 %"}), 400
+
+    config.header_ratio = header_ratio
+    config.save()
+    return jsonify({"success": True, "header_ratio": config.header_ratio})
 
 
 @app.route("/api/split/thumbnail/<int:page_num>")

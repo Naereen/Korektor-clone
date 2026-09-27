@@ -91,8 +91,8 @@
             <b>nouvelle copie</b> (en vert).</p>
     </div>
     <div class="header-slider">
-        <label for="header-ratio" class="form-label mb-1">Hauteur du bandeau : <strong id="header-ratio-value">15 %</strong></label>
-        <input id="header-ratio" type="range" min="0" max="100" value="15" step="1" oninput="updateHeaderRatio(this.value)">
+        <label for="header-ratio" class="form-label mb-1">Hauteur du bandeau : <strong id="header-ratio-value">{{ header_ratio_percent }} %</strong></label>
+        <input id="header-ratio" type="range" min="0" max="50" value="{{ header_ratio_percent }}" step="1" oninput="updateHeaderRatio(this.value)">
     </div>
     <button id="submitBtn" class="btn btn-success fw-bold" onclick="submitData()">Valider et traiter</button>
 </div>
@@ -111,7 +111,24 @@
     const pagesPerCopy = Number(splitConfig.dataset.pagesPerCopy);
     const students = JSON.parse(splitConfig.dataset.students);
     const cardsData = [];
-    let headerRatio = 0.15;
+    let headerRatio = Number(document.getElementById('header-ratio').value) / 100;
+    let headerRatioSaveTimer = null;
+
+    async function persistHeaderRatio() {
+        clearTimeout(headerRatioSaveTimer);
+        try {
+            const response = await fetch('/api/split/header-ratio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ header_ratio: headerRatio })
+            });
+            if (!response.ok) throw new Error('Échec de l’enregistrement du réglage');
+        } catch (error) {
+            console.error('Erreur de sauvegarde de la hauteur du bandeau', error);
+            return false;
+        }
+        return true;
+    }
 
     function updateHeaderRatio(value) {
         headerRatio = Number(value) / 100;
@@ -120,6 +137,8 @@
             const baseUrl = image.src.split('?')[0];
             image.src = `${baseUrl}?header_ratio=${headerRatio}&t=${Date.now()}`;
         });
+        clearTimeout(headerRatioSaveTimer);
+        headerRatioSaveTimer = setTimeout(persistHeaderRatio, 250);
     }
 
     function refreshStudentOptions() {
@@ -218,6 +237,7 @@
         showLoading();
 
         try {
+            await persistHeaderRatio();
             const payload = cardsData.map((card) => ({ ...card, header_ratio: headerRatio }));
             const response = await fetch('/api/split/process', {
                 method: 'POST',

@@ -99,6 +99,44 @@ def test_project_config_persists_inference_provider(monkeypatch, tmp_path):
     assert app_module.ProjectConfig().inference_provider == "GOOGLE_GEMINI"
 
 
+def test_project_config_persists_header_ratio(monkeypatch, tmp_path):
+    """The split banner ratio is restored from the global application config."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"header_ratio": 0.32}', encoding="utf-8")
+    monkeypatch.setattr(app_module, "CONFIG_FILE", str(config_path))
+
+    assert app_module.ProjectConfig().header_ratio == 0.32
+
+
+def test_split_header_ratio_endpoint_persists_value(project_client, monkeypatch, tmp_path):
+    """The split slider endpoint writes the ratio without dropping other settings."""
+    client, _ = project_client
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(app_module, "CONFIG_FILE", str(config_path))
+    monkeypatch.setattr(
+        app_module.config,
+        "save",
+        lambda: app_module.ProjectConfig.save(app_module.config),
+    )
+
+    response = client.post("/api/split/header-ratio", json={"header_ratio": 0.32})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True, "header_ratio": 0.32}
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["header_ratio"] == 0.32
+    assert saved["project_dir"] == str(tmp_path)
+    assert "inference_provider" in saved
+
+
+@pytest.mark.parametrize("ratio", [-0.01, 0.51, "invalid"])
+def test_split_header_ratio_endpoint_rejects_invalid_value(project_client, ratio):
+    """The saved banner ratio must match the processing range of zero to fifty percent."""
+    client, _ = project_client
+    response = client.post("/api/split/header-ratio", json={"header_ratio": ratio})
+    assert response.status_code == 400
+
+
 def test_student_roster_page_and_csv_crud(project_client):
     """Student CRUD should preserve roster preamble and existing CSV columns."""
     client, project = project_client

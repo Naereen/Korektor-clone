@@ -460,11 +460,16 @@ def ask_llm_with_image(
     )
 
 
+# Enable or disable the "thinking" mode for the LLM calls
+# THINKING_ENABLED_DEFAULT = False
+THINKING_ENABLED_DEFAULT = True
+
+
 def ask_llm(
     provider: ProviderConfig,
     prompt_text: str,
     system_prompt: str = "Tu es une IA utile.",
-    thinking: bool = True,
+    thinking: bool = THINKING_ENABLED_DEFAULT,
 ) -> str:
     """Envoie une requête texte simple à l'API LLM."""
 
@@ -540,7 +545,7 @@ def ask_llm_with_progress(
     provider: ProviderConfig,
     prompt_text: str,
     system_prompt: str = "Tu es une IA utile.",
-    thinking: bool = True,
+    thinking: bool = THINKING_ENABLED_DEFAULT,
     progress_callback: Optional[Callable[[str], None]] = None,
     inference_callback: Optional[Callable[[bool], None]] = None,
 ) -> str:
