@@ -273,6 +273,9 @@ def _prepare_correction_data(
                                     system_prompt=(
                                         "Tu es un outil de localisation visuelle. Retourne uniquement "
                                         "le JSON demandé et n'invente pas de coordonnées."
+                                        "Mieux vaut que tu voies trop que pas assez, je préfère une bounding-box qui soit un peu trop grande plutôt que trop petite."
+                                        "Sur l'axe horizontal, privilégie une bounding-box légèrement plus large si nécessaire."
+                                        "Sur l'axe vertical, privilégie une bounding-box légèrement plus haute si nécessaire."
                                     ),
                                     inference_callback=inference_callback,
                                 )
