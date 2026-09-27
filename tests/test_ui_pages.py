@@ -124,6 +124,15 @@ class TestVerifyCorrectionPage:
         assert 'id="finish-btn"' in content
         assert "window.location.href = '/bilan';" in content
 
+    def test_crop_preview_and_student_pdf_action(self, client):
+        """Correction review exposes an accessible crop preview and PDF action."""
+        content = client.get("/verify").data.decode("utf-8")
+        assert 'id="student-pdf-btn"' in content
+        assert 'id="crop-preview"' in content
+        assert 'id="crop-zones"' in content
+        assert "/api/corrections/${row.id}/crop" in content
+        assert "/api/copies/${currentCopy}/pdf" in content
+
 
 class TestDocumentationPage:
     """Verify the in-application documentation route and navigation entry."""

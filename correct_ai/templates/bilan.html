@@ -52,15 +52,20 @@
         opacity: 0.5;
         font-size: 0.75rem;
     }
+    .student-pdf-column { white-space: nowrap; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="row mb-3">
     <div class="col-12">
-        <div class="d-flex align-items-center justify-content-between gap-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <h3><i class="bi bi-bar-chart-fill"></i> Bilan - État de la correction</h3>
             <div class="text-end">
+                <button type="button" id="generate-all-pdfs-button" class="btn btn-outline-danger"
+                    onclick="generateAllStudentPdfs()">
+                    <i class="bi bi-file-earmark-pdf"></i> Générer tous les PDF Élèves (Typst)
+                </button>
                 <button type="button" id="export-all-charts-button" class="btn btn-primary"
                     onclick="exportAllCharts()">
                     <i class="bi bi-folder-symlink"></i> Exporter tous les graphiques en PNG
@@ -72,6 +77,7 @@
                     Rapports <i class="bi bi-arrow-right"></i>
                 </a>
                 <div id="export-all-charts-status" class="small text-muted mt-1"></div>
+                <div id="generate-all-pdfs-status" class="small text-muted mt-1" role="status" aria-live="polite"></div>
             </div>
         </div>
         <hr>
@@ -211,10 +217,11 @@
                                 <th class="sortable" data-key="score20">Note / 20 <i class="bi bi-arrow-down-up sort-icon"></i></th>
                                 <th class="sortable" data-key="corr">Questions corrigées <i class="bi bi-arrow-down-up sort-icon"></i></th>
                                 <th class="sortable" data-key="statut">Statut <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                                <th class="student-pdf-column">PDF élève</th>
                             </tr>
                         </thead>
                         <tbody id="notes-table">
-                            <tr><td colspan="8" class="text-center text-muted">Chargement...</td></tr>
+                            <tr><td colspan="9" class="text-center text-muted">Chargement...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -398,6 +405,10 @@ async function loadBilan() {
             rows += '<td data-value="' + scoreOutOfTwenty + '">' + scoreOutOfTwenty.toFixed(2) + '</td>';
             rows += '<td data-value="' + n.nb_corr + '"><small>' + n.nb_corr + '/' + data.nb_questions + '</small></td>';
             rows += '<td data-value="' + (isFull ? 1 : 0) + '">' + statusBadge + '</td>';
+            const copyId = Number(n.copie_id);
+            rows += '<td class="student-pdf-column">' + (Number.isInteger(copyId) && copyId > 0
+                ? `<a class="btn btn-sm btn-outline-danger" href="/api/copies/${copyId}/pdf?refresh=1" download="Copie_${String(copyId).padStart(2, '0')}.pdf" title="Télécharger le PDF annoté de la copie ${copyId}"><i class="bi bi-download" aria-hidden="true"></i> PDF élève</a>`
+                : '-') + '</td>';
             rows += '</tr>';
         });
         document.getElementById('notes-table').innerHTML = rows;
@@ -634,6 +645,30 @@ async function exportAllCharts() {
     } catch (error) {
         console.error('Erreur export des graphiques', error);
         status.innerText = `Erreur : ${error.message}`;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function generateAllStudentPdfs() {
+    const button = document.getElementById('generate-all-pdfs-button');
+    const status = document.getElementById('generate-all-pdfs-status');
+    button.disabled = true;
+    status.className = 'small text-muted mt-1';
+    status.textContent = 'Génération des livrets en cours…';
+    try {
+        const response = await fetch('/api/copies/generate-all-pdfs', {method: 'POST'});
+        const result = await response.json();
+        const summary = `${result.generated ?? 0} PDF générés sur ${result.total ?? 0}.`;
+        if (!response.ok || !result.success) {
+            const details = (result.errors || []).map(item => `Copie ${item.copie_id} : ${item.error}`).join('; ');
+            throw new Error(`${summary} ${details || result.error || 'Échec de la génération.'}`);
+        }
+        status.className = 'small text-success mt-1';
+        status.textContent = `${summary} Disponibles dans exports_pdf/.`;
+    } catch (error) {
+        status.className = 'small text-danger mt-1';
+        status.textContent = `Erreur : ${error.message}`;
     } finally {
         button.disabled = false;
     }

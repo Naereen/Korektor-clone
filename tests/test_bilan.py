@@ -40,6 +40,14 @@ class TestBilanPage:
         assert "scoreOutOfTwenty" in content
         assert 'href="/rapports"' in content
 
+    def test_student_pdf_actions_are_available(self, client):
+        """The dashboard offers a batch action and a PDF link for each copy."""
+        content = client.get("/bilan").data.decode("utf-8")
+        assert 'id="generate-all-pdfs-button"' in content
+        assert "/api/copies/generate-all-pdfs" in content
+        assert "/api/copies/${copyId}/pdf" in content
+        assert "PDF élève" in content
+
     def test_question_dispersion_reserves_space_for_title(self, client):
         """Ensure the Plotly title is not clipped by the chart boundary."""
         content = client.get("/bilan").data.decode("utf-8")
@@ -130,3 +138,24 @@ class TestValidationApi:
         correction = database_client.get("/api/db/corrections/1").get_json()[0]
         assert correction["note"] == 1.75
         assert correction["validee_par_prof"] == 1
+
+    def test_corrections_expose_crop_metadata(self, database_client):
+        """The validator receives the ID and error zones needed for each preview."""
+        from app import config
+        from database import get_db
+
+        db = get_db(config.project_dir)
+        db.execute(
+            "UPDATE corrections SET crop_image_path = ?, bounding_boxes = ? WHERE copie_id = 1",
+            (
+                "cropped_questions/q1.png",
+                '[{"box_2d": [100, 200, 300, 400], "label": "Erreur"}]',
+            ),
+        )
+        db.commit()
+        db.close()
+
+        correction = database_client.get("/api/db/corrections/1").get_json()[0]
+        assert isinstance(correction["id"], int)
+        assert correction["crop_image_path"] == "cropped_questions/q1.png"
+        assert correction["bounding_boxes"][0]["label"] == "Erreur"

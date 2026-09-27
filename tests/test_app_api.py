@@ -166,6 +166,8 @@ def test_student_pdf_is_generated_inline_then_reused(project_client, monkeypatch
         assert response.mimetype == "application/pdf"
         assert "attachment" not in response.headers.get("Content-Disposition", "")
     assert len(calls) == 1
+    assert client.get("/api/copies/1/pdf?refresh=1").status_code == 200
+    assert len(calls) == 2
     assert calls[0][0] == 1
     assert calls[0][2] == str(project / "exports_pdf" / "Copie_01.pdf")
 

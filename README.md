@@ -56,8 +56,8 @@
     *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
     *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page dans un éditeur CodeMirror Markdown avec numéros de ligne, puis contrôlez le rendu LaTeX dans l'aperçu.
     *   **Correction** : Lancez la correction assistée incrémentale sur un lot de copies.
-    *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM, notes.
-    *   **Bilan** : Dashboard avec l'état global, les statistiques de classe, les notes et les copies problématiques. La page affiche la distribution des notes sur 20, la difficulté des questions, le profil moyen de la classe, la dispersion par question et les résultats détaillés d'un étudiant ou de la moyenne de la classe. Chaque graphique peut être téléchargé séparément en PNG ou tous les graphiques peuvent être exportés en une fois dans `graphiques_notes/`.
+    *   **Vérif Correction** : Passez en revue chaque copie : réponses étudiant, barème, commentaires, raisonnement LLM et notes. Pour chaque question disposant de zones annotées, visualisez l'extrait manuscrit et la liste des erreurs ; le bouton **Générer & Voir le PDF Élève** enregistre les modifications en attente et ouvre un livret à jour dans un nouvel onglet.
+    *   **Bilan** : Dashboard avec l'état global, les statistiques de classe, les notes et les copies problématiques. La page affiche la distribution des notes sur 20, la difficulté des questions, le profil moyen de la classe, la dispersion par question et les résultats détaillés d'un étudiant ou de la moyenne de la classe. Les graphiques s'exportent dans `graphiques_notes/`. Le bouton **Générer tous les PDF Élèves (Typst)** crée les livrets dans `exports_pdf/` et la colonne **PDF élève** permet de télécharger une version à jour pour chaque copie.
 
     Le parcours est accéléré entre les étapes : un import, un découpage ou un traitement batch terminé avec succès ouvre automatiquement l'étape suivante. Les pages de relecture **Vérif OCR** et **Vérif Correction** proposent un bouton explicite de fin qui sauvegarde les modifications avant de continuer. Le **Bilan** fournit enfin un accès direct aux **Rapports**. Une annulation ou une erreur de traitement ne déclenche aucune redirection.
 
@@ -146,6 +146,9 @@ GET /api/bilan/stats
 
 # Afficher ou télécharger le livret Typst d'une copie (PDF inline, mis en cache)
 GET /api/copies/1/pdf
+
+# Recompiler le livret après modification d'une correction
+GET /api/copies/1/pdf?refresh=1
 
 # Régénérer les livrets de toutes les copies dans exports_pdf/
 POST /api/copies/generate-all-pdfs

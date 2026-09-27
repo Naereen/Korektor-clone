@@ -150,8 +150,8 @@ uv run python correct_ai/app.py</code></pre>
             <li><strong>OCR</strong> : lancer l'extraction sur une plage de copies. La case <strong>Forcer</strong> permet de recalculer les extractions existantes.</li>
             <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page dans l'éditeur CodeMirror Markdown, avec numéros de ligne.</li>
             <li><strong>Correction</strong> : lancer la correction incrémentale. La case <strong>Forcer</strong> permet d'écraser les corrections existantes.</li>
-            <li><strong>Vérif Correction</strong> : contrôler les réponses, les commentaires, le raisonnement et les notes.</li>
-            <li><strong>Bilan</strong> : consulter l'état global, les notes, les copies incomplètes et les graphiques de l'évaluation.</li>
+            <li><strong>Vérif Correction</strong> : contrôler les réponses, les commentaires, le raisonnement et les notes. Si une question possède un extrait manuscrit annoté, afficher son image et ses zones d'erreur. Le bouton <strong>Générer &amp; Voir le PDF Élève</strong> enregistre les modifications en attente avant d'ouvrir un livret actualisé dans un nouvel onglet.</li>
+            <li><strong>Bilan</strong> : consulter l'état global, les notes, les copies incomplètes et les graphiques de l'évaluation. Le bouton <strong>Générer tous les PDF Élèves (Typst)</strong> produit les livrets dans <code>exports_pdf/</code> ; la colonne <strong>PDF élève</strong> permet de télécharger le livret à jour de chaque copie.</li>
         </ol>
         <p>Les étapes automatiques enchaînent directement sur la suivante après un succès : Import vers Vérif Barème, Vérif Barème vers Découpage après enregistrement, Découpage vers OCR, OCR vers Vérif OCR, puis Correction vers Vérif Correction. Les pages de relecture proposent une action explicite pour sauvegarder avant d'avancer. Le Bilan contient un accès direct aux Rapports. En cas d'annulation ou d'erreur, la page courante est conservée afin de consulter les journaux ou de reprendre le travail.</p>
 
@@ -222,7 +222,7 @@ generate_student_pdf(
             <li><code>GET /api/bilan/stats</code> : obtenir les statistiques globales.</li>
             <li><code>POST /api/bilan/export-graphs</code> : sauvegarder les graphiques PNG exportés dans <code>graphiques_notes/</code>.</li>
             <li><code>GET /api/project/check</code> : vérifier les fichiers du projet et compter les copies.</li>
-            <li><code>GET /api/copies/&lt;copie_id&gt;/pdf</code> : générer ou afficher dans le navigateur le livret Typst individuel ; le PDF existant dans <code>exports_pdf/</code> est réutilisé et peut être téléchargé depuis le navigateur.</li>
+            <li><code>GET /api/copies/&lt;copie_id&gt;/pdf</code> : générer ou afficher dans le navigateur le livret Typst individuel ; le PDF existant dans <code>exports_pdf/</code> est réutilisé. Ajouter <code>?refresh=1</code> pour recompiler après une correction et télécharger un exemplaire à jour.</li>
             <li><code>POST /api/copies/generate-all-pdfs</code> : régénérer tous les livrets dans <code>exports_pdf/</code> et renvoyer le nombre de réussites.</li>
             <li><code>GET /api/corrections/&lt;correction_id&gt;/crop</code> : afficher le PNG manuscrit annoté associé à une correction.</li>
         </ul>

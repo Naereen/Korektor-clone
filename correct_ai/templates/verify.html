@@ -50,6 +50,9 @@
             gap: 8px;
         }
 
+        .toolbar > .d-flex:first-child { width: 100%; min-width: 0; }
+        #copy-select { flex: 1; width: auto !important; min-width: 0; max-width: 200px; }
+
         .student-summary {
             order: 3;
             flex-basis: 100%;
@@ -150,6 +153,33 @@
     .question-markdown {
         margin-top: 0.35rem;
     }
+    .review-question-grid.has-crop {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(190px, 38%);
+        gap: 16px;
+    }
+    .review-form, .review-crop { min-width: 0; }
+    .review-crop {
+        align-self: start;
+        position: sticky;
+        top: 62px;
+        padding: 12px;
+        border: 1px solid #dee2e6;
+        background: #f8faf9;
+    }
+    .review-crop img { display: block; max-width: 100%; max-height: 380px; object-fit: contain; margin: 0 auto; }
+    .review-crop img[hidden], .review-crop[hidden] { display: none; }
+    .review-crop ul { padding-left: 1.2rem; overflow-wrap: anywhere; }
+    @media (max-width: 1200px) {
+        .review-question-grid.has-crop { display: block; }
+        .review-crop { position: static; margin-bottom: 16px; }
+    }
+    @media (max-width: 767.98px) {
+        .main-container-verify { height: auto; min-height: calc(100vh - 80px); overflow: visible; }
+        .content-area { display: block; overflow: visible; }
+        .pdf-panel { height: 32vh; border-right: 0; border-bottom: 1px solid #dee2e6; }
+        .editor-panel { overflow: visible; }
+    }
 </style>
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -186,6 +216,9 @@
         <div>
             <span id="save-status" class="badge bg-secondary status-badge">Prêt</span>
             <button id="save-btn" class="btn btn-primary btn-sm ms-2">Tout enregistrer</button>
+            <button id="student-pdf-btn" type="button" class="btn btn-outline-secondary btn-sm ms-2" disabled>
+                <i class="bi bi-file-earmark-pdf"></i> Générer &amp; Voir le PDF Élève
+            </button>
             <button id="finish-btn" class="btn btn-dark btn-sm ms-2">
                 Terminer et voir le bilan <i class="bi bi-arrow-right"></i>
             </button>
@@ -214,6 +247,8 @@
                     disabled>▶</button>
             </div>
 
+            <div id="review-question-grid" class="review-question-grid">
+                <div class="review-form">
             <!-- Correction Data from DB - 5 Clear Sections -->
 
             <!-- 1. Student Answer -->
@@ -268,6 +303,17 @@
                     </div>
                 </div>
             </div>
+                </div>
+                <aside id="crop-preview" class="review-crop" aria-label="Extrait manuscrit annoté" hidden>
+                    <div class="fw-semibold small mb-2">Extrait manuscrit annoté</div>
+                    <img id="crop-image" alt="" hidden>
+                    <div id="crop-image-status" class="small text-muted"></div>
+                    <div id="crop-zones-wrapper" hidden>
+                        <div class="fw-semibold small mt-3">Zones d'erreur détectées</div>
+                        <ul id="crop-zones" class="small mb-0 mt-1"></ul>
+                    </div>
+                </aside>
+            </div>
 
         </div>
     </div>
@@ -286,6 +332,7 @@
     const pdfViewer = document.getElementById('pdf-viewer');
     const saveStatus = document.getElementById('save-status');
     const saveBtn = document.getElementById('save-btn');
+    const studentPdfBtn = document.getElementById('student-pdf-btn');
     const finishBtn = document.getElementById('finish-btn');
     const prevQuestionBtn = document.getElementById('prev-question-btn');
     const nextQuestionBtn = document.getElementById('next-question-btn');
@@ -304,6 +351,12 @@
     const studentName = document.getElementById('student-name');
     const studentScore = document.getElementById('student-score');
     const studentProgressBar = document.getElementById('student-progress-bar');
+    const cropPreview = document.getElementById('crop-preview');
+    const cropImage = document.getElementById('crop-image');
+    const cropImageStatus = document.getElementById('crop-image-status');
+    const cropZonesWrapper = document.getElementById('crop-zones-wrapper');
+    const cropZones = document.getElementById('crop-zones');
+    const reviewQuestionGrid = document.getElementById('review-question-grid');
 
     // Configuration: utiliser la DB ou le CSV
     const USE_DB = true; // Changer à false pour revenir au CSV
@@ -329,6 +382,7 @@
         });
 
         saveBtn.addEventListener('click', saveAll);
+        studentPdfBtn.addEventListener('click', openStudentPdf);
         finishBtn.addEventListener('click', finishValidation);
         prevQuestionBtn.addEventListener('click', () => navigateQuestion(-1));
         nextQuestionBtn.addEventListener('click', () => navigateQuestion(1));
@@ -398,6 +452,7 @@
             return;
         }
         currentCopy = copyId;
+        studentPdfBtn.disabled = false;
         currentCopyInfo = [...copySelect.options].find(option => option.value === copyId);
 
         // 1. PDF - formater copyId avec zéro devant (Copie_01, Copie_02, etc.)
@@ -421,6 +476,8 @@
 
 
     function resetUI() {
+        studentPdfBtn.disabled = true;
+        showCropPreview(null);
         currentCopyInfo = null;
         pdfViewer.src = "";
         questionSelect.innerHTML = '<option value="">Sélectionner une copie d\'abord</option>';
@@ -647,6 +704,7 @@
         // --- Correction Data ---
         let row = currentCorrectionData.find(r => r.question === qId);
         const meta = currentBareme.find(r => r.question === qId);
+        showCropPreview(row, qId);
         if (!row) row = {};
 
         const possiblePoints = meta ? meta['points'] : '';
@@ -691,6 +749,50 @@
         } else {
             qDetails.innerHTML = "";
         }
+    }
+
+    function showCropPreview(row, questionId = '') {
+        const boxes = Array.isArray(row?.bounding_boxes) ? row.bounding_boxes : [];
+        const hasImage = Boolean(row?.id && row.crop_image_path);
+        cropPreview.hidden = !hasImage && boxes.length === 0;
+        reviewQuestionGrid.classList.toggle('has-crop', !cropPreview.hidden);
+        cropZones.replaceChildren();
+        boxes.forEach((box, index) => {
+            if (!box || typeof box !== 'object') return;
+            const item = document.createElement('li');
+            item.textContent = `Zone ${index + 1} : ${typeof box.label === 'string' ? box.label : 'Remarque'}`;
+            cropZones.appendChild(item);
+        });
+        cropZonesWrapper.hidden = cropZones.childElementCount === 0;
+        cropImage.hidden = !hasImage;
+        cropImageStatus.textContent = hasImage ? '' : (boxes.length ? 'Extrait indisponible.' : '');
+        cropImage.removeAttribute('src');
+        if (hasImage) {
+            const url = `/api/corrections/${row.id}/crop`;
+            cropImage.alt = `Extrait annoté pour ${questionId}`;
+            cropImage.onerror = () => {
+                if (cropImage.src.endsWith(url)) {
+                    cropImage.hidden = true;
+                    cropImageStatus.textContent = 'Extrait indisponible.';
+                }
+            };
+            cropImage.src = url;
+        }
+    }
+
+    async function openStudentPdf() {
+        if (!currentCopy) return;
+        const preview = window.open('about:blank', '_blank');
+        if (!preview) {
+            setSaveStatus('Autorisez les fenêtres pour ouvrir le PDF', 'warning');
+            return;
+        }
+        preview.opener = null;
+        if (saveStatus.innerText.startsWith('Modifié') && !await saveAll()) {
+            preview.close();
+            return;
+        }
+        preview.location.href = `/api/copies/${currentCopy}/pdf?refresh=1`;
     }
 
     // saveAll - Save corrections to DB

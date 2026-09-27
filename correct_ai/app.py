@@ -1448,7 +1448,7 @@ def api_student_pdf(copie_id):
             return jsonify({"error": f"Copie {copie_id} introuvable"}), 404
 
         pdf_path = Path(config.get_path("exports_pdf", f"Copie_{copie_id:02d}.pdf")).resolve()
-        if not pdf_path.is_file():
+        if request.args.get("refresh") == "1" or not pdf_path.is_file():
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
             generate_student_pdf(copie_id, str(db_path), str(pdf_path))
         return send_file(pdf_path, mimetype="application/pdf", as_attachment=False)
@@ -1713,6 +1713,7 @@ def get_db_corrections(copie_id):
         corrections = db.execute(
             """
             SELECT
+                c.id,
                 c.bareme_id,
                 b.question,
                 b.texte_question,
@@ -1726,7 +1727,9 @@ def get_db_corrections(copie_id):
                 c.nb_bonnes_llm,
                 c.nb_mauvaises_llm,
                 c.bonus_redaction_llm,
-                c.validee_par_prof
+                c.validee_par_prof,
+                c.crop_image_path,
+                c.bounding_boxes
             FROM corrections c
             JOIN bareme b ON c.bareme_id = b.id
             WHERE c.copie_id = ?
@@ -1737,8 +1740,15 @@ def get_db_corrections(copie_id):
 
         result = []
         for row in corrections:
+            try:
+                bounding_boxes = json.loads(row["bounding_boxes"] or "[]")
+                if not isinstance(bounding_boxes, list):
+                    bounding_boxes = []
+            except (json.JSONDecodeError, TypeError):
+                bounding_boxes = []
             result.append(
                 {
+                    "id": row["id"],
                     "question": row["question"],
                     "texte_question": row["texte_question"],
                     "qcm (oui/non)": "oui" if row["type_qcm"] else "non",
@@ -1752,6 +1762,8 @@ def get_db_corrections(copie_id):
                     "nbre de mauvaises reponses si QCM": row["nb_mauvaises_llm"],
                     "Redaction si QCM": row["bonus_redaction_llm"],
                     "validee_par_prof": row["validee_par_prof"],
+                    "crop_image_path": row["crop_image_path"],
+                    "bounding_boxes": bounding_boxes,
                 }
             )
         return jsonify(result)
