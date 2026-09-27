@@ -217,7 +217,7 @@ generate_student_pdf(
         <ul>
             <li><code>GET /api/db/bareme</code> : récupérer le barème depuis SQLite.</li>
             <li><code>GET /api/db/copies</code> : lister les copies et les métadonnées des étudiants.</li>
-            <li><code>GET /api/db/corrections/&lt;copie_id&gt;</code> : récupérer les corrections d'une copie.</li>
+            <li><code>GET /api/db/corrections/&lt;copie_id&gt;</code> : récupérer les corrections d'une copie, avec l'identifiant de chaque correction, son éventuel <code>crop_image_path</code> et ses <code>bounding_boxes</code> décodées en liste pour l'aperçu annoté.</li>
             <li><code>POST /api/db/corrections/&lt;copie_id&gt;</code> : enregistrer les corrections professeur.</li>
             <li><code>GET /api/bilan/stats</code> : obtenir les statistiques globales.</li>
             <li><code>POST /api/bilan/export-graphs</code> : sauvegarder les graphiques PNG exportés dans <code>graphiques_notes/</code>.</li>

@@ -138,7 +138,7 @@ GET /api/db/bareme
 # Lister toutes les copies depuis la DB
 GET /api/db/copies
 
-# Récupérer toutes les corrections d'une copie (avec raisonnement_llm)
+# Récupérer les corrections d'une copie (avec raisonnement_llm et métadonnées des extraits annotés)
 GET /api/db/corrections/<copie_id>
 
 # Statistiques de correction
@@ -158,6 +158,7 @@ GET /api/corrections/1/crop
 ```
 
 La génération en lot renvoie un JSON avec `generated`, `total` et `errors`. Les ressources absentes donnent une erreur JSON 404 ; une erreur de génération, y compris partielle dans le lot, renvoie un JSON 500 contenant les copies concernées. Les livrets déjà générés sont réutilisés lors d'un GET individuel ; le POST de génération en lot les actualise.
+Chaque correction renvoyée par `GET /api/db/corrections/<copie_id>` inclut son `id`, son `crop_image_path` éventuel et `bounding_boxes` sous forme de liste JSON, afin d'afficher l'extrait et ses zones annotées pendant la vérification.
 
 ## Commandes CLI
 
