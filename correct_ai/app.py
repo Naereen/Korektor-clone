@@ -21,6 +21,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -189,6 +190,13 @@ set_default_provider(config.inference_provider)
 # Flask is created once at import time so tests can use the same route table
 # through ``app.test_client()`` without starting a development server.
 app = Flask(__name__, template_folder="templates", static_folder="static")
+if not app.logger.handlers:
+    app.logger.addHandler(logging.StreamHandler())
+app.logger.propagate = False
+for handler in app.logger.handlers:
+    handler.setFormatter(
+        logging.Formatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s", "%Y-%m-%d %H:%M:%S")
+    )
 with closing(get_db(config.project_dir)) as startup_db:
     database.init_db(startup_db)
 
@@ -994,6 +1002,15 @@ class BatchJob:
         self._batch_elapsed_seconds = None
         self.completed_copies = 0
         self.total_copies = 0
+        self._log_line_start = True
+
+    def append_log(self, text):
+        """Prefix each console line once, even when writes arrive in fragments."""
+        for fragment in text.splitlines(keepends=True):
+            if self._log_line_start:
+                self.logs.append(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] ")
+            self.logs.append(fragment)
+            self._log_line_start = fragment.endswith(("\n", "\r"))
 
     @property
     def elapsed_seconds(self):
@@ -1043,6 +1060,7 @@ class BatchJob:
         self.running = True
         self.stop_requested = False
         self.logs = []
+        self._log_line_start = True
         self.progress = 0
         self.current_action = f"Démarrage: {job_type} [{start}-{end}]"
         self._inference_started_at = None
@@ -1061,8 +1079,9 @@ class BatchJob:
             import logging
 
             korektor_logger = logging.getLogger("korektor")
-            original_handler = korektor_logger.handlers[0] if korektor_logger.handlers else None
+            original_handlers = korektor_logger.handlers[:]
             failed = False
+            app_log_handler = None
 
             try:
                 # Capture standard output/error to self.logs
@@ -1074,9 +1093,7 @@ class BatchJob:
                     def write(self, text):
                         """Append stdout fragments while preserving line breaks."""
                         if text:
-                            # print() may write the message and its newline separately.
-                            # Keep both writes so the frontend can reconstruct lines.
-                            self.job.logs.append(text)
+                            self.job.append_log(text)
                             # Heuristic progress update from logs
                             if "Processing" in text or "Traitem" in text:
                                 # Don't overwrite calculated progress if it's running
@@ -1107,7 +1124,7 @@ class BatchJob:
                         if hasattr(self.job, "logs"):
                             # The frontend concatenates log entries, so preserve the
                             # line boundary normally added by StreamHandler.emit().
-                            self.job.logs.append(msg if msg.endswith("\n") else msg + "\n")
+                            self.job.append_log(msg if msg.endswith("\n") else msg + "\n")
                             # Mettre à jour l'action en cours
                             if msg.strip() and not msg.startswith("[") and len(msg) < 50:
                                 self.job.current_action = msg.strip()
@@ -1115,6 +1132,8 @@ class BatchJob:
                 # Remplacer le handler par le nôtre
                 korektor_logger.handlers = []
                 korektor_logger.addHandler(LogCaptureHandler(self))
+                app_log_handler = LogCaptureHandler(self)
+                app.logger.addHandler(app_log_handler)
 
                 print(f"Starting {job_type}...")
 
@@ -1276,23 +1295,24 @@ class BatchJob:
 
                 if self.stop_requested:
                     self.current_action = "Arrêté"
-                    self.logs.append("=== Traitement interrompu ===\n")
+                    self.append_log("=== Traitement interrompu ===\n")
                 elif failed:
                     self.current_action = "Erreur"
-                    self.logs.append("=== Échec du traitement ===\n")
+                    self.append_log("=== Échec du traitement ===\n")
                 else:
                     self.progress = 100
                     self.current_action = "Terminé"
-                    self.logs.append("=== Fin du traitement ===\n")
+                    self.append_log("=== Fin du traitement ===\n")
 
             except Exception as e:
-                self.logs.append(f"Erreur fatale wrapper: {e}\n")
+                self.append_log(f"Erreur fatale wrapper: {e}\n")
                 self.current_action = "Erreur"
             finally:
                 # Restaurer le handler original du logger
                 sys.stdout = original_stdout
-                if korektor_logger and original_handler:
-                    korektor_logger.handlers = [original_handler]
+                if app_log_handler is not None:
+                    app.logger.removeHandler(app_log_handler)
+                korektor_logger.handlers = original_handlers
                 if self._batch_started_at is not None:
                     self._batch_elapsed_seconds = max(
                         0, int(time.monotonic() - self._batch_started_at)
@@ -1312,7 +1332,7 @@ class BatchJob:
         """Request cooperative cancellation of the active background job."""
         if self.running:
             self.stop_requested = True
-            self.logs.append("=== Demande d'arrêt reçue... ===\n")
+            self.append_log("=== Demande d'arrêt reçue... ===\n")
             return True
         return False
 

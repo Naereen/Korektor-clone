@@ -8,6 +8,9 @@ without starting a server or contacting an LLM provider.
 import csv
 import io
 import json
+import logging
+import re
+from types import SimpleNamespace
 
 import pymupdf
 import pytest
@@ -243,6 +246,53 @@ def test_batch_status_and_stop_without_job(project_client):
     client, _ = project_client
     assert client.get("/api/batch/status").status_code == 200
     assert client.post("/api/batch/stop").status_code == 400
+
+
+def test_batch_console_timestamps_prints_and_app_logs(monkeypatch):
+    """The web console should timestamp complete lines, including Flask logs."""
+    job = app_module.BatchJob()
+    original_handlers = app_module.app.logger.handlers[:]
+
+    def extract_copy(*args, **kwargs):
+        print("premier message")
+        print("deuxième message\nsuite")
+        app_module.app.logger.warning("alerte")
+
+    monkeypatch.setattr(app_module.batch_extraction, "extract_copy", extract_copy)
+    monkeypatch.setattr(
+        app_module.threading, "Thread", lambda target: SimpleNamespace(start=target)
+    )
+    assert job.start_batch_function("extraction", 1, 1, ".")
+
+    lines = "".join(job.logs).splitlines()
+    assert lines
+    assert all(re.match(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] .+", line) for line in lines)
+    assert any(line.endswith("premier message") for line in lines)
+    assert any(line.endswith("deuxième message") for line in lines)
+    assert any(line.endswith("suite") for line in lines)
+    assert any(line.endswith("alerte") for line in lines)
+    assert lines[-1].endswith("=== Fin du traitement ===")
+    assert app_module.app.logger.handlers == original_handlers
+
+
+def test_batch_stop_message_is_timestamped():
+    """Stop requests should have the same console prefix as worker messages."""
+    job = app_module.BatchJob()
+    job.running = True
+    assert job.stop()
+    assert re.match(
+        r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] === Demande d'arrêt reçue... ===\n$",
+        "".join(job.logs),
+    )
+
+
+def test_app_logger_includes_datetime():
+    """The server's Flask logger should include the timestamp before its text."""
+    record = logging.LogRecord("test", logging.WARNING, __file__, 1, "alerte", (), None)
+    formatter = app_module.app.logger.handlers[0].formatter
+    assert formatter is not None
+    formatted = formatter.format(record)
+    assert re.match(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] WARNING .*: alerte$", formatted)
 
 
 def test_batch_status_tracks_current_ocr_inference(project_client, monkeypatch):
