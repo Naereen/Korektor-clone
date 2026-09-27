@@ -122,7 +122,6 @@ def generate_grade_chart(
     ax.legend(fontsize=8, loc="upper right")
     fig.tight_layout()
     fig.savefig(output_path)
-    fig.savefig(os.path.join("/", "tmp", f"{os.path.basename(output_path)}"))
     plt.close(fig)
     return True
 
@@ -187,7 +186,6 @@ def generate_question_profile_chart(
     ax.legend(fontsize=7, loc="upper left", ncol=2)
     fig.tight_layout()
     fig.savefig(output_path)
-    fig.savefig(os.path.join("/", "tmp", f"{os.path.basename(output_path)}"))
     plt.close(fig)
     return True
 

@@ -16,6 +16,10 @@
 )
 #let data-path = sys.inputs.at("report-data-path", default: none)
 #let data = if data-path == none { default-data } else { json(data-path) }
+#let get-field(object, key, fallback) = {
+  let value = object.at(key, default: fallback)
+  if value == none { fallback } else { value }
+}
 
 #set page(
   paper: "a4",
@@ -24,12 +28,12 @@
     #grid(
       columns: (1fr, auto),
       column-gutter: 12pt,
-      text(fill: rgb("#54766d"), size: 9pt)[Bilan individuel de correction : #data.nom #data.prenom],
+      text(fill: rgb("#54766d"), size: 9pt)[Bilan individuel de correction : #get-field(data, "nom", default-data.nom) #get-field(data, "prenom", default-data.prenom)],
       text(fill: rgb("#54766d"), size: 9pt)[#datetime.today().display("[day]/[month]/[year]")],
     )
   ],
   footer: context [
-    #align(right)[
+    #align(center)[
       #text(fill: rgb("#6b7280"), size: 9pt)[#counter(page).display("1 / 1", both: true)]
     ]
   ],
@@ -81,49 +85,49 @@
 
 #text(size: 21pt, weight: "bold", fill: ink)[Compte rendu de correction]
 
-#text(size: 17pt, fill: rgb("#61716d"))[#text(data.titre) - Copie #text(data.copie_id)]
+#text(size: 17pt, fill: rgb("#61716d"))[#text(get-field(data, "titre", default-data.titre)) - Copie #text(get-field(data, "copie_id", default-data.copie_id))]
 #v(14pt)
 
 #block(width: 100%, fill: rgb("#f0f6f3"), inset: 13pt, radius: 3pt)[
   #grid(
     columns: (1fr, 1fr), gutter: 12pt,
-    [*Nom :* #text(data.nom)],
-    [*Prénom :* #text(data.prenom)],
-    [*Note globale :* #text(data.note_globale)],
-    [*Moyenne de classe :* #text(data.moyenne_promotion)],
-    [*Note sur 20 :* #text(data.note_sur_20)],
-    [*Moyenne sur 20 :* #text(data.moyenne_sur_20)],
+    [*Nom :* #text(get-field(data, "nom", default-data.nom))],
+    [*Prénom :* #text(get-field(data, "prenom", default-data.prenom))],
+    [*Note globale :* #text(get-field(data, "note_globale", default-data.note_globale))],
+    [*Moyenne de classe :* #text(get-field(data, "moyenne_promotion", default-data.moyenne_promotion))],
+    [*Note sur 20 :* #text(get-field(data, "note_sur_20", default-data.note_sur_20))],
+    [*Moyenne sur 20 :* #text(get-field(data, "moyenne_sur_20", default-data.moyenne_sur_20))],
   )
 ]
 #v(15pt)
 
-#for question in data.questions {
+#for question in get-field(data, "questions", ()) {
   [
-    #for title in question.section_titles {
+    #for title in get-field(question, "section_titles", ()) {
       text(size: 15pt, weight: "bold", fill: ink)[#rich-text-noreponse(title)]
       v(8pt)
     }
     #block(breakable: false)[
-      #text(size: 13pt, weight: "bold", fill: ink)[#text(question.titre)]
+      #text(size: 13pt, weight: "bold", fill: ink)[#text(get-field(question, "titre", "Question"))]
       #h(1fr)
-      #text(size: 15pt, weight: "bold", fill: ink)[#text(question.note)]
+      #text(size: 15pt, weight: "bold", fill: ink)[#text(get-field(question, "note", "Non notée"))]
     ]
     #v(6pt)
-    #if question.enonce != "" {
-      panel("Énoncé", rich-text-noreponse(question.enonce), rgb("#eef3f6"), rgb("#356b8b"))
+    #if get-field(question, "enonce", "") != "" {
+      panel("Énoncé", rich-text-noreponse(get-field(question, "enonce", "")), rgb("#eef3f6"), rgb("#356b8b"))
     }
     #v(7pt)
-    #if question.corrige != "" {
-      panel("Corrigé", rich-text-noreponse(question.corrige), rgb("#edf8f1"), rgb("#207a50"))
+    #if get-field(question, "corrige", "") != "" {
+      panel("Corrigé", rich-text-noreponse(get-field(question, "corrige", "")), rgb("#edf8f1"), rgb("#207a50"))
     }
     #v(7pt)
-    #if question.appreciation != "" {
-      panel("Appréciation du correcteur", rich-text-comment(question.appreciation), rgb("#fdf0ef"), rgb("#ba3835"))
+    #if get-field(question, "appreciation", "") != "" {
+      panel("Appréciation du correcteur", rich-text-comment(get-field(question, "appreciation", "")), rgb("#fdf0ef"), rgb("#ba3835"))
     }
-    #if question.crop_image_path != "" {
+    #if get-field(question, "crop_image_path", "") != "" {
       v(8pt)
       align(center)[
-        #image(question.crop_image_path, width: 85%)
+        #image(get-field(question, "crop_image_path", ""), width: 85%)
       ]
     }
     #v(13pt)

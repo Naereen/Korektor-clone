@@ -212,7 +212,7 @@
     }
 
     async function saveReport() {
-        if (!currentCopyId) return;
+        if (!currentCopyId) return false;
         setStatus('Enregistrement...', 'info');
         try {
             const res = await fetch(`/api/rapports/${currentCopyId}`, {
@@ -223,9 +223,11 @@
             if (!res.ok) throw new Error(await res.text());
             setStatus('Enregistré !', 'success');
             setTimeout(() => setStatus('Prêt', 'secondary'), 2000);
+            return true;
         } catch (e) {
             console.error(e);
             setStatus("Erreur lors de l'enregistrement", 'danger');
+            return false;
         }
     }
 
@@ -233,7 +235,7 @@
         if (!currentCopyId) return;
         setStatus('Enregistrement puis compilation PDF...', 'info');
         try {
-            await saveReport();
+            if (!await saveReport()) return;
             const res = await fetch(`/api/rapports/${currentCopyId}/pdf`, { method: 'POST' });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));

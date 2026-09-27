@@ -2,6 +2,7 @@
 
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pymupdf
@@ -136,6 +137,29 @@ def test_student_report_template_has_fallback_without_data():
         text = "\n".join(page.get_text() for page in document)
     assert "Aucune donnée de rapport fournie" in text
     assert "Non renseigné" in text
+
+
+def test_student_report_template_accepts_partial_json(tmp_path):
+    """Missing and null optional fields use their Typst fallbacks."""
+    template = Path("correct_ai/templates/student_report.typ").resolve()
+    shutil.copyfile(template, tmp_path / template.name)
+    shutil.copytree(template.parent / "vendor", tmp_path / "vendor")
+    (tmp_path / "data.json").write_text(
+        json.dumps({"questions": [{"titre": "Q1", "enonce": None}]}),
+        encoding="utf-8",
+    )
+
+    compiled = typst.compile(
+        str(tmp_path / template.name),
+        root=str(tmp_path),
+        sys_inputs={"report-data-path": "data.json"},
+    )
+
+    with pymupdf.open(stream=compiled, filetype="pdf") as document:
+        text = "\n".join(page.get_text() for page in document)
+    assert "Non renseigné" in text
+    assert "Q1" in text
+    assert "Non notée" in text
 
 
 def test_generate_student_pdf_rejects_unknown_copy(tmp_path):

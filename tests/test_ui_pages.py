@@ -230,6 +230,14 @@ def test_split_page_uses_persisted_header_ratio(client, monkeypatch):
         assert "scrollPdfToQuestion(row);" in content
 
 
+def test_student_report_pdf_stops_when_saving_fails(client):
+    """PDF generation must not proceed with an older saved Markdown report."""
+    content = client.get("/rapports").get_data(as_text=True)
+
+    assert "async function saveReport()" in content
+    assert "if (!await saveReport()) return;" in content
+
+
 class TestDocumentationPage:
     """Verify the in-application documentation route and navigation entry."""
 
