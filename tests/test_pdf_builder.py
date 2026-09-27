@@ -11,7 +11,7 @@ import typst
 from PIL import Image
 
 from correct_ai.database import get_db, init_db
-from correct_ai.pdf_builder import generate_student_pdf
+from correct_ai.pdf_builder import TEMPLATE_PATH, _image_path, generate_student_pdf
 
 
 def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
@@ -139,15 +139,22 @@ def test_student_report_template_has_fallback_without_data():
     assert "Non renseigné" in text
 
 
-def test_student_report_template_accepts_partial_json(tmp_path):
-    """Missing and null optional fields use their Typst fallbacks."""
+@pytest.mark.parametrize(
+    ("payload", "expected_question", "expected_note"),
+    [
+        ({"questions": [{"titre": "Q1", "enonce": None}]}, "Q1", "Non notée"),
+        ({"questions": None}, None, None),
+        ({}, None, None),
+    ],
+)
+def test_student_report_template_accepts_partial_json(
+    tmp_path, payload, expected_question, expected_note
+):
+    """Missing and null report fields use their Typst fallbacks."""
     template = Path("correct_ai/templates/student_report.typ").resolve()
     shutil.copyfile(template, tmp_path / template.name)
     shutil.copytree(template.parent / "vendor", tmp_path / "vendor")
-    (tmp_path / "data.json").write_text(
-        json.dumps({"questions": [{"titre": "Q1", "enonce": None}]}),
-        encoding="utf-8",
-    )
+    (tmp_path / "data.json").write_text(json.dumps(payload), encoding="utf-8")
 
     compiled = typst.compile(
         str(tmp_path / template.name),
@@ -158,8 +165,10 @@ def test_student_report_template_accepts_partial_json(tmp_path):
     with pymupdf.open(stream=compiled, filetype="pdf") as document:
         text = "\n".join(page.get_text() for page in document)
     assert "Non renseigné" in text
-    assert "Q1" in text
-    assert "Non notée" in text
+    if expected_question:
+        assert expected_question in text
+    if expected_note:
+        assert expected_note in text
 
 
 def test_generate_student_pdf_rejects_unknown_copy(tmp_path):
@@ -170,3 +179,51 @@ def test_generate_student_pdf_rejects_unknown_copy(tmp_path):
     with pytest.raises(FileNotFoundError, match="Copie 42"):
         generate_student_pdf(42, str(tmp_path / "korektor.db"), "rapports_pdf/Copie_42.pdf")
     assert not (tmp_path / "rapports_pdf" / "Copie_42.pdf").exists()
+
+
+def test_generate_student_pdf_cleans_workdir_and_preserves_output_on_typst_error(
+    tmp_path, monkeypatch
+):
+    """A failed Typst compile removes its workdir and leaves the previous PDF intact."""
+    db = get_db(str(tmp_path))
+    init_db(db)
+    db.execute("INSERT INTO copies (id, nom) VALUES (1, 'Doe')")
+    db.commit()
+    db.close()
+
+    output = tmp_path / "rapports_pdf" / "Copie_01.pdf"
+    output.parent.mkdir()
+    output.write_bytes(b"previous-pdf")
+    workdirs_before = set(TEMPLATE_PATH.parent.glob(".student-report-*"))
+
+    def fail_compile(*args, **kwargs):
+        raise typst.TypstError("synthetic compilation failure")
+
+    monkeypatch.setattr("correct_ai.pdf_builder.typst.compile", fail_compile)
+
+    with pytest.raises(RuntimeError, match="Compilation Typst impossible"):
+        generate_student_pdf(1, str(tmp_path / "korektor.db"), str(output))
+
+    assert output.read_bytes() == b"previous-pdf"
+    assert set(TEMPLATE_PATH.parent.glob(".student-report-*")) == workdirs_before
+
+
+def test_image_path_rejects_paths_outside_project(tmp_path):
+    """Only crops located inside the project can enter the Typst work directory."""
+    project = tmp_path / "project"
+    workdir = tmp_path / "work"
+    project.mkdir()
+    workdir.mkdir()
+    inside = project / "cropped_questions" / "answer.png"
+    inside.parent.mkdir()
+    inside.write_bytes(b"crop")
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"outside")
+    (project / "linked.png").symlink_to(outside)
+
+    assert _image_path(project, "cropped_questions/answer.png", workdir, 1) == "question-1.png"
+    assert (workdir / "question-1.png").read_bytes() == b"crop"
+    assert _image_path(project, "../outside.png", workdir, 2) == ""
+    assert not (workdir / "question-2.png").exists()
+    assert _image_path(project, "linked.png", workdir, 3) == ""
+    assert not (workdir / "question-3.png").exists()

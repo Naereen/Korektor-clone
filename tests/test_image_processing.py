@@ -1,5 +1,6 @@
 """Tests for Qwen coordinate conversion and resilient page crops."""
 
+import pytest
 from PIL import Image
 
 from correct_ai.image_processing import (
@@ -145,3 +146,46 @@ def test_question_box_validation_uses_qwen_dimensions():
     assert not is_valid_question_box([100, 250, 120, 450])
     assert not is_valid_question_box([100, 250, 900, 270])
     assert not is_valid_question_box([100, 250, 1001, 450])
+
+
+@pytest.mark.parametrize(
+    ("bbox", "expected"),
+    [
+        ([0, 0, 21, 21], True),
+        ([0, 0, 20, 21], False),
+        ([0, 0, 21, 20], False),
+        ([False, 0, 21, 21], False),
+        ((0, 0, 21, 21), False),
+    ],
+)
+def test_question_box_validation_enforces_strict_integer_boundaries(bbox, expected):
+    """Normalized boxes require four actual integers and dimensions above 20."""
+    assert is_valid_question_box(bbox) is expected
+
+
+@pytest.mark.parametrize("dimensions", [(0, 100), (100, 0), (-1, 100)])
+def test_bbox_conversion_rejects_nonpositive_image_dimensions(dimensions):
+    with pytest.raises(ValueError, match="dimensions must be positive"):
+        qwen_bbox_to_pixels([100, 100, 500, 500], *dimensions)
+
+
+def test_multi_page_locations_without_a_usable_crop_return_empty(tmp_path):
+    """Missing pages, bool page numbers, and invalid boxes are safely skipped."""
+    page = tmp_path / "page.png"
+    Image.new("RGB", (100, 100), "white").save(page)
+    destination = tmp_path / "composite.png"
+
+    result = crop_and_annotate_question_locations(
+        {1: str(page)},
+        [
+            {"page": 2, "bbox_2d": [100, 100, 500, 500]},
+            {"page": True, "bbox_2d": [100, 100, 500, 500]},
+            {"page": 1, "bbox_2d": [100, 100, 120, 500]},
+        ],
+        str(destination),
+        1,
+        3,
+    )
+
+    assert result == ""
+    assert not destination.exists()

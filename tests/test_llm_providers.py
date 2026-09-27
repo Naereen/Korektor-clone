@@ -221,6 +221,28 @@ def test_ask_llm_with_image_sends_focused_png(monkeypatch, tmp_path):
     assert user_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+def test_image_request_resets_inference_callback_after_transport_error(monkeypatch):
+    """A failed HTTP request must still clear the inference-in-progress state."""
+    events = []
+
+    def fail_post(*args, **kwargs):
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr("correct_ai.llm_providers.requests.post", fail_post)
+
+    with pytest.raises(OSError, match="network unavailable"):
+        ask_llm_with_image_data(
+            ProviderConfig("vision", "http://test", "model"),
+            b"image-data",
+            "image/png",
+            "prompt",
+            "system",
+            inference_callback=events.append,
+        )
+
+    assert events == [True, False]
+
+
 def test_gemini_uses_official_sdk_and_redacts_sdk_errors(monkeypatch):
     """Gemini requests use google-genai and never expose SDK exception text."""
     from correct_ai.llm_providers import _ask_gemini

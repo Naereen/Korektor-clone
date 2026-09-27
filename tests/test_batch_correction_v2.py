@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "correct_ai"))
 from correct_ai.batch_correction_v2 import (
     _ocr_text_for_page,
     _prepare_correction_data,
+    _valid_bounding_boxes,
     correct_copy_incremental,
     correct_copy_incremental_mock,
     parse_llm_response,
@@ -191,6 +192,30 @@ Texte final."""
 
         # Devrait retourner un dict (peut-être vide ou partiellement parsé)
         assert isinstance(result, dict), "Résultat devrait être un dict"
+
+
+@pytest.mark.parametrize(
+    ("value", "page", "expected"),
+    [
+        ([100, 100, 500, 500], 2, [{"bbox_2d": [100, 100, 500, 500], "page": 2}]),
+        (
+            [{"bbox": [100, 100, 500, 500], "page": 1, "label": "réponse"}],
+            None,
+            [{"bbox_2d": [100, 100, 500, 500], "label": "réponse", "page": 1}],
+        ),
+        (
+            [
+                {"bbox_2d": [100, 100, 500, 500], "page": True},
+                {"bbox_2d": [100, 100, 500, 500], "page": 0},
+                {"bbox_2d": [0, 0, 20, 500], "page": 1},
+            ],
+            None,
+            [],
+        ),
+    ],
+)
+def test_valid_bounding_boxes_normalizes_and_filters_model_locations(value, page, expected):
+    assert _valid_bounding_boxes(value, page) == expected
 
 
 def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
