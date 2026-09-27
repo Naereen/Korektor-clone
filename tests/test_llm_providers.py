@@ -128,14 +128,19 @@ def test_ask_llm_with_pdf_sends_images(monkeypatch, tmp_path):
     doc.save(pdf_path)
     doc.close()
     captured = {}
+    events = []
 
     def post(url, **kwargs):
+        events.append("post")
         captured.update(kwargs)
         return FakeResponse({"choices": [{"message": {"content": "ocr"}}]})
 
     monkeypatch.setattr("correct_ai.llm_providers.requests.post", post)
     provider = ProviderConfig("vision", "http://test", "model")
-    assert ask_llm_with_pdf(provider, str(pdf_path), "read") == "ocr"
+    assert ask_llm_with_pdf(
+        provider, str(pdf_path), "read", inference_callback=events.append
+    ) == "ocr"
+    assert events == [True, "post", False]
     content = captured["json"]["messages"][1]["content"]
     assert content[0]["type"] == "text"
     assert [item["text"] for item in content if item["type"] == "text"][1:] == [
@@ -154,10 +159,14 @@ def test_streaming_llm_accumulates_content(monkeypatch):
     ]
     monkeypatch.setattr(
         "correct_ai.llm_providers.requests.post",
-        lambda *args, **kwargs: FakeResponse(lines),
+        lambda *args, **kwargs: (events.append("post"), FakeResponse(lines))[1],
     )
     progress = []
+    events = []
     provider = ProviderConfig("test", "http://test", "model")
-    assert ask_llm_with_progress(provider, "prompt", progress_callback=progress.append) == "AB"
+    assert ask_llm_with_progress(
+        provider, "prompt", progress_callback=progress.append, inference_callback=events.append
+    ) == "AB"
+    assert events == [True, "post", False]
     assert progress[0].startswith("[Tokens envoyés:")
     assert progress[-1].startswith("[Total:")

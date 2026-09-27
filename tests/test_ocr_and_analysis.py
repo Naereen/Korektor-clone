@@ -65,9 +65,23 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
     monkeypatch.setattr(batch_extraction, "get_provider", lambda name: provider)
     monkeypatch.setattr(batch_extraction.requests, "post", lambda *args, **kwargs: Response())
 
-    assert batch_extraction.extract_copy(1, str(tmp_path), force=True) is True
+    inference_events = []
+    assert batch_extraction.extract_copy(
+        1, str(tmp_path), force=True, inference_callback=inference_events.append
+    ) is True
+    assert inference_events == [True, False]
     assert (copy_dir / "page01.md").read_text(encoding="utf-8") == "new"
     assert "new" in (copy_dir / "extraction.md").read_text(encoding="utf-8")
+
+    def timeout(*args, **kwargs):
+        raise batch_extraction.requests.exceptions.Timeout("LLM timed out")
+
+    monkeypatch.setattr(batch_extraction.requests, "post", timeout)
+    inference_events.clear()
+    batch_extraction.extract_copy(
+        1, str(tmp_path), force=True, inference_callback=inference_events.append
+    )
+    assert inference_events == [True, False]
 
 
 def test_extract_copy_stops_before_processing(tmp_path):

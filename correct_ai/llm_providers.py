@@ -202,6 +202,7 @@ def ask_llm_with_pdf(
     pdf_path: str,
     prompt_text: str,
     system_prompt: str = "Tu es une IA expert en OCR et transcription manuscrite. Tu dois transcrire fidèlement le texte. Pas de bavardage.",
+    inference_callback: Optional[Callable[[bool], None]] = None,
 ) -> str:
     """Envoie un PDF (converti en images) à l'API LLM Vision."""
 
@@ -238,13 +239,19 @@ def ask_llm_with_pdf(
     print(f"Envoi de la requête à {provider.url} (Modèle: {provider.model})...")
 
     try:
-        response = requests.post(
-            provider.url,
-            json=payload,
-            headers=headers,
-            timeout=600,
-            verify=provider.verify_ssl,
-        )
+        if inference_callback:
+            inference_callback(True)
+        try:
+            response = requests.post(
+                provider.url,
+                json=payload,
+                headers=headers,
+                timeout=600,
+                verify=provider.verify_ssl,
+            )
+        finally:
+            if inference_callback:
+                inference_callback(False)
         response.raise_for_status()
 
         result_json = response.json()
@@ -337,6 +344,7 @@ def ask_llm_with_progress(
     system_prompt: str = "Tu es une IA utile.",
     thinking: bool = True,
     progress_callback: Optional[Callable[[str], None]] = None,
+    inference_callback: Optional[Callable[[bool], None]] = None,
 ) -> str:
     """
     Appelle le LLM en mode streaming avec suivi de progression.
@@ -380,6 +388,8 @@ def ask_llm_with_progress(
     last_log_time = time.time()
 
     try:
+        if inference_callback:
+            inference_callback(True)
         with requests.post(
             provider.url,
             json=payload,
@@ -426,6 +436,9 @@ def ask_llm_with_progress(
         if progress_callback:
             progress_callback(f"[Erreur: {str(e)}]")
         raise
+    finally:
+        if inference_callback:
+            inference_callback(False)
 
     if progress_callback:
         progress_callback(f"[Total: {received_tokens} tokens reçus]")

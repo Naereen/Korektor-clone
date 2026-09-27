@@ -218,6 +218,7 @@ def correct_copy_incremental(
     db: sqlite3.Connection,
     project_dir: str,
     test_mode: bool = False,
+    inference_callback=None,
 ) -> bool:
     """
     Corrige une copie en mode incrémental.
@@ -341,6 +342,7 @@ def correct_copy_incremental(
                         pdf_path=pdf_abs_path,
                         prompt_text=prompt,
                         system_prompt=CORRECTION_SYSTEM_PROMPT,
+                        inference_callback=inference_callback,
                     )
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'appel LLM pour la copie {copy_id}: {e}")
@@ -362,6 +364,7 @@ def correct_copy_incremental(
                                 prompt_text=prompt,
                                 system_prompt=CORRECTION_SYSTEM_PROMPT,
                                 progress_callback=progress_callback,
+                                inference_callback=inference_callback,
                             )
                         except Exception as e2:
                             # Dernier recours : retirer les corrections précédentes
@@ -380,6 +383,7 @@ def correct_copy_incremental(
                                     prompt_text=prompt_simple,
                                     system_prompt=CORRECTION_SYSTEM_PROMPT,
                                     progress_callback=progress_callback,
+                                    inference_callback=inference_callback,
                                 )
                             except Exception as e3:
                                 logger.error(f"❌ Erreur même avec prompt réduit: {e3}")

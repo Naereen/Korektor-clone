@@ -186,14 +186,20 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
         "Q4": {"note": 1, "reponse_etudiant": "w", "bounding_boxes": [boxes[-1]]},
     }
     prompts = []
+    inference_events = []
 
     def fake_ask_llm_with_pdf(**kwargs):
         prompts.append((kwargs["prompt_text"], kwargs["system_prompt"]))
+        kwargs["inference_callback"](True)
+        kwargs["inference_callback"](False)
         return json.dumps(response, ensure_ascii=False)[:-1]
 
     monkeypatch.setattr(llm_providers, "ask_llm_with_pdf", fake_ask_llm_with_pdf)
     try:
-        assert correct_copy_incremental(1, "ILAAS_OSS", db, str(tmp_path))
+        assert correct_copy_incremental(
+            1, "ILAAS_OSS", db, str(tmp_path), inference_callback=inference_events.append
+        )
+        assert inference_events == [True, False]
         assert '"bounding_boxes": []' in prompts[0][0]
         assert "bounding_boxes" in prompts[0][1]
         rows = {

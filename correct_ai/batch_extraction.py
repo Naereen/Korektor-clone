@@ -117,6 +117,7 @@ def extract_copy(
     provider_name="ILAAS_OSS",
     use_ref_page1=False,
     force=False,
+    inference_callback=None,
 ):
     """Extract and persist OCR Markdown for one numbered exam copy.
 
@@ -322,13 +323,19 @@ def extract_copy(
                         "Authorization": f"Bearer {provider.api_key()}",
                     }
                     print(f"  Envoi à {provider.url} ({provider.model})...")
-                    resp = requests.post(
-                        provider.url,
-                        json=payload,
-                        headers=headers,
-                        timeout=600,
-                        verify=provider.verify_ssl,
-                    )
+                    if inference_callback:
+                        inference_callback(True)
+                    try:
+                        resp = requests.post(
+                            provider.url,
+                            json=payload,
+                            headers=headers,
+                            timeout=600,
+                            verify=provider.verify_ssl,
+                        )
+                    finally:
+                        if inference_callback:
+                            inference_callback(False)
                     resp.raise_for_status()
                     response = resp.json()["choices"][0]["message"]["content"]
 

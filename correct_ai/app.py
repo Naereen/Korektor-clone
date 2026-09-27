@@ -767,6 +767,23 @@ class BatchJob:
         self.progress = 0
         self.total = 100
         self.current_action = "Inactif"
+        self._inference_started_at = None
+        self._inference_elapsed_seconds = None
+
+    def inference_started(self):
+        self._inference_started_at = time.time()
+        self._inference_elapsed_seconds = 0
+
+    def inference_finished(self):
+        if self._inference_started_at is not None:
+            self._inference_elapsed_seconds = max(0, int(time.time() - self._inference_started_at))
+            self._inference_started_at = None
+
+    @property
+    def inference_elapsed_seconds(self):
+        if self._inference_started_at is not None:
+            return max(0, int(time.time() - self._inference_started_at))
+        return self._inference_elapsed_seconds
 
     def start_batch_function(self, job_type, start, end, project_dir, force=False):
         """Start an extraction or correction job in a background thread."""
@@ -779,6 +796,8 @@ class BatchJob:
         self.logs = []
         self.progress = 0
         self.current_action = f"Démarrage: {job_type} [{start}-{end}]"
+        self._inference_started_at = None
+        self._inference_elapsed_seconds = None
 
         def run_wrapper():
             """Execute the selected batch while capturing output for polling."""
@@ -868,6 +887,9 @@ class BatchJob:
                                 project_dir=project_dir,
                                 stop_callback=check_stop,
                                 force=force,
+                                inference_callback=lambda active: (
+                                    self.inference_started() if active else self.inference_finished()
+                                ),
                             )
 
                             count += 1
@@ -984,6 +1006,9 @@ class BatchJob:
                                     db=db,
                                     project_dir=project_dir,
                                     test_mode=False,
+                                    inference_callback=lambda active: (
+                                        self.inference_started() if active else self.inference_finished()
+                                    ),
                                 )
 
                                 count += 1
@@ -1102,6 +1127,7 @@ def batch_status():
             "running": current_job.running,
             "progress": current_job.progress,
             "action": current_job.current_action,
+            "inference_elapsed_seconds": current_job.inference_elapsed_seconds,
             "logs": current_job.logs[-50:],  # Send last 50 lines
         }
     )

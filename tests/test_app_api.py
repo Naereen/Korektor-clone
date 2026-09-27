@@ -74,6 +74,25 @@ def test_batch_status_and_stop_without_job(project_client):
     assert client.post("/api/batch/stop").status_code == 400
 
 
+def test_batch_status_tracks_current_ocr_inference(project_client, monkeypatch):
+    """OCR inference time starts at the request and freezes when it returns."""
+    client, _ = project_client
+    job = app_module.BatchJob()
+    monkeypatch.setattr(app_module, "current_job", job)
+    now = [1000.0]
+    monkeypatch.setattr(app_module.time, "time", lambda: now[0])
+
+    assert client.get("/api/batch/status").get_json()["inference_elapsed_seconds"] is None
+    job.inference_started()
+    now[0] += 65
+    assert client.get("/api/batch/status").get_json()["inference_elapsed_seconds"] == 65
+    job.inference_finished()
+    now[0] += 10
+    assert client.get("/api/batch/status").get_json()["inference_elapsed_seconds"] == 65
+    job.inference_started()
+    assert client.get("/api/batch/status").get_json()["inference_elapsed_seconds"] == 0
+
+
 def test_legacy_extraction_endpoint(project_client):
     """The legacy extraction endpoint should round-trip Markdown content."""
     client, _ = project_client

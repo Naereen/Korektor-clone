@@ -73,6 +73,24 @@ let advanceWhenComplete = false;
 const rangeStart = document.getElementById('range-start');
 const rangeEnd = document.getElementById('range-end');
 
+function formatElapsed(seconds) {
+    const pad = value => String(value).padStart(2, '0');
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    if (hours) return `${pad(hours)} heures ${pad(minutes)} minutes ${pad(remainingSeconds)} secondes`;
+    if (minutes) return `${pad(minutes)} minutes ${pad(remainingSeconds)} secondes`;
+    return `${pad(remainingSeconds)} secondes`;
+}
+
+function updateProgress(data) {
+    const bar = document.getElementById('progress-bar');
+    bar.style.width = data.progress + '%';
+    bar.setAttribute('aria-valuenow', data.progress);
+    document.getElementById('progress-text').innerText = data.progress + '%' +
+        (data.inference_elapsed_seconds == null ? '' : ' : ' + formatElapsed(data.inference_elapsed_seconds));
+}
+
 function updateRangeLimits() {
     const start = Number.parseInt(rangeStart.value, 10);
     const end = Number.parseInt(rangeEnd.value, 10);
@@ -122,8 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.running) {
                 advanceWhenComplete = true;
                 document.getElementById('log-console').innerText = data.logs.join('');
-                document.getElementById('progress-bar').style.width = data.progress + '%';
-                document.getElementById('progress-text').innerText = data.progress + '%';
+                updateProgress(data);
                 document.getElementById('status-badge').innerText = data.action;
                 document.getElementById('status-badge').className = 'badge bg-primary';
                 startPolling();
@@ -177,8 +194,7 @@ async function updateStatus() {
         const data = await res.json();
         document.getElementById('log-console').innerText = data.logs.join('');
         document.getElementById('log-console').scrollTop = document.getElementById('log-console').scrollHeight;
-        document.getElementById('progress-bar').style.width = data.progress + '%';
-        document.getElementById('progress-text').innerText = data.progress + '%';
+        updateProgress(data);
 
         const badge = document.getElementById('status-badge');
         badge.innerText = data.action;
