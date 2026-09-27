@@ -982,6 +982,34 @@ class BatchJob:
         self.current_action = "Inactif"
         self._inference_started_at = None
         self._inference_elapsed_seconds = None
+        self._batch_started_at = None
+        self._batch_elapsed_seconds = None
+        self.completed_copies = 0
+        self.total_copies = 0
+
+    @property
+    def elapsed_seconds(self):
+        if self._batch_started_at is None:
+            return self._batch_elapsed_seconds
+        if self.running:
+            return max(0, int(time.monotonic() - self._batch_started_at))
+        return self._batch_elapsed_seconds
+
+    @property
+    def eta_seconds(self):
+        if self.completed_copies <= 0 or self.total_copies <= self.completed_copies:
+            return 0 if self.total_copies and self.completed_copies >= self.total_copies else None
+        elapsed = self.elapsed_seconds
+        if elapsed is None:
+            return None
+        remaining_copies = self.total_copies - self.completed_copies
+        return max(0, int(elapsed / self.completed_copies * remaining_copies))
+
+    def copy_completed(self, count):
+        """Record one attempted copy and update the visible batch progress."""
+        self.completed_copies = count
+        if self.total_copies:
+            self.progress = int((count / self.total_copies) * 100)
 
     def inference_started(self):
         self._inference_started_at = time.time()
@@ -1011,6 +1039,10 @@ class BatchJob:
         self.current_action = f"Démarrage: {job_type} [{start}-{end}]"
         self._inference_started_at = None
         self._inference_elapsed_seconds = None
+        self._batch_started_at = time.monotonic()
+        self._batch_elapsed_seconds = 0
+        self.completed_copies = 0
+        self.total_copies = end - start + 1
 
         def run_wrapper():
             """Execute the selected batch while capturing output for polling."""
@@ -1079,7 +1111,6 @@ class BatchJob:
                 print(f"Starting {job_type}...")
 
                 try:
-                    total = end - start + 1
                     count = 0
 
                     # Define stop callback for deep abort
@@ -1106,7 +1137,7 @@ class BatchJob:
                             )
 
                             count += 1
-                            self.progress = int((count / total) * 100)
+                            self.copy_completed(count)
 
                     elif job_type == "correction":
                         # Correction depends on a complete local context: the
@@ -1195,7 +1226,7 @@ class BatchJob:
                                         f"⏭️  Copie {i} a déjà {existing_count}/26 corrections, passage à la suivante (utilise force=True pour écraser)"
                                     )
                                     count += 1
-                                    self.progress = int((count / total) * 100)
+                                    self.copy_completed(count)
                                     continue
 
                                 print(f"Correcting Copy {i}/{end}...")
@@ -1225,7 +1256,7 @@ class BatchJob:
                                 )
 
                                 count += 1
-                                self.progress = int((count / total) * 100)
+                                self.copy_completed(count)
 
                             db.close()
                 except Exception as e:
@@ -1254,6 +1285,11 @@ class BatchJob:
                 sys.stdout = original_stdout
                 if korektor_logger and original_handler:
                     korektor_logger.handlers = [original_handler]
+                if self._batch_started_at is not None:
+                    self._batch_elapsed_seconds = max(
+                        0, int(time.monotonic() - self._batch_started_at)
+                    )
+                    self._batch_started_at = None
                 self.running = False
 
         thread = threading.Thread(target=run_wrapper)
@@ -1341,6 +1377,10 @@ def batch_status():
             "progress": current_job.progress,
             "action": current_job.current_action,
             "inference_elapsed_seconds": current_job.inference_elapsed_seconds,
+            "elapsed_seconds": current_job.elapsed_seconds,
+            "completed_copies": current_job.completed_copies,
+            "total_copies": current_job.total_copies,
+            "eta_seconds": current_job.eta_seconds,
             "logs": current_job.logs[-50:],  # Send last 50 lines
         }
     )

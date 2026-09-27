@@ -348,6 +348,7 @@
 document.addEventListener('DOMContentLoaded', loadBilan);
 document.addEventListener('DOMContentLoaded', () => makeTableSortable('notes-table-el'));
 
+// Ignore the warnings on the next line about using a template variable in JavaScript (it will be safely converted to JSON)
 const projectName = {{ current_project_name|tojson }};
 let studentChart = null;
 let bilanStats = null;

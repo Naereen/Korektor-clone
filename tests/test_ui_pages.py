@@ -37,6 +37,8 @@ class TestOcrPage:
         assert "Annuler" in content
         assert "log-console" in content
         assert "progress-bar" in content
+        assert "data.elapsed_seconds" in content
+        assert "data.eta_seconds" in content
         assert "force-ocr" in content
         assert "forceVal" in content
 
@@ -90,6 +92,8 @@ class TestCorrectionPage:
         assert "Annuler" in content
         assert "log-console" in content
         assert "progress-bar" in content
+        assert "data.elapsed_seconds" in content
+        assert "data.eta_seconds" in content
         assert "force-correct" in content
 
     def test_page_validates_force_submission(self, client):

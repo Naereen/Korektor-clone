@@ -226,6 +226,43 @@ def test_batch_status_tracks_current_ocr_inference(project_client, monkeypatch):
     assert client.get("/api/batch/status").get_json()["inference_elapsed_seconds"] == 0
 
 
+def test_batch_status_reports_continuous_elapsed_and_eta(project_client, monkeypatch):
+    """Batch duration spans copy boundaries and ETA uses the average copy time."""
+    client, _ = project_client
+    job = app_module.BatchJob()
+    monkeypatch.setattr(app_module, "current_job", job)
+    now = [1000.0]
+    monkeypatch.setattr(app_module.time, "monotonic", lambda: now[0])
+
+    job.running = True
+    job._batch_started_at = now[0]
+    job.total_copies = 45
+    now[0] += 60
+    job.copy_completed(1)
+
+    status = client.get("/api/batch/status").get_json()
+    assert status["elapsed_seconds"] == 60
+    assert status["completed_copies"] == 1
+    assert status["total_copies"] == 45
+    assert status["eta_seconds"] == 44 * 60
+
+    job.inference_started()
+    now[0] += 20
+    job.inference_finished()
+    now[0] += 10
+    assert client.get("/api/batch/status").get_json()["elapsed_seconds"] == 90
+
+    job.copy_completed(2)
+    status = client.get("/api/batch/status").get_json()
+    assert status["eta_seconds"] == int(90 / 2 * 43)
+
+    job._batch_elapsed_seconds = job.elapsed_seconds
+    job._batch_started_at = None
+    job.running = False
+    now[0] += 50
+    assert client.get("/api/batch/status").get_json()["elapsed_seconds"] == 90
+
+
 def test_legacy_extraction_endpoint(project_client):
     """The legacy extraction endpoint should round-trip Markdown content."""
     client, _ = project_client
