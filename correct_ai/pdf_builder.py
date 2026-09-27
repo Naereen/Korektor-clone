@@ -62,10 +62,18 @@ def _strip_section_markers(content: str) -> str:
 
 
 def _strip_repeated_statement(answer: str, statement: str) -> str:
-    """Remove exact Typst markup duplicated at the start of an answer key."""
-    if not statement or not answer.startswith(statement):
+    """Remove a repeated Markdown statement at the start of an answer key."""
+    if not statement:
         return answer
-    remainder = answer[len(statement) :]
+    compact_statement = "".join(statement.split())
+    source_index = 0
+    for character in compact_statement:
+        while source_index < len(answer) and answer[source_index].isspace():
+            source_index += 1
+        if source_index == len(answer) or answer[source_index] != character:
+            return answer
+        source_index += 1
+    remainder = answer[source_index:]
     if remainder and not remainder[0].isspace():
         return answer
     return remainder.lstrip()
@@ -76,6 +84,11 @@ def _score(value: Any, total: float) -> str:
     return f"{float(value):g} / {total:g}" if value is not None else "Non notée"
 
 
+def _report_text(value: Any) -> str:
+    """Normalize optional report text before JSON serialization."""
+    return "" if value is None else str(value)
+
+
 def _score_out_of_20(value: Any, total: float) -> str:
     """Normalize a score to 20 while preserving unavailable grades."""
     if value is None or total <= 0:
@@ -84,10 +97,15 @@ def _score_out_of_20(value: Any, total: float) -> str:
 
 
 def _markdown_to_typst(content: str) -> str:
-    """Convert trusted project Markdown to Typst markup with Pandoc."""
+    """Convert Markdown and embedded LaTeX fragments to Typst markup with Pandoc."""
     try:
         result = subprocess.run(
-            ["pandoc", "--from=markdown", "--to=typst"],
+            [
+                "pandoc",
+                "--from=markdown+raw_tex",
+                "--to=typst",
+                f"--lua-filter={TEMPLATE_PATH.parent / 'latex_to_typst.lua'}",
+            ],
             input=content,
             text=True,
             capture_output=True,
@@ -166,8 +184,8 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
         max_points = sum(float(row["points"]) for row in rubric)
         subject_row = db.execute("SELECT contenu FROM sujet LIMIT 1").fetchone()
         answer_row = db.execute("SELECT contenu FROM corrige LIMIT 1").fetchone()
-        subject = subject_row[0] if subject_row else ""
-        answer_key = answer_row[0] if answer_row else ""
+        subject = _report_text(subject_row[0] if subject_row else "")
+        answer_key = _report_text(answer_row[0] if answer_row else "")
         totals = db.execute(
             """SELECT SUM(CASE WHEN validee_par_prof = 1 THEN note_prof ELSE note_llm END) AS total
                FROM corrections GROUP BY copie_id
@@ -211,25 +229,23 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
                 or row["reponse_attendue"]
                 or "Corrigé indisponible."
             )
-            statement_typst = _markdown_to_typst(statement)
-            answer_typst = _markdown_to_typst(answer)
-            answer_typst = _strip_repeated_statement(answer_typst, statement_typst)
-            if not answer_typst:
-                answer_typst = _markdown_to_typst("Corrigé indisponible.")
+            answer = _strip_repeated_statement(answer, statement)
+            if not answer:
+                answer = "Corrigé indisponible."
             questions.append(
                 {
-                    "titre": row["question"],
+                    "titre": _report_text(row["question"]),
                     "section_titles": [
-                        _markdown_to_typst(title)
+                        _markdown_to_typst(_report_text(title))
                         for title in (
                             subject_titles.get(row["question"])
                             or answer_titles.get(row["question"])
                             or []
                         )
                     ],
-                    "enonce": statement_typst,
-                    "corrige": answer_typst,
-                    "appreciation": comment or "Aucune appréciation.",
+                    "enonce": _markdown_to_typst(_report_text(statement)),
+                    "corrige": _markdown_to_typst(_report_text(answer)),
+                    "appreciation": _report_text(comment) or "Aucune appréciation.",
                     "note": _score(grade, float(row["points"])),
                     "crop_image_path": _image_path(
                         project_dir,
@@ -246,8 +262,8 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
 
         data = {
             "copie_id": str(copie_id),
-            "nom": student["nom"] or "Non renseigné",
-            "prenom": student["prenom"] or "Non renseigné",
+            "nom": _report_text(student["nom"]) or "Non renseigné",
+            "prenom": _report_text(student["prenom"]) or "Non renseigné",
             "note_globale": _score(total_score, max_points),
             "moyenne_promotion": (
                 _score(sum(averages) / len(averages), max_points) if averages else "Non disponible"
@@ -258,7 +274,7 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
             ),
             "titre": next(
                 (
-                    line.lstrip("# ").strip()
+                    _report_text(line.lstrip("# ").strip())
                     for line in subject.splitlines()
                     if line.startswith("# ")
                 ),
@@ -268,6 +284,13 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
         }
         serialized_data = json.dumps(data, ensure_ascii=False)
         (work_dir / "data.json").write_text(serialized_data, encoding="utf-8")
+
+        # Copier le dossier vendor/ dans le répertoire temporaire work_dir
+        vendor_src = TEMPLATE_PATH.parent / "vendor"
+        if vendor_src.exists():
+            print(f"Copying vendor directory from {vendor_src} to {work_dir / 'vendor'}")
+            shutil.copytree(vendor_src, work_dir / "vendor", dirs_exist_ok=True)
+
         try:
             compiled_pdf = typst.compile(
                 str(work_dir / TEMPLATE_PATH.name),

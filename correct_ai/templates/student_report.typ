@@ -1,6 +1,8 @@
 // Template for generating student correction reports in Typst
 // This template generates a detailed correction report for a student's work, including individual question feedback, grades, and teacher comments.
 
+#import "vendor/cmarker/lib.typ": render-string
+
 #let default-data = (
   copie_id: "—",
   nom: "Non renseigné",
@@ -44,7 +46,8 @@
   inset: (left: 8pt, y: 3pt),
 )[#content]
 #let horizontal-rule = line(length: 100%, stroke: 0.5pt + rgb("#b8c8c3"))
-#let rich-text(source) = eval(
+
+#let rich-text-noreponse(source) = eval(
   source.split("\n")
     .filter(line => not (
       "**Réponse :**", "**Réponse**", "#strong[Réponse :]", "#strong[Réponse]",
@@ -56,6 +59,13 @@
     horizontalrule: horizontal-rule,
   ),
 )
+
+#let rich-text-comment(source) = render-string(
+  source,
+  blockquote: quote-block,
+  scope: (horizontalrule: horizontal-rule,),
+)
+
 #let panel(title, content, shade, rule) = block(
   width: 100%,
   fill: shade,
@@ -90,7 +100,7 @@
 #for question in data.questions {
   [
     #for title in question.section_titles {
-      text(size: 15pt, weight: "bold", fill: ink)[#rich-text(title)]
+      text(size: 15pt, weight: "bold", fill: ink)[#rich-text-noreponse(title)]
       v(8pt)
     }
     #block(breakable: false)[
@@ -99,11 +109,17 @@
       #text(size: 15pt, weight: "bold", fill: ink)[#text(question.note)]
     ]
     #v(6pt)
-    #panel("Énoncé", rich-text(question.enonce), rgb("#eef3f6"), rgb("#356b8b"))
+    #if question.enonce != "" {
+      panel("Énoncé", rich-text-noreponse(question.enonce), rgb("#eef3f6"), rgb("#356b8b"))
+    }
     #v(7pt)
-    #panel("Corrigé", rich-text(question.corrige), rgb("#edf8f1"), rgb("#207a50"))
+    #if question.corrige != "" {
+      panel("Corrigé", rich-text-noreponse(question.corrige), rgb("#edf8f1"), rgb("#207a50"))
+    }
     #v(7pt)
-    #panel("Appréciation du correcteur", question.appreciation, rgb("#fdf0ef"), rgb("#ba3835"))
+    #if question.appreciation != "" {
+      panel("Appréciation du correcteur", rich-text-comment(question.appreciation), rgb("#fdf0ef"), rgb("#ba3835"))
+    }
     #if question.crop_image_path != "" {
       v(8pt)
       align(center)[

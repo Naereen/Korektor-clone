@@ -48,3 +48,5 @@ td_*
 td-*
 
 ## Temporary/throwaway scripts (plot iterations, one-off scripts)
+
+/.luarc.json

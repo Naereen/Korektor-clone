@@ -24,7 +24,8 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     db.execute(
         "INSERT INTO corrige (contenu) VALUES (?)",
         (
-            "**Q1.** **Choisir** :\n\n- une\n  option\n\n```cpp\nint x = 1;\n```\n\n"
+            "**Q1.** "+r"\underline{\emph{Nom}:} \hfill{}"+
+            "\n\n**Choisir** :\n\n- une\n  option\n\n```cpp\nint x = 1;\n```\n\n"
             "**Réponse :**\n\n**Réponse**\n\nDémontrer ∀ x ∈ ℝ.\n\n"
             "Une réponse détaillée reste visible.\n\n"
             "> **Explication :** Argument décisif.\n\n---\n",
@@ -36,7 +37,8 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
             1,
             "Q1",
             0,
-            "## Thème **test**\n**Q1.** **Choisir** :\n\n- une option\n\n```cpp\nint x = 1;\n```",
+            "## Thème **test**\n**Q1.** "+r"\underline{\emph{Nom}:} \hfill{}"+
+            "\n\n**Choisir** :\n\n- une option\n\n```cpp\nint x = 1;\n```",
             2,
         ),
     )
@@ -53,7 +55,7 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
         """INSERT INTO corrections
            (copie_id, bareme_id, reponse_etudiant, note_llm, commentaire_llm,
             validee_par_prof, note_prof, commentaire_prof, crop_image_path, bounding_boxes)
-           VALUES (1, 1, 'x', 0, 'IA', 1, 1.5, 'Bonne idée : ∀ x',
+           VALUES (1, 1, 'x', 0, 'IA', 1, 1.5, 'Bonne idée : "eg" ; chemin C:\\tmp',
                    'cropped_questions/q1.png', ?)""",
         (json.dumps([{"bbox_2d": [100, 100, 500, 500], "label": "Bonne idée"}]),),
     )
@@ -86,18 +88,22 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     assert captured["note_sur_20"] == "13.33 / 20"
     assert captured["moyenne_sur_20"] == "10.00 / 20"
     assert captured["questions"][0]["section_titles"] == ["Thème #strong[test]"]
+    assert "#underline[#emph[Nom]:]" in captured["questions"][0]["enonce"]
     assert "Thème" not in captured["questions"][0]["enonce"]
     assert "Démontrer" in captured["questions"][0]["corrige"]
     assert "Choisir" not in captured["questions"][0]["corrige"]
     assert "int x = 1;" not in captured["questions"][0]["corrige"]
-    assert captured["questions"][0]["appreciation"] == "Bonne idée : ∀ x"
+    assert captured["questions"][0]["appreciation"] == 'Bonne idée : "eg" ; chemin C:\\tmp'
     assert captured["questions"][0]["crop_image_path"] == "question-1.png"
     assert captured["questions"][1]["crop_image_path"] == ""
     with pymupdf.open(result) as document:
         page_texts = [page.get_text() for page in document]
         text = "\n".join(page_texts)
         assert "Éloi" in text and "Anaïs" in text
+        assert "Nom:" in text
+        assert r"\underline" not in text
         assert "Bonne idée" in text
+        assert "“eg”" in text and "C:\\tmp" in text
         assert text.index("Thème test") < text.index("Q1") < text.index("Énoncé")
         assert text.count("Choisir") == 1
         assert text.count("une option") == 1
