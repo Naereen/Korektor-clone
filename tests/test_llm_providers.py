@@ -8,21 +8,17 @@ and streaming progress without requiring API credentials or network access.
 import base64
 import json
 import os
+import sys
+import traceback
+import types
 from types import SimpleNamespace
 
 import pymupdf
 import pytest
 
-from correct_ai.llm_providers import (
-    PROVIDERS,
-    ProviderConfig,
-    ask_llm,
-    ask_llm_with_image,
-    ask_llm_with_pdf,
-    ask_llm_with_progress,
-    get_provider,
-    pdf_to_base64_images,
-)
+from correct_ai.llm_providers import (PROVIDERS, ProviderConfig, ask_llm, ask_llm_with_image,
+                                      ask_llm_with_image_data, ask_llm_with_pdf,
+                                      ask_llm_with_progress, get_provider, pdf_to_base64_images)
 
 
 class FakeResponse:
@@ -67,6 +63,24 @@ def test_get_provider_rejects_unknown_name():
     """Unknown provider names should produce a useful ValueError."""
     with pytest.raises(ValueError, match="Provider inconnu"):
         get_provider("UNKNOWN")
+
+
+def test_gemini_provider_uses_flash_model_and_environment_key():
+    """The Gemini provider should use the official API key environment variable."""
+    provider = get_provider("GOOGLE_GEMINI")
+    assert provider.model == "gemini-flash-latest"
+    assert provider.api_key_env == "GEMINI_API_KEY"
+
+
+def test_default_provider_can_be_switched_and_restored(monkeypatch):
+    """Application provider selection should affect implicit lookups only."""
+    from correct_ai import llm_providers
+
+    original = llm_providers.ACTIVE_PROVIDER
+    monkeypatch.setattr(llm_providers, "ACTIVE_PROVIDER", original)
+    llm_providers.set_default_provider("GOOGLE_GEMINI")
+    assert get_provider().name == "GOOGLE_GEMINI"
+    assert get_provider("ILAAS_OSS").name == "ILAAS_OSS"
 
 
 def test_api_key_uses_environment(monkeypatch):
@@ -177,6 +191,55 @@ def test_ask_llm_with_image_sends_focused_png(monkeypatch, tmp_path):
     assert user_content[0] == {"type": "text", "text": "refine"}
     assert user_content[1]["image_url"]["detail"] == "high"
     assert user_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_gemini_uses_official_sdk_and_redacts_sdk_errors(monkeypatch):
+    """Gemini requests use google-genai and never expose SDK exception text."""
+    from correct_ai.llm_providers import _ask_gemini
+
+    secret = "test-gemini-secret"
+    monkeypatch.setenv("GEMINI_API_KEY", secret)
+    google_module = types.ModuleType("google")
+    google_module.__path__ = []
+    genai_module = types.ModuleType("google.genai")
+    sdk_types = types.ModuleType("google.genai.types")
+
+    class FakePart:
+        @staticmethod
+        def from_bytes(data, mime_type):
+            return {"data": data, "mime_type": mime_type}
+
+    class FakeGenerateContentConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            assert kwargs["model"] == "gemini-flash-latest"
+            assert kwargs["contents"][0] == "prompt"
+            assert kwargs["contents"][1] == {"data": b"image", "mime_type": "image/png"}
+            raise RuntimeError(f"request failed with {secret}")
+
+    class FakeClient:
+        def __init__(self, api_key):
+            assert api_key == secret
+            self.models = FakeModels()
+
+    genai_module.Client = FakeClient
+    sdk_types.Part = FakePart
+    sdk_types.GenerateContentConfig = FakeGenerateContentConfig
+    google_module.genai = genai_module
+    monkeypatch.setitem(sys.modules, "google", google_module)
+    monkeypatch.setitem(sys.modules, "google.genai", genai_module)
+    monkeypatch.setitem(sys.modules, "google.genai.types", sdk_types)
+
+    with pytest.raises(RuntimeError, match="clé masquée") as raised:
+        _ask_gemini(
+            get_provider("GOOGLE_GEMINI"), "prompt", "system", [(b"image", "image/png")]
+        )
+
+    assert secret not in str(raised.value)
+    assert secret not in "".join(traceback.format_exception(raised.value))
 
 
 def test_streaming_llm_accumulates_content(monkeypatch):

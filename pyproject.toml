@@ -1,6 +1,6 @@
 [project]
 name = "korektor"
-version = "0.2.0"
+version = "0.3.0"
 description = "Assistant IA de correction de copies manuscrites"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,6 +9,7 @@ dependencies = [
     "pymupdf",
     "pypdf",
     "requests",
+    "google-genai",
     "json-repair",
     "tiktoken",
     "matplotlib",

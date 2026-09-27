@@ -40,7 +40,7 @@ def load_bareme(project_dir="."):
 
 def correct_copy(
     copy_number,
-    provider_name="ILAAS_OSS",
+    provider_name=None,
     bareme_data=None,
     force=False,
     project_dir=".",

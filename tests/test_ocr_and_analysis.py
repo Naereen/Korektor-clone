@@ -46,24 +46,28 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
     (copy_dir / "extraction.md").write_text("old", encoding="utf-8")
 
     provider = SimpleNamespace(
+        name="test",
         model="test-model",
         url="http://test",
         verify_ssl=True,
         api_key=lambda: "dummy",
     )
 
-    class Response:
-        """Small HTTP response fake for the extraction request."""
-
-        def raise_for_status(self):
-            """Represent a successful HTTP response."""
-
-        def json(self):
-            """Return a tagged transcription response."""
-            return {"choices": [{"message": {"content": "<markdown>new</markdown>"}}]}
-
     monkeypatch.setattr(batch_extraction, "get_provider", lambda name: provider)
-    monkeypatch.setattr(batch_extraction.requests, "post", lambda *args, **kwargs: Response())
+
+    def fake_ask_llm(*args, **kwargs):
+        callback = kwargs.get("inference_callback")
+        if callback:
+            callback(True)
+        if callback:
+            callback(False)
+        return "<markdown>new</markdown>"
+
+    monkeypatch.setattr(
+        batch_extraction,
+        "ask_llm_with_user_content",
+        fake_ask_llm,
+    )
 
     inference_events = []
     assert batch_extraction.extract_copy(
@@ -79,7 +83,10 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
         timeout_calls.append(kwargs["timeout"])
         raise batch_extraction.requests.exceptions.Timeout("LLM timed out")
 
-    monkeypatch.setattr(batch_extraction.requests, "post", timeout)
+    from correct_ai import llm_providers
+
+    monkeypatch.setattr(batch_extraction, "ask_llm_with_user_content", llm_providers.ask_llm_with_user_content)
+    monkeypatch.setattr(llm_providers.requests, "post", timeout)
     inference_events.clear()
     batch_extraction.extract_copy(
         1, str(tmp_path), force=True, inference_callback=inference_events.append
@@ -88,6 +95,13 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
     assert inference_events == [True, False] * 4
 
     recovery_calls = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "<markdown>new</markdown>"}}]}
 
     def recover_on_second_attempt(*args, **kwargs):
         recovery_calls.append(kwargs["timeout"])

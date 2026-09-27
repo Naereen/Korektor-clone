@@ -2,6 +2,7 @@ flask
 pymupdf
 pypdf
 requests
+google-genai
 json_repair
 tiktoken
 pandocfilters

@@ -57,7 +57,8 @@ from database import get_bareme as db_get_bareme
 from database import get_corrige as db_get_corrige
 from database import get_db
 from database import get_sujet as db_get_sujet
-from llm_providers import get_provider
+from llm_providers import DEFAULT_PROVIDER, PROVIDERS, get_provider, set_default_provider
+
 from correct_ai.pdf_builder import generate_student_pdf
 
 # This module is deliberately an orchestration layer rather than a domain layer.
@@ -79,6 +80,7 @@ class ProjectConfig:
         """Initialize paths and load persisted project configuration."""
         self.project_dir = os.path.join(APP_ROOT, "exemple")
         self.project_name = "exemple"
+        self.inference_provider = DEFAULT_PROVIDER
         self.load()
 
     @staticmethod
@@ -117,6 +119,10 @@ class ProjectConfig:
                     self.project_name = data.get(
                         "project_name", self.infer_project_name(self.project_dir)
                     )
+                    provider_name = data.get("inference_provider", DEFAULT_PROVIDER)
+                    self.inference_provider = (
+                        provider_name if provider_name in PROVIDERS else DEFAULT_PROVIDER
+                    )
             except:
                 pass
 
@@ -124,7 +130,11 @@ class ProjectConfig:
         """Persist the current project directory to the JSON configuration file."""
         with open(CONFIG_FILE, "w") as f:
             json.dump(
-                {"project_dir": self.project_dir, "project_name": self.project_name},
+                {
+                    "project_dir": self.project_dir,
+                    "project_name": self.project_name,
+                    "inference_provider": self.inference_provider,
+                },
                 f,
                 ensure_ascii=False,
             )
@@ -167,6 +177,7 @@ class ProjectConfig:
 
 
 config = ProjectConfig()
+set_default_provider(config.inference_provider)
 
 # Flask is created once at import time so tests can use the same route table
 # through ``app.test_client()`` without starting a development server.
@@ -267,9 +278,19 @@ def settings():
     """Render or update the project settings page."""
     if request.method == "POST":
         new_dir = request.form.get("project_dir")
+        provider_name = request.form.get("inference_provider", config.inference_provider)
+        if provider_name not in PROVIDERS:
+            return render_template(
+                "settings.html",
+                error="Fournisseur d'inférence invalide",
+                current_dir=config.project_dir,
+                current_provider=config.inference_provider,
+            )
         if new_dir and os.path.isdir(new_dir):
             config.project_dir = new_dir
             config.project_name = config.infer_project_name(new_dir)
+            config.inference_provider = provider_name
+            set_default_provider(provider_name)
             config.save()
             # Reset global state
             global splitter_doc
@@ -282,8 +303,13 @@ def settings():
                 "settings.html",
                 error="Dossier invalide",
                 current_dir=config.project_dir,
+                current_provider=config.inference_provider,
             )
-    return render_template("settings.html", current_dir=config.project_dir)
+    return render_template(
+        "settings.html",
+        current_dir=config.project_dir,
+        current_provider=config.inference_provider,
+    )
 
 
 # --- ROUTES: Navigation ---

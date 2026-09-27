@@ -17,6 +17,19 @@
 
                     <form method="POST" action="/settings">
                         <div class="mb-4">
+                            <label for="inference_provider" class="form-label fw-bold">Fournisseur d'inférence</label>
+                            <select class="form-select" id="inference_provider" name="inference_provider">
+                                <option value="ILAAS_OSS" {% if current_provider == 'ILAAS_OSS' %}selected{% endif %}>ILAAS (Qwen) - qwen-3.6-35b-instruct</option>
+                                <option value="GOOGLE_GEMINI" {% if current_provider == 'GOOGLE_GEMINI' %}selected{% endif %}>Google Gemini (Flash) - gemini-flash-latest</option>
+                            </select>
+                            <div class="form-text">
+                                <ul>
+                                    <li>ILAAS requiert une variable d'environnement <code>ILAAS_API_KEY</code>, que vous pouvez demander <a href="https://www.ilaas.fr/demande-de-cles-ilaas/">ici</a> (gratuit pour les chercheurs et professeurs du supérieur, plus respectueux du <a href="https://www.cnil.fr/fr/reglement-europeen-protection-donnees">RGPD</a>).</li>
+                                    <li>Gemini requiert une variable d'environnement <code>GEMINI_API_KEY</code>, que vous pouvez demander <a href="https://aistudio.google.com/api-keys">ici</a> (payant, non respectueux du <a href="https://www.cnil.fr/fr/reglement-europeen-protection-donnees">RGPD</a>).</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="mb-4">
                             <label for="project_dir" class="form-label fw-bold">Dossier du projet (session
                                 d'examen)</label>
                             <input type="text" class="form-control font-monospace" id="project_dir" name="project_dir"

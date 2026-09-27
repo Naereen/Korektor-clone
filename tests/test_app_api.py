@@ -7,6 +7,7 @@ without starting a server or contacting an LLM provider.
 
 import csv
 import io
+import json
 
 import pymupdf
 import pytest
@@ -19,9 +20,15 @@ from correct_ai.database import get_db, init_db
 @pytest.fixture
 def project_client(tmp_path, monkeypatch):
     """Return a Flask client configured with an isolated project directory."""
+    from correct_ai import llm_providers
+
     copies_dir = tmp_path / "copies_anonymes_validees"
     copies_dir.mkdir()
     monkeypatch.setattr(app_module.config, "project_dir", str(tmp_path))
+    monkeypatch.setattr(
+        app_module.config, "inference_provider", app_module.config.inference_provider
+    )
+    monkeypatch.setattr(llm_providers, "ACTIVE_PROVIDER", llm_providers.ACTIVE_PROVIDER)
     monkeypatch.setattr(app_module.config, "save", lambda: None)
     return app_module.app.test_client(), tmp_path
 
@@ -65,9 +72,31 @@ def test_footer_formats_commit_timestamp_and_preserves_copyright_year(project_cl
 def test_settings_get_and_post(project_client):
     """Settings should reject invalid paths and accept existing directories."""
     client, project = project_client
-    assert client.get("/settings").status_code == 200
+    page = client.get("/settings")
+    assert page.status_code == 200
+    assert "ILAAS (Qwen)" in page.get_data(as_text=True)
+    assert "Google Gemini (Flash)" in page.get_data(as_text=True)
     assert client.post("/settings", data={"project_dir": "/missing"}).status_code == 200
-    assert client.post("/settings", data={"project_dir": str(project)}).status_code == 302
+    response = client.post(
+        "/settings",
+        data={"project_dir": str(project), "inference_provider": "GOOGLE_GEMINI"},
+    )
+    assert response.status_code == 302
+    assert app_module.config.inference_provider == "GOOGLE_GEMINI"
+    assert app_module.get_provider().name == "GOOGLE_GEMINI"
+
+
+def test_project_config_persists_inference_provider(monkeypatch, tmp_path):
+    """The selected inference provider should survive application config reload."""
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(app_module, "CONFIG_FILE", str(config_path))
+    config = app_module.ProjectConfig()
+    config.inference_provider = "GOOGLE_GEMINI"
+    config.save()
+
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["inference_provider"] == "GOOGLE_GEMINI"
+    assert app_module.ProjectConfig().inference_provider == "GOOGLE_GEMINI"
 
 
 def test_student_roster_page_and_csv_crud(project_client):

@@ -119,10 +119,11 @@ source .venv/bin/activate
 uv sync</code></pre>
         <p>Les dépendances et les groupes de développement sont déclarés dans <code>pyproject.toml</code>. Une installation historique reste possible avec :</p>
         <pre><code>uv pip install -r requirements.txt</code></pre>
-        <p>Définir ensuite une clé API correspondant au provider utilisé, par exemple :</p>
+        <p>ILAAS (Qwen) est le fournisseur par défaut. Pour basculer vers Google Gemini (Flash) dans les paramètres, définir la clé API correspondante :</p>
         <pre><code>export UNISTRA_API_KEY="votre_cle_ici"
-# ou, selon le provider :
-export ILAAS_API_KEY="votre_cle_ici"</code></pre>
+    export ILAAS_API_KEY="votre_cle_ici"
+    # ou, pour Google Gemini :
+    export GEMINI_API_KEY="votre_cle_ici"</code></pre>
     </section>
 
     <section id="utilisation" class="documentation-section">

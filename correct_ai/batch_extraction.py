@@ -24,9 +24,9 @@ import pymupdf
 import requests
 
 try:
-    from .llm_providers import get_provider
+    from .llm_providers import ask_llm_with_image_data, ask_llm_with_user_content, get_provider
 except ImportError:  # Support direct execution as a script.
-    from llm_providers import get_provider
+    from llm_providers import ask_llm_with_image_data, ask_llm_with_user_content, get_provider
 
 BASE_DIR = "copies_anonymes_validees"
 
@@ -68,7 +68,7 @@ def page_to_base64(pdf_path, page_idx, dpi=150):
 
 
 def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=600):
-    """Send one vision image and its prompt to an OpenAI-compatible endpoint.
+    """Send one vision image and its prompt through the shared provider transport.
 
     Args:
         provider: Provider configuration containing endpoint and credentials.
@@ -77,44 +77,21 @@ def ask_llm_with_image(provider, image_b64, prompt_text, system_prompt, timeout=
         system_prompt: System-level behavior instruction.
         timeout: HTTP timeout in seconds.
     """
-    user_content: List[Dict[str, Any]] = [
-        {"type": "text", "text": prompt_text},
-        {
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
-        },
-    ]
-
-    payload = {
-        "model": provider.model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {provider.api_key()}",
-    }
-
-    print(f"  Envoi à {provider.url} ({provider.model})...")
-    resp = requests.post(
-        provider.url,
-        json=payload,
-        headers=headers,
+    return ask_llm_with_image_data(
+        provider,
+        base64.b64decode(image_b64),
+        "image/jpeg",
+        prompt_text,
+        system_prompt,
         timeout=timeout,
-        verify=provider.verify_ssl,
     )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
 
 
 def extract_copy(
     copy_number,
     project_dir=".",
     stop_callback=None,
-    provider_name="ILAAS_OSS",
+    provider_name=None,
     use_ref_page1=False,
     force=False,
     inference_callback=None,
@@ -310,34 +287,13 @@ def extract_copy(
                         }
                     )
 
-                    # Appeler le LLM avec le user_content construit
-                    payload = {
-                        "model": provider.model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content},
-                        ],
-                    }
-                    headers = {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {provider.api_key()}",
-                    }
-                    print(f"  Envoi à {provider.url} ({provider.model})...")
-                    if inference_callback:
-                        inference_callback(True)
-                    try:
-                        resp = requests.post(
-                            provider.url,
-                            json=payload,
-                            headers=headers,
-                            timeout=30,
-                            verify=provider.verify_ssl,
-                        )
-                    finally:
-                        if inference_callback:
-                            inference_callback(False)
-                    resp.raise_for_status()
-                    response = resp.json()["choices"][0]["message"]["content"]
+                    response = ask_llm_with_user_content(
+                        provider,
+                        user_content,
+                        system_prompt,
+                        inference_callback=inference_callback,
+                        timeout=30,
+                    )
 
                     # Extraire le markdown entre les balises
                     transcription = extract_markdown(response)

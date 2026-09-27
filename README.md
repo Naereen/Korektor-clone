@@ -30,9 +30,11 @@
     source .venv/bin/activate
     uv pip install -r requirements.txt
     ```
-3.  **Récupérer une clé d'API LLM** sur [https://conversation.ia.unistra.fr/](https://conversation.ia.unistra.fr/) et la définir dans vos variables d'environnement :
+3.  **Configurer une clé d'API LLM** correspondant au fournisseur choisi dans Paramètres. ILAAS reste le choix par défaut :
     ```bash
-    export UNISTRA_API_KEY="votre_cle_ici"
+  export ILAAS_API_KEY="votre_cle_ici"
+  # Pour utiliser Google Gemini à la place :
+  export GEMINI_API_KEY="votre_cle_ici"
     ```
 
 ## Utilisation
@@ -105,10 +107,12 @@ Le chemin de sortie relatif est résolu à partir du dossier du projet. Les fich
 
 ## Configuration API
 
-Les clés API pour les LLM (Mistral, OpenAI, etc.) doivent être définies dans vos variables d'environnement ou configurées via la classe `ProviderConfig` dans `correct_ai/llm_providers.py`. Par défaut , le provider utilisé est `UNISTRA_QWEN` (Qwen3) avec `thinking=True`. Pour utiliser un autre LLM, comme Mistral, définissez la variable d'environnement suivante :
+Le fournisseur d'inférence se choisit dans **Paramètres** et ce choix est conservé dans `.correctai_config.json`. Par défaut, Korektor utilise **ILAAS (Qwen)**. **Google Gemini (Flash)** utilise le modèle `gemini-flash-latest` et le SDK officiel `google-genai`.
 
 ```bash
-export MISTRAL_API_KEY="votre_cle_ici"
+export ILAAS_API_KEY="votre_cle_ici"
+# Ou, pour Gemini :
+export GEMINI_API_KEY="votre_cle_ici"
 ```
 
 ---

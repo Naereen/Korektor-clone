@@ -94,6 +94,12 @@ PROVIDERS: Dict[str, ProviderConfig] = {
         model="qwen-3.6-35b-instruct",
         api_key_env="ILAAS_API_KEY",
     ),
+    "GOOGLE_GEMINI": ProviderConfig(
+        name="GOOGLE_GEMINI",
+        url="https://generativelanguage.googleapis.com",
+        model="gemini-flash-latest",
+        api_key_env="GEMINI_API_KEY",
+    ),
     "OPENAI_MODEL": ProviderConfig(
         name="OPENAI_MODEL",
         url="https://api.openai.com/v1/chat/completions",
@@ -130,6 +136,7 @@ PROVIDERS: Dict[str, ProviderConfig] = {
 # DEFAULT_PROVIDER = "IRMA_LLMCODE"
 # DEFAULT_PROVIDER = "UNISTRA_QWEN"
 DEFAULT_PROVIDER = "ILAAS_OSS"
+ACTIVE_PROVIDER = DEFAULT_PROVIDER
 # DEFAULT_PROVIDER = "GB10B_QWEN"
 # DEFAULT_PROVIDER = "MISTRAL_NEMO"
 # DEFAULT_PROVIDER = "LOCAL_QWEN_CODER"
@@ -138,7 +145,7 @@ DEFAULT_PROVIDER = "ILAAS_OSS"
 
 
 def get_provider(
-    name: Optional[str] = DEFAULT_PROVIDER,
+    name: Optional[str] = None,
     override_model: Optional[str] = None,
     override_url: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -146,13 +153,13 @@ def get_provider(
     """Retourne la configuration d'un provider.
 
     Args:
-        name: Nom du provider dans PROVIDERS (None => DEFAULT_PROVIDER)
+        name: Nom du provider dans PROVIDERS (None => provider par défaut actif)
         override_model: Remplace le nom de modèle si fourni
         override_url: Remplace l'URL si fourni
         api_key: Forcer une clé spécifique (sinon variable d'env)
     """
     if name is None:
-        name = DEFAULT_PROVIDER
+        name = ACTIVE_PROVIDER
     if name not in PROVIDERS:
         raise ValueError(
             f"Provider inconnu: {name}. Providers disponibles: {list(PROVIDERS.keys())}"
@@ -174,6 +181,157 @@ def get_provider(
         api_key_env=base.api_key_env,
         verify_ssl=base.verify_ssl,
     )
+
+
+def set_default_provider(name: str) -> None:
+    """Set the application-wide provider used by calls without an explicit name."""
+    if name not in PROVIDERS:
+        raise ValueError(f"Provider inconnu: {name}")
+    global ACTIVE_PROVIDER
+    ACTIVE_PROVIDER = name
+
+
+def _is_gemini(provider: ProviderConfig) -> bool:
+    return provider.name == "GOOGLE_GEMINI"
+
+
+def _ask_gemini(
+    provider: ProviderConfig,
+    prompt_text: str,
+    system_prompt: str,
+    image_parts: Optional[List[tuple[bytes, str]]] = None,
+) -> str:
+    """Call the official Gemini SDK without exposing credentials in failures."""
+    contents: List[Any] = [prompt_text]
+    for image_data, mime_type in image_parts or []:
+        contents.append((image_data, mime_type))
+    return _ask_gemini_contents(provider, contents, system_prompt)
+
+
+def _ask_gemini_contents(
+    provider: ProviderConfig,
+    content_parts: List[Any],
+    system_prompt: str,
+) -> str:
+    """Call Gemini with text and binary image parts in their original order."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY non configurée") from None
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        contents = [
+            types.Part.from_bytes(data=part[0], mime_type=part[1])
+            if isinstance(part, tuple)
+            else part
+            for part in content_parts
+        ]
+
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=provider.model,
+            contents=contents,
+            config=types.GenerateContentConfig(system_instruction=system_prompt),
+        )
+        return response.text or ""
+    except ImportError:
+        raise RuntimeError("La dépendance google-genai n'est pas installée") from None
+    except Exception:
+        raise RuntimeError("Erreur lors de l'appel Gemini (clé masquée)") from None
+
+
+def ask_llm_with_image_data(
+    provider: ProviderConfig,
+    image_data: bytes,
+    mime_type: str,
+    prompt_text: str,
+    system_prompt: str,
+    inference_callback: Optional[Callable[[bool], None]] = None,
+    timeout: int = 600,
+) -> str:
+    """Send prompt and image bytes through the selected provider transport."""
+    return ask_llm_with_user_content(
+        provider,
+        [
+            {"type": "text", "text": prompt_text},
+            {"type": "image_data", "data": image_data, "mime_type": mime_type},
+        ],
+        system_prompt,
+        inference_callback=inference_callback,
+        timeout=timeout,
+    )
+
+
+def ask_llm_with_user_content(
+    provider: ProviderConfig,
+    user_content: List[Dict[str, Any]],
+    system_prompt: str,
+    inference_callback: Optional[Callable[[bool], None]] = None,
+    timeout: int = 600,
+) -> str:
+    """Send ordered text and image content through the selected provider."""
+    if inference_callback:
+        inference_callback(True)
+    try:
+        if _is_gemini(provider):
+            content_parts = []
+            for item in user_content:
+                if item.get("type") == "text":
+                    content_parts.append(item["text"])
+                elif item.get("type") == "image_data":
+                    content_parts.append((item["data"], item["mime_type"]))
+                elif item.get("type") == "image_url":
+                    data_url = item["image_url"]["url"]
+                    mime_type, encoded_image = data_url.split(";base64,", 1)
+                    content_parts.append(
+                        (base64.b64decode(encoded_image), mime_type.removeprefix("data:"))
+                    )
+                else:
+                    raise ValueError("Contenu multimodal provider invalide")
+            return _ask_gemini_contents(provider, content_parts, system_prompt)
+
+        openai_user_content = []
+        for item in user_content:
+            if item.get("type") == "image_data":
+                image_b64 = base64.b64encode(item["data"]).decode("utf-8")
+                openai_user_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{item['mime_type']};base64,{image_b64}",
+                            "detail": "high",
+                        },
+                    }
+                )
+            else:
+                openai_user_content.append(item)
+        payload = {
+            "model": provider.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": openai_user_content},
+            ],
+        }
+        response = requests.post(
+            provider.url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {provider.api_key()}",
+            },
+            timeout=timeout,
+            verify=provider.verify_ssl,
+        )
+        response.raise_for_status()
+        try:
+            return response.json()["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise ValueError("Réponse provider au format inattendu") from error
+    finally:
+        if inference_callback:
+            inference_callback(False)
 
 
 def pdf_to_base64_images(
@@ -209,6 +367,20 @@ def ask_llm_with_pdf(
     # 1. Convertir le PDF en images
     print(f"Conversion du PDF {pdf_path} en images...")
     images_b64 = pdf_to_base64_images(pdf_path)
+
+    if _is_gemini(provider):
+        try:
+            if inference_callback:
+                inference_callback(True)
+            content_parts: List[Any] = [prompt_text]
+            for page_number, image in enumerate(images_b64, start=1):
+                content_parts.extend(
+                    [f"Page {page_number}", (base64.b64decode(image), "image/jpeg")]
+                )
+            return _ask_gemini_contents(provider, content_parts, system_prompt)
+        finally:
+            if inference_callback:
+                inference_callback(False)
 
     # 2. Construire le contenu message utilisateur
     # Format standard OpenAI Vision: [{"type": "text", ...}, {"type": "image_url", ...}]
@@ -277,50 +449,15 @@ def ask_llm_with_image(
 ) -> str:
     """Send one PNG crop to an OpenAI-compatible vision endpoint."""
     with open(image_path, "rb") as image_file:
-        image_b64 = base64.b64encode(image_file.read()).decode("utf-8")
-
-    payload = {
-        "model": provider.model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt_text},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{image_b64}",
-                            "detail": "high",
-                        },
-                    },
-                ],
-            },
-        ],
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {provider.api_key()}",
-    }
-
-    if inference_callback:
-        inference_callback(True)
-    try:
-        response = requests.post(
-            provider.url,
-            json=payload,
-            headers=headers,
-            timeout=600,
-            verify=provider.verify_ssl,
-        )
-        response.raise_for_status()
-        try:
-            return response.json()["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as error:
-            raise ValueError("Réponse provider au format inattendu") from error
-    finally:
-        if inference_callback:
-            inference_callback(False)
+        image_data = image_file.read()
+    return ask_llm_with_image_data(
+        provider,
+        image_data,
+        "image/png",
+        prompt_text,
+        system_prompt,
+        inference_callback=inference_callback,
+    )
 
 
 def ask_llm(
@@ -330,6 +467,9 @@ def ask_llm(
     thinking: bool = True,
 ) -> str:
     """Envoie une requête texte simple à l'API LLM."""
+
+    if _is_gemini(provider):
+        return _ask_gemini(provider, prompt_text, system_prompt)
 
     payload = {
         "model": provider.model,
@@ -422,6 +562,18 @@ def ask_llm_with_progress(
     if progress_callback:
         progress_callback(f"[Tokens envoyés: {prompt_tokens}]")
 
+    if _is_gemini(provider):
+        try:
+            if inference_callback:
+                inference_callback(True)
+            result = _ask_gemini(provider, prompt_text, system_prompt)
+            if progress_callback:
+                progress_callback(f"[Total: {estimate_text_tokens(result)} tokens reçus]")
+            return result
+        finally:
+            if inference_callback:
+                inference_callback(False)
+
     # 2. Préparer le payload avec stream=True
     payload = {
         "model": provider.model,
@@ -508,8 +660,12 @@ __all__ = [
     "ProviderConfig",
     "PROVIDERS",
     "get_provider",
+    "set_default_provider",
     "DEFAULT_PROVIDER",
     "ask_llm_with_pdf",
+    "ask_llm_with_image",
+    "ask_llm_with_image_data",
+    "ask_llm_with_user_content",
     "ask_llm",
     "ask_llm_with_progress",
 ]
