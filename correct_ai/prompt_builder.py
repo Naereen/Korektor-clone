@@ -140,6 +140,7 @@ Remplace uniquement les valeurs : note, commentaire, raisonnement, reponse_etudi
 7. Pour chaque question, remplis "bounding_boxes" avec les zones des erreurs ou remarques visibles sur la copie :
     "bounding_boxes": [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Description synthétique de l'erreur ou remarque"}]
     Les coordonnées ymin, xmin, ymax, xmax sont des entiers normalisés entre 0 et 1000 par rapport aux dimensions de l'image de la page (origine en haut à gauche). Utilise [] si aucune zone n'est identifiable.
+    La boîte doit entourer l'encre manuscrite réellement visible pour la question, pas une bande étroite ni une position déduite du seul texte OCR. Vérifie sur l'image que la boîte couvre la réponse et laisse une marge suffisante pour la lire (au moins 80 unités normalisées en hauteur pour une réponse sur une ligne, davantage pour plusieurs lignes).
     Si la copie a plusieurs pages, ajoute "page": 1 (numéro de page à partir de 1) dans chaque objet de bounding_boxes ; les coordonnées sont relatives à cette page.
 """
 
@@ -230,6 +231,7 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
 3. Le commentaire doit être pas trop long (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement doit être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
 4. NE SUPPRIME AUCUNE CLÉ du template.
 5. Pour chaque question, fournis "bounding_boxes": [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Description synthétique de l'erreur ou remarque"}], avec des coordonnées entières normalisées entre 0 et 1000 par rapport à l'image de la page. Utilise [] si aucune zone n'est identifiable et ajoute "page": XXX, dans chaque boîte pour une copie multipage.
+    La boîte doit entourer l'encre manuscrite réellement visible pour la question, pas une bande étroite ni une position déduite du seul texte OCR. Vérifie sur l'image que la boîte couvre la réponse et laisse une marge suffisante pour la lire (au moins 80 unités normalisées en hauteur pour une réponse sur une ligne, davantage pour plusieurs lignes).
 """
 
     return prompt

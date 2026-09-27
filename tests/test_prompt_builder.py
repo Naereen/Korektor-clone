@@ -140,6 +140,8 @@ class TestBuildIncrementalPrompt:
         assert prompt.count('"bounding_boxes": []') == len(bareme_data)
         assert '"box_2d": [ymin, xmin, ymax, xmax]' in prompt
         assert "entiers normalisés entre 0 et 1000" in prompt
+        assert "entourer l'encre manuscrite réellement visible" in prompt
+        assert "80 unités normalisées en hauteur" in prompt
 
     def test_prompt_with_previous_corrections(self, bareme_data, previous_corrections_data):
         """2.2 : Tester le prompt avec corrections précédentes."""

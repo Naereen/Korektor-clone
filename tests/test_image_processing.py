@@ -45,6 +45,22 @@ def test_crop_rejects_subpixel_bounds(tmp_path):
         crop_and_annotate_question(str(source), [0, 0, 1, 1], str(tmp_path / "out.png"))
 
 
+def test_crop_adds_vertical_context_around_thin_box(tmp_path):
+    """Thin boxes retain nearby handwriting while highlighting only the target band."""
+    source = tmp_path / "page.png"
+    Image.new("RGB", (1000, 1000), "white").save(source)
+    destination = tmp_path / "context.png"
+
+    crop_and_annotate_question(
+        str(source), [60, 50, 75, 980], str(destination), label="Réponse incomplète"
+    )
+
+    with Image.open(destination) as result:
+        assert result.size == (930, 160)
+        assert result.getpixel((10, 10)) == (255, 255, 255, 255)
+        assert result.getpixel((10, 70)) == (248, 212, 212, 255)
+
+
 def test_crop_draws_optional_label(tmp_path):
     """The optional label is visible in the generated crop."""
     source = tmp_path / "page.png"

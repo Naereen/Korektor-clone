@@ -17,8 +17,17 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     db = get_db(str(tmp_path))
     init_db(db)
     db.execute("INSERT INTO sujet (contenu) VALUES (?)", ("# Évaluation ∑\nÉnoncé Q1 (--Q1)",))
-    db.execute("INSERT INTO corrige (contenu) VALUES (?)", ("**Q1.** Démontrer ∀ x ∈ ℝ.\n",))
-    db.execute("INSERT INTO bareme (id, question, type_qcm, points) VALUES (1, 'Q1', 0, 2)")
+    db.execute(
+        "INSERT INTO corrige (contenu) VALUES (?)",
+        (
+            "**Q1.** Démontrer ∀ x ∈ ℝ.\n\n"
+            "> **Explication :** Argument décisif.\n\n---\n",
+        ),
+    )
+    db.execute(
+        "INSERT INTO bareme (id, question, type_qcm, texte_question, points) VALUES (?, ?, ?, ?, ?)",
+        (1, "Q1", 0, "**Choisir** :\n\n- une option\n\n```cpp\nint x = 1;\n```", 2),
+    )
     db.execute(
         "INSERT INTO bareme (id, question, type_qcm, reponse_attendue, points) "
         "VALUES (2, 'Q2', 1, 'B', 1)"
@@ -58,7 +67,9 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
     assert captured["nom"] == "Éloi" and captured["prenom"] == "Anaïs"
     assert captured["note_globale"] == "2 / 3"
     assert captured["moyenne_promotion"] == "1.5 / 3"
-    assert captured["questions"][0]["corrige"].startswith("Démontrer ∀")
+    assert captured["note_sur_20"] == "13.33 / 20"
+    assert captured["moyenne_sur_20"] == "10.00 / 20"
+    assert "Démontrer" in captured["questions"][0]["corrige"]
     assert captured["questions"][0]["appreciation"] == "Bonne idée : ∀ x"
     assert captured["questions"][0]["crop_image_path"] == "question-1.png"
     assert captured["questions"][1]["crop_image_path"] == ""
@@ -66,6 +77,8 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
         text = "\n".join(page.get_text() for page in document)
         assert "Éloi" in text and "Anaïs" in text
         assert "Bonne idée" in text
+        assert "Choisir" in text and "une option" in text and "int x = 1;" in text
+        assert "Explication :" in text and "Argument décisif." in text
         assert "∀" in text
         assert any(page.get_images() for page in document)
         assert any(
@@ -73,6 +86,18 @@ def test_generate_student_pdf_with_unicode_and_crop(tmp_path, monkeypatch):
             for page in document
             for font in page.get_fonts()
         )
+
+
+def test_student_report_template_has_fallback_without_data():
+    """The template alone must render an explicit placeholder report."""
+    template = Path("correct_ai/templates/student_report.typ").resolve()
+
+    compiled = typst.compile(str(template), root=str(template.parent))
+
+    with pymupdf.open(stream=compiled, filetype="pdf") as document:
+        text = "\n".join(page.get_text() for page in document)
+    assert "Aucune donnée de rapport fournie" in text
+    assert "Non renseigné" in text
 
 
 def test_generate_student_pdf_rejects_unknown_copy(tmp_path):

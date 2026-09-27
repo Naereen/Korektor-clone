@@ -155,19 +155,19 @@
     }
     .review-question-grid.has-crop {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(190px, 38%);
-        gap: 16px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
     }
     .review-form, .review-crop { min-width: 0; }
     .review-crop {
         align-self: start;
-        position: sticky;
-        top: 62px;
+        position: static;
         padding: 12px;
         border: 1px solid #dee2e6;
         background: #f8faf9;
     }
     .review-crop img { display: block; max-width: 100%; max-height: 380px; object-fit: contain; margin: 0 auto; }
+    .review-crop a { display: block; }
     .review-crop img[hidden], .review-crop[hidden] { display: none; }
     .review-crop ul { padding-left: 1.2rem; overflow-wrap: anywhere; }
     @media (max-width: 1200px) {
@@ -248,6 +248,17 @@
             </div>
 
             <div id="review-question-grid" class="review-question-grid">
+                <aside id="crop-preview" class="review-crop" aria-label="Extrait manuscrit annoté" hidden>
+                    <div class="fw-semibold small mb-2">Extrait manuscrit annoté</div>
+                    <a id="crop-image-link" target="_blank" rel="noopener" title="Ouvrir l'extrait en taille réelle" hidden>
+                        <img id="crop-image" alt="" hidden>
+                    </a>
+                    <div id="crop-image-status" class="small text-muted"></div>
+                    <div id="crop-zones-wrapper" hidden>
+                        <div class="fw-semibold small mt-3">Zones d'erreur détectées</div>
+                        <ul id="crop-zones" class="small mb-0 mt-1"></ul>
+                    </div>
+                </aside>
                 <div class="review-form">
             <!-- Correction Data from DB - 5 Clear Sections -->
 
@@ -304,15 +315,6 @@
                 </div>
             </div>
                 </div>
-                <aside id="crop-preview" class="review-crop" aria-label="Extrait manuscrit annoté" hidden>
-                    <div class="fw-semibold small mb-2">Extrait manuscrit annoté</div>
-                    <img id="crop-image" alt="" hidden>
-                    <div id="crop-image-status" class="small text-muted"></div>
-                    <div id="crop-zones-wrapper" hidden>
-                        <div class="fw-semibold small mt-3">Zones d'erreur détectées</div>
-                        <ul id="crop-zones" class="small mb-0 mt-1"></ul>
-                    </div>
-                </aside>
             </div>
 
         </div>
@@ -353,6 +355,7 @@
     const studentProgressBar = document.getElementById('student-progress-bar');
     const cropPreview = document.getElementById('crop-preview');
     const cropImage = document.getElementById('crop-image');
+    const cropImageLink = document.getElementById('crop-image-link');
     const cropImageStatus = document.getElementById('crop-image-status');
     const cropZonesWrapper = document.getElementById('crop-zones-wrapper');
     const cropZones = document.getElementById('crop-zones');
@@ -765,10 +768,13 @@
         });
         cropZonesWrapper.hidden = cropZones.childElementCount === 0;
         cropImage.hidden = !hasImage;
+        cropImageLink.hidden = !hasImage;
         cropImageStatus.textContent = hasImage ? '' : (boxes.length ? 'Extrait indisponible.' : '');
         cropImage.removeAttribute('src');
         if (hasImage) {
             const url = `/api/corrections/${row.id}/crop`;
+            cropImageLink.href = url;
+            cropImageLink.setAttribute('aria-label', `Ouvrir l'extrait annoté pour ${questionId} en taille réelle`);
             cropImage.alt = `Extrait annoté pour ${questionId}`;
             cropImage.onerror = () => {
                 if (cropImage.src.endsWith(url)) {

@@ -67,8 +67,12 @@ from correct_ai.prompt_builder import build_incremental_prompt, estimate_prompt_
 CORRECTION_SYSTEM_PROMPT = (
     "Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière "
     "MP2I en France. Note selon le barème et maintiens l'uniformité. Pour chaque "
-    "question, renseigne bounding_boxes avec les erreurs localisées sur les images "
-    "des pages, ou [] si aucune zone n'est identifiable. Chaque boîte JSON a "
+    "question, renseigne bounding_boxes en entourant l'encre manuscrite réellement "
+    "visible pour la réponse sur les images des pages, ou [] si aucune zone n'est "
+    "identifiable. N'indique pas une bande étroite ou une position déduite du seul "
+    "texte OCR ; vérifie que la boîte couvre l'écriture et laisse une marge lisible "
+    "(au moins 80 unités normalisées en hauteur pour une réponse sur une ligne). "
+    "Chaque boîte JSON a "
     "box_2d=[ymin, xmin, ymax, xmax] en entiers normalisés de 0 à 1000 et "
     "label ; indique page (à partir de 1) pour les PDF multipages."
 )
@@ -162,7 +166,8 @@ def _fit_previous_corrections_to_prompt(
     current_extraction: str,
 ) -> List[Dict[str, Any]]:
     """Keep complete recent copies while staying within the prompt budget."""
-    max_tokens = int(os.getenv("KOREKTOR_MAX_PROMPT_TOKENS", "22000"))
+    # https://www.ilaas.fr/liste-des-modeles-llms/
+    max_tokens = int(os.getenv("KOREKTOR_MAX_PROMPT_TOKENS", "200000"))
     selected: List[Dict[str, Any]] = []
     copy_ids = list(dict.fromkeys(corr["copie_id"] for corr in previous_corrections))
 

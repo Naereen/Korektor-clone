@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,31 @@ def _sections(content: str, pattern: re.Pattern[str]) -> dict[str, str]:
 def _score(value: Any, total: float) -> str:
     """Format a score against the complete rubric without rounding away points."""
     return f"{float(value):g} / {total:g}" if value is not None else "Non notée"
+
+
+def _score_out_of_20(value: Any, total: float) -> str:
+    """Normalize a score to 20 while preserving unavailable grades."""
+    if value is None or total <= 0:
+        return "Non disponible"
+    return f"{float(value) / total * 20:.2f} / 20"
+
+
+def _markdown_to_typst(content: str) -> str:
+    """Convert trusted project Markdown to Typst markup with Pandoc."""
+    try:
+        result = subprocess.run(
+            ["pandoc", "--from=markdown", "--to=typst"],
+            input=content,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except FileNotFoundError as error:
+        raise RuntimeError("Pandoc est requis pour convertir le Markdown du rapport") from error
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.strip() or "erreur inconnue"
+        raise RuntimeError(f"Conversion Markdown vers Typst impossible : {detail}") from error
+    return result.stdout.strip()
 
 
 def _image_path(project_dir: Path, crop_path: str | None, work_dir: Path, index: int) -> str:
@@ -116,12 +142,16 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
             questions.append(
                 {
                     "titre": row["question"],
-                    "enonce": row["texte_question"]
-                    or subject_sections.get(row["question"])
-                    or "Énoncé indisponible.",
-                    "corrige": answer_sections.get(row["question"])
-                    or row["reponse_attendue"]
-                    or "Corrigé indisponible.",
+                    "enonce": _markdown_to_typst(
+                        row["texte_question"]
+                        or subject_sections.get(row["question"])
+                        or "Énoncé indisponible."
+                    ),
+                    "corrige": _markdown_to_typst(
+                        answer_sections.get(row["question"])
+                        or row["reponse_attendue"]
+                        or "Corrigé indisponible."
+                    ),
                     "appreciation": comment or "Aucune appréciation.",
                     "note": _score(grade, float(row["points"])),
                     "crop_image_path": _image_path(
@@ -138,6 +168,10 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
             "moyenne_promotion": (
                 _score(sum(averages) / len(averages), max_points) if averages else "Non disponible"
             ),
+            "note_sur_20": _score_out_of_20(total_score, max_points),
+            "moyenne_sur_20": _score_out_of_20(
+                sum(averages) / len(averages) if averages else None, max_points
+            ),
             "titre": next(
                 (
                     line.lstrip("# ").strip()
@@ -148,9 +182,14 @@ def generate_student_pdf(copie_id: int, db_path: str, output_pdf_path: str) -> s
             ),
             "questions": questions,
         }
-        (work_dir / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        serialized_data = json.dumps(data, ensure_ascii=False)
+        (work_dir / "data.json").write_text(serialized_data, encoding="utf-8")
         try:
-            compiled_pdf = typst.compile(str(work_dir / TEMPLATE_PATH.name), root=str(work_dir))
+            compiled_pdf = typst.compile(
+                str(work_dir / TEMPLATE_PATH.name),
+                root=str(work_dir),
+                sys_inputs={"report-data-path": "data.json"},
+            )
         except typst.TypstError as error:
             raise RuntimeError(f"Compilation Typst impossible : {error}") from error
 
