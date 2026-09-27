@@ -89,6 +89,7 @@
             <li><a href="#installation">Installation</a></li>
             <li><a href="#utilisation">Utilisation</a></li>
             <li><a href="#donnees">Structure des données</a></li>
+            <li><a href="#livret">Livret PDF individuel (Typst)</a></li>
             <li><a href="#api">Configuration de l'API et des points de terminaison</a></li>
             <li><a href="#cli">Commandes CLI</a></li>
             <li><a href="#ocr">Vérification OCR</a></li>
@@ -100,10 +101,12 @@
         <ol>
             <li><strong>Numérisation et import</strong> : import direct de scans A4 ou découpage intelligent de scans A3 vers A4, avec nombre de pages par copie configurable, puis regroupement par étudiant.</li>
             <li><strong>Structuration du sujet</strong> : analyse du sujet et du corrigé pour générer un barème structuré avec questions, réponses attendues et points.</li>
+            <li><strong>Vérif Barème</strong> : relecture et modification du barème CSV avant le découpage et la correction.</li>
             <li><strong>Extraction OCR</strong> : transcription du contenu manuscrit en Markdown avec structuration assistée par LLM.</li>
             <li><strong>Correction IA</strong> : notation assistée avec notes, commentaires, raisonnement et contexte des copies précédentes.</li>
             <li><strong>Vérification professeur</strong> : relecture des copies, ajustement des notes et validation des corrections.</li>
             <li><strong>Bilan</strong> : suivi des copies corrigées, des notes brutes, des notes reconverties sur 20 et visualisations exportables en PNG.</li>
+            <li><strong>Livret individuel</strong> : génération d'un PDF A4 avec notes, corrigé, appréciations et extraits annotés de la copie lorsqu'ils existent.</li>
         </ol>
     </section>
 
@@ -134,13 +137,15 @@ uv run python correct_ai/app.py</code></pre>
         <ul>
             <li>Le dossier de travail par défaut est <code>./exemple</code>.</li>
             <li>Le dossier actif peut être changé depuis l'onglet <strong>Import</strong>.</li>
+            <li>Les dossiers validés sont conservés dans ce navigateur : Double-cliquez dans le champ ou appuyez sur la flèche vers le bas pour retrouver les chemins récents. La saisie manuelle et le sélecteur de dossier restent disponibles.</li>
             <li>Les fichiers principaux sont <code>sujet.md</code>, <code>corrige.md</code> et <code>liste-etudiants.csv</code>.</li>
-            <li><code>bareme.csv</code> est généré depuis l'onglet Import et peut être vérifié ou modifié avant son chargement en base.</li>
+            <li><code>bareme.csv</code> est généré depuis l'onglet Import. L'onglet <strong>Vérif Barème</strong> permet de le relire et de le modifier, y compris pour les réponses sur plusieurs lignes. Les changements enregistrés sont aussi reportés dans <code>korektor.db</code> si cette base existe déjà.</li>
         </ul>
 
         <h3>Parcours recommandé</h3>
         <ol>
             <li><strong>Import</strong> : sélectionner le projet, vérifier les fichiers, générer le barème et importer le PDF. Conserver l'option <strong>PDF déjà en A4</strong> pour un scan A4 ; la décocher pour découper des feuilles A3. Indiquer aussi le nombre de pages A4 par copie : la valeur proposée est 2 en import A4 et 4 en mode livret.</li>
+            <li><strong>Vérif Barème</strong> : rechercher et filtrer les questions, modifier leur type, leurs points et leurs réponses dans l'éditeur CodeMirror. Ajouter ou réordonner les questions puis enregistrer avant le découpage. Une question déjà corrigée ne peut pas être supprimée.</li>
             <li><strong>Découpage</strong> : valider les débuts de copie et l'identification des étudiants. La taille choisie à l'import détermine les aperçus affichés et le nombre de pages incluses dans chaque PDF individuel.</li>
             <li><strong>OCR</strong> : lancer l'extraction sur une plage de copies. La case <strong>Forcer</strong> permet de recalculer les extractions existantes.</li>
             <li><strong>Vérif OCR</strong> : relire et corriger le texte page par page dans l'éditeur CodeMirror Markdown, avec numéros de ligne.</li>
@@ -148,7 +153,7 @@ uv run python correct_ai/app.py</code></pre>
             <li><strong>Vérif Correction</strong> : contrôler les réponses, les commentaires, le raisonnement et les notes.</li>
             <li><strong>Bilan</strong> : consulter l'état global, les notes, les copies incomplètes et les graphiques de l'évaluation.</li>
         </ol>
-        <p>Les étapes automatiques enchaînent directement sur la suivante après un succès : Import vers Découpage, Découpage vers OCR, OCR vers Vérif OCR, puis Correction vers Vérif Correction. Les deux pages de relecture disposent d'un bouton <strong>Terminer et continuer</strong> qui sauvegarde avant d'avancer. Le Bilan contient un accès direct aux Rapports. En cas d'annulation ou d'erreur, la page courante est conservée afin de consulter les journaux ou de reprendre le travail.</p>
+        <p>Les étapes automatiques enchaînent directement sur la suivante après un succès : Import vers Vérif Barème, Vérif Barème vers Découpage après enregistrement, Découpage vers OCR, OCR vers Vérif OCR, puis Correction vers Vérif Correction. Les pages de relecture proposent une action explicite pour sauvegarder avant d'avancer. Le Bilan contient un accès direct aux Rapports. En cas d'annulation ou d'erreur, la page courante est conservée afin de consulter les journaux ou de reprendre le travail.</p>
 
         <h3>Graphiques du bilan</h3>
         <p>La page <strong>Bilan</strong> affiche les visualisations suivantes :</p>
@@ -171,10 +176,11 @@ uv run python correct_ai/app.py</code></pre>
             <li><code>corrige</code> : corrigé officiel.</li>
             <li><code>bareme</code> : questions, types, réponses attendues et points.</li>
             <li><code>copies</code> : métadonnées, PDF, extraction OCR et état de vérification.</li>
-            <li><code>corrections</code> : notes LLM, notes professeur, commentaires, raisonnement et champs QCM.</li>
+            <li><code>corrections</code> : notes LLM, notes professeur, commentaires, raisonnement et champs QCM, ainsi que <code>crop_image_path</code> et <code>bounding_boxes</code> pour les annotations spatiales.</li>
             <li><code>stats</code> : statistiques de traitement disponibles pour les extensions futures.</li>
         </ul>
         <p>Une note professeur validée est prioritaire sur la note LLM dans l'interface et dans le bilan.</p>
+        <p>Les zones annotées sont enregistrées en JSON sous la forme <code>[{"box_2d": [ymin, xmin, ymax, xmax], "label": "Erreur", "page": 2}]</code>. Les coordonnées entières vont de 0 à 1000 sur chaque page ; le numéro de page commence à 1 et est nécessaire pour recadrer un PDF multipage. La première zone exploitable de chaque question peut produire un PNG dans <code>cropped_questions/</code>. Si le PDF manque ou que la page ne peut pas être identifiée, les boîtes restent enregistrées sans chemin d'image.</p>
 
         <h3>Fichiers d'une copie</h3>
         <p>Dans <code>copies_anonymes_validees/Copie_01/</code>, l'application conserve notamment :</p>
@@ -185,6 +191,20 @@ uv run python correct_ai/app.py</code></pre>
             <li><code>correction.csv</code> ou les données SQLite : résultat de correction selon le workflow utilisé.</li>
         </ul>
         <p>Le fichier <code>.korektor_split.json</code>, placé à la racine du projet, mémorise le nombre de pages A4 par copie choisi lors du dernier import. Pour assurer la compatibilité, un projet qui ne possède pas encore ce fichier utilise 4 pages par copie.</p>
+    </section>
+
+    <section id="livret" class="documentation-section">
+        <h2>Livret PDF individuel (Typst)</h2>
+        <p>Le module <code>correct_ai.pdf_builder</code> génère un livret A4 par étudiant depuis <code>korektor.db</code> : nom, prénom, note globale, moyenne des copies notées, énoncé et corrigé par question, appréciation et, si disponible, recadrage du scan avec ses annotations rouges. Les notes validées par le professeur priment sur celles de l'IA.</p>
+        <p>La bibliothèque Python <code>typst</code> compile directement le PDF, sans exécutable Typst séparé. Les caractères Unicode et les notations mathématiques sont affichés comme du texte, sans interprétation du contenu comme code Typst.</p>
+        <pre><code>from correct_ai.pdf_builder import generate_student_pdf
+
+generate_student_pdf(
+    copie_id=1,
+    db_path="exemple/korektor.db",
+    output_pdf_path="rapports_pdf/Copie_01.pdf",
+)</code></pre>
+        <p>Un chemin de sortie relatif est résolu depuis le dossier du projet. Le JSON et les images utilisés pour la compilation sont temporaires et supprimés une fois le PDF généré.</p>
     </section>
 
     <section id="api" class="documentation-section">

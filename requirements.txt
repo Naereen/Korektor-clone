@@ -7,6 +7,7 @@ tiktoken
 pandocfilters
 matplotlib
 Pillow
+typst>=0.15,<0.16
 pytest
 black
 isort

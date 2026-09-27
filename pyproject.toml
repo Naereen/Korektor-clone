@@ -13,6 +13,7 @@ dependencies = [
     "tiktoken",
     "matplotlib",
     "pillow",
+    "typst>=0.15,<0.16",
 ]
 
 [dependency-groups]

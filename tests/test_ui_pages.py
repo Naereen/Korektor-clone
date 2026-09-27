@@ -142,6 +142,19 @@ class TestDocumentationPage:
         assert "Structure des données" in content
         assert "Commandes CLI" in content
 
+    def test_page_covers_recent_readme_features(self, client):
+        """The in-app guide includes the rubric, crop data, and Typst booklet."""
+        content = client.get("/documentation").data.decode("utf-8")
+        assert "Vérif Barème" in content
+        assert "Import vers Vérif Barème" in content
+        assert "Double-cliquez" in content
+        assert "bounding_boxes" in content
+        assert "crop_image_path" in content
+        assert "Livret PDF individuel (Typst)" in content
+        assert "correct_ai.pdf_builder" in content
+        assert "generate_student_pdf" in content
+        assert "rapports_pdf/Copie_01.pdf" in content
+
     def test_navigation_contains_documentation_after_bilan(self, client):
         """Ensure Documentation appears after Bilan in the shared navigation."""
         content = client.get("/documentation").data.decode("utf-8")

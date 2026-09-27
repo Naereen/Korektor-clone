@@ -82,6 +82,22 @@ Le système conserve aussi :
 *   `page<xx>.md` : Chaque page du scan est sauvegardée séparément pour faciliter la vérification.
 *   `.korektor_split.json` : Le nombre de pages A4 par copie retenu lors du dernier import du projet. Les anciens projets sans ce fichier utilisent 4 pages par copie.
 
+### Livret PDF individuel (Typst)
+
+Le module `correct_ai.pdf_builder` génère un livret A4 par copie à partir de la base SQLite. Il affiche les notes validées par le professeur en priorité, la moyenne des copies notées, le corrigé par question et, si disponible, le recadrage annoté du scan. Les réponses et appréciations Unicode sont intégrées comme texte, sans être interprétées comme du code Typst. La dépendance Python `typst` compile le rapport directement : aucun exécutable Typst séparé n'est requis.
+
+```python
+from correct_ai.pdf_builder import generate_student_pdf
+
+generate_student_pdf(
+  copie_id=1,
+  db_path="exemple/korektor.db",
+  output_pdf_path="rapports_pdf/Copie_01.pdf",
+)
+```
+
+Le chemin de sortie relatif est résolu à partir du dossier du projet. Les fichiers JSON et les images nécessaires à la compilation sont temporaires et supprimés après génération.
+
 ## Configuration API
 
 Les clés API pour les LLM (Mistral, OpenAI, etc.) doivent être définies dans vos variables d'environnement ou configurées via la classe `ProviderConfig` dans `correct_ai/llm_providers.py`. Par défaut , le provider utilisé est `UNISTRA_QWEN` (Qwen3) avec `thinking=True`. Pour utiliser un autre LLM, comme Mistral, définissez la variable d'environnement suivante :
