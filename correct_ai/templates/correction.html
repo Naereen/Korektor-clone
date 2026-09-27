@@ -237,6 +237,9 @@ async function updateStatus() {
             document.getElementById('jobInfo').innerHTML = data.progress >= 100 ?
                 '<span class="text-success"><i class="bi bi-check-circle"></i> Correction terminée</span>' : '';
             if (advanceWhenComplete && data.progress >= 100 && data.action === 'Terminé') {
+                // copyConsoleOutput();
+                // sleep for 10 seconds then redirect
+                await new Promise(resolve => setTimeout(resolve, 10000));
                 window.location.href = '/verify';
             }
         }
