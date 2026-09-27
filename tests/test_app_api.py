@@ -44,6 +44,24 @@ def test_favicon_is_served(project_client):
     assert response.content_type == "image/png"
 
 
+def test_footer_formats_commit_timestamp_and_preserves_copyright_year(project_client, monkeypatch):
+    """The footer displays the commit time without changing the copyright year."""
+    client, _ = project_client
+
+    def fake_run(command, **kwargs):
+        output = (
+            "abc123\x1fMessage\x1f2024-02-03T09:07:00+0100"
+            if command[1] == "log"
+            else "git@github.com:Naereen/Korektor-clone.git"
+        )
+        return type("Result", (), {"stdout": output})()
+
+    monkeypatch.setattr(app_module.subprocess, "run", fake_run)
+    content = client.get("/documentation").get_data(as_text=True)
+    assert "À 09:07 le 03 / 02 / 2024" in content
+    assert "© 2024" in content
+
+
 def test_settings_get_and_post(project_client):
     """Settings should reject invalid paths and accept existing directories."""
     client, project = project_client

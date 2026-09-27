@@ -179,12 +179,13 @@ def get_repository_context():
         "commit_short": "inconnu",
         "commit_message": "Version locale",
         "commit_date": "",
+        "commit_year": "2026",
         "commit_url": None,
         "repository_url": "https://github.com/Naereen/Korektor-clone",
     }
     try:
         commit = subprocess.run(
-            ["git", "log", "-1", "--format=%h%x1f%s%x1f%ad", "--date=short"],
+            ["git", "log", "-1", "--format=%h%x1f%s%x1f%ad", "--date=iso-strict"],
             cwd=APP_ROOT,
             capture_output=True,
             text=True,
@@ -205,11 +206,13 @@ def get_repository_context():
         if repository_url.endswith(".git"):
             repository_url = repository_url[:-4]
         if len(commit) == 3 and "github.com/" in repository_url:
+            commit_timestamp = datetime.fromisoformat(commit[2])
             fallback.update(
                 {
                     "commit_short": commit[0],
                     "commit_message": commit[1],
-                    "commit_date": commit[2],
+                    "commit_date": commit_timestamp.strftime("À %H:%M le %d / %m / %Y"),
+                    "commit_year": str(commit_timestamp.year),
                     "commit_url": f"{repository_url}/commit/{commit[0]}",
                     "repository_url": repository_url,
                 }
