@@ -414,6 +414,21 @@
         nextQuestionBtn.disabled = (idx >= len - 1);
     }
 
+    function scrollPdfToQuestion(row) {
+        if (!pdfViewer || !currentCopy) return;
+
+        const boxes = Array.isArray(row?.bounding_boxes) ? row.bounding_boxes : [];
+        const page = boxes.find(box => Number.isInteger(box?.page) && box.page > 0)?.page;
+        if (!page) return;
+
+        const pdfUrl = new URL(pdfViewer.src, window.location.href);
+        const pageFragment = `page=${page}`;
+        if (pdfUrl.hash === `#${pageFragment}`) return;
+
+        pdfUrl.hash = pageFragment;
+        pdfViewer.src = pdfUrl.toString();
+    }
+
     async function loadBareme() {
         try {
             const url = USE_DB ? '/api/db/bareme' : '/api/bareme';
@@ -707,6 +722,7 @@
         // --- Correction Data ---
         let row = currentCorrectionData.find(r => r.question === qId);
         const meta = currentBareme.find(r => r.question === qId);
+        scrollPdfToQuestion(row);
         showCropPreview(row, qId);
         if (!row) row = {};
 

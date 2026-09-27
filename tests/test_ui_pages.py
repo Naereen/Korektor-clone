@@ -149,6 +149,15 @@ class TestVerifyCorrectionPage:
         assert "/api/corrections/${row.id}/crop" in content
         assert "/api/copies/${currentCopy}/pdf" in content
 
+    def test_question_selection_navigates_pdf_to_annotated_page(self, client):
+        """Selecting a question navigates the PDF viewer to its bounding-box page."""
+        content = client.get("/verify").data.decode("utf-8")
+
+        assert "function scrollPdfToQuestion(row)" in content
+        assert "row?.bounding_boxes" in content
+        assert "page=${page}" in content
+        assert "scrollPdfToQuestion(row);" in content
+
 
 class TestDocumentationPage:
     """Verify the in-application documentation route and navigation entry."""
