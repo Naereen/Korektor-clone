@@ -279,11 +279,11 @@ def extract_copy(
             # Retry loop with JSON validation
             transcription = ""
             page_status = "success"
-            max_retries = 1
-            logger.info(f"  Page {page_num}: Starting extraction (max {max_retries} retry)")
-            for attempt in range(max_retries):
+            max_attempts = 4
+            logger.info(f"  Page {page_num}: Starting extraction (max {max_attempts} attempts)")
+            for attempt in range(max_attempts):
                 try:
-                    logger.info(f"  Page {page_num}: Attempt {attempt+1}/{max_retries}")
+                    logger.info(f"  Page {page_num}: Attempt {attempt+1}/{max_attempts}")
 
                     # Construire user_content avec éventuellement la page 1 comme référence
                     user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt_text}]
@@ -330,7 +330,7 @@ def extract_copy(
                             provider.url,
                             json=payload,
                             headers=headers,
-                            timeout=600,
+                            timeout=30,
                             verify=provider.verify_ssl,
                         )
                     finally:
@@ -343,6 +343,7 @@ def extract_copy(
                     transcription = extract_markdown(response)
 
                     if transcription is not None:
+                        page_status = "success"
                         logger.info(f"  Page {page_num}: ✓ Extraction successful")
                         break
 

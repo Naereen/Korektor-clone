@@ -229,7 +229,7 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
 2. Si l'étudiant n'a pas répondu, laisse les valeurs par défaut et explique dans le raisonnement ce qui était attendu.
 3. Le commentaire doit être pas trop long (il sera donné tel quel à l'étudiant), et les équations de maths seront entourées de $ ... $. Le raisonnement doit être plus détaillé que le commentaire (il sera uniquement lu par le professeur).
 4. NE SUPPRIME AUCUNE CLÉ du template.
-5. Pour chaque question, fournis "bounding_boxes": [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Description synthétique de l'erreur ou remarque"}], avec des coordonnées entières normalisées entre 0 et 1000 par rapport à l'image de la page. Utilise [] si aucune zone n'est identifiable et ajoute "page": 1 dans chaque boîte pour une copie multipage.
+5. Pour chaque question, fournis "bounding_boxes": [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Description synthétique de l'erreur ou remarque"}], avec des coordonnées entières normalisées entre 0 et 1000 par rapport à l'image de la page. Utilise [] si aucune zone n'est identifiable et ajoute "page": XXX, dans chaque boîte pour une copie multipage.
 """
 
     return prompt

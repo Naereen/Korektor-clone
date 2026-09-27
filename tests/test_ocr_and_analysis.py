@@ -73,7 +73,10 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
     assert (copy_dir / "page01.md").read_text(encoding="utf-8") == "new"
     assert "new" in (copy_dir / "extraction.md").read_text(encoding="utf-8")
 
+    timeout_calls = []
+
     def timeout(*args, **kwargs):
+        timeout_calls.append(kwargs["timeout"])
         raise batch_extraction.requests.exceptions.Timeout("LLM timed out")
 
     monkeypatch.setattr(batch_extraction.requests, "post", timeout)
@@ -81,7 +84,28 @@ def test_extract_copy_recalculates_pages_when_forced(monkeypatch, tmp_path):
     batch_extraction.extract_copy(
         1, str(tmp_path), force=True, inference_callback=inference_events.append
     )
-    assert inference_events == [True, False]
+    assert timeout_calls == [30, 30, 30, 30]
+    assert inference_events == [True, False] * 4
+
+    recovery_calls = []
+
+    def recover_on_second_attempt(*args, **kwargs):
+        recovery_calls.append(kwargs["timeout"])
+        if len(recovery_calls) == 1:
+            raise batch_extraction.requests.exceptions.Timeout("Temporary timeout")
+        return Response()
+
+    monkeypatch.setattr(batch_extraction.requests, "post", recover_on_second_attempt)
+    inference_events.clear()
+    assert batch_extraction.extract_copy(
+        1, str(tmp_path), force=True, inference_callback=inference_events.append
+    ) is True
+    assert recovery_calls == [30, 30]
+    assert inference_events == [True, False, True, False]
+    assert (copy_dir / "page01.md").read_text(encoding="utf-8") == "new"
+    assert "ÉCHEC D'EXTRACTION" not in (copy_dir / "extraction.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_extract_copy_stops_before_processing(tmp_path):
