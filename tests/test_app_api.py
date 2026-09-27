@@ -58,7 +58,7 @@ def test_footer_formats_commit_timestamp_and_preserves_copyright_year(project_cl
 
     monkeypatch.setattr(app_module.subprocess, "run", fake_run)
     content = client.get("/documentation").get_data(as_text=True)
-    assert "À 09:07 le 03 / 02 / 2024" in content
+    assert "À 09:07 le 03/02/2024" in content
     assert "© 2024" in content
 
 

@@ -523,7 +523,7 @@ function checkLatexErrors() {
     if (dollars % 2 !== 0) issues.push('Nombre impair de $ - verifier les formules LaTeX');
     // Check for unescaped backslashes that might cause issues
     const singleBackslash = (text.match(/(?<!\\)\\(?!["\\{}()[\]])/g) || []).length;
-    if (singleBackslash > 0) issues.push('Backslashs non echappes detectes');
+    if (singleBackslash > 0) issues.push('Backslashs non échappés détectés !');
 
     latexErrors.innerHTML = issues.map(i => '<div>' + i + '</div>').join('');
     latexErrors.classList.toggle('has-errors', issues.length > 0);

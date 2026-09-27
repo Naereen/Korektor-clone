@@ -211,7 +211,7 @@ def get_repository_context():
                 {
                     "commit_short": commit[0],
                     "commit_message": commit[1],
-                    "commit_date": commit_timestamp.strftime("À %H:%M le %d / %m / %Y"),
+                    "commit_date": commit_timestamp.strftime("À %H:%M le %d/%m/%Y"),
                     "commit_year": str(commit_timestamp.year),
                     "commit_url": f"{repository_url}/commit/{commit[0]}",
                     "repository_url": repository_url,
