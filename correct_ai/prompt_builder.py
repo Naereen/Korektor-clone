@@ -39,6 +39,7 @@ def _qwen_output_template(bareme: List[Dict[str, Any]]) -> str:
                 "num_question": _output_question_number(question["question"]),
                 "note": 0.0,
                 "bareme": float(question["points"]),
+                "reponse_etudiant": "",
                 "commentaire": "Non répondu.",
                 "page": None,
                 "bbox_2d": None,
@@ -134,7 +135,7 @@ def build_incremental_prompt(
 ---
 
 Complète EXACTEMENT le template JSON ci-dessous. Tu ne dois NI supprimer NI ajouter de clés.
-Remplace uniquement les valeurs de note, commentaire, page et bbox_2d.
+Remplace uniquement les valeurs de note, reponse_etudiant, commentaire, page et bbox_2d.
 
 ```json
 """
@@ -145,13 +146,14 @@ Remplace uniquement les valeurs de note, commentaire, page et bbox_2d.
 ---
 # INSTRUCTIONS STRICTES:
 1. Pour CHAQUE entrée de questions, remplace les valeurs par défaut par ta correction réelle.
-2. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
-3. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
-4. Le commentaire doit être assez détaillé pour l'étudiant, et les équations de maths seront entourées de $ ... $.
-5. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu.", page=null et bbox_2d=null.
-6. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
-7. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
-8. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse, y compris les codes (réponse contenant de la programmation), et le numéro de question avant (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
+2. Transcris fidèlement dans reponse_etudiant la réponse manuscrite de l'étudiant; si aucune réponse n'est visible, utilise une chaîne vide.
+3. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
+4. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
+5. Le commentaire doit être assez détaillé pour l'étudiant, et les équations de maths seront entourées de $ ... $.
+6. Si l'étudiant n'a pas répondu, conserve note=0.0, reponse_etudiant="", commentaire="Non répondu.", page=null et bbox_2d=null.
+7. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
+8. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
+9. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse, y compris les codes (réponse contenant de la programmation), et le numéro de question avant (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
 """
 
     return prompt

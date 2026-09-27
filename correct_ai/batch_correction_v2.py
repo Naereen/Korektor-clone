@@ -78,7 +78,9 @@ from correct_ai.prompt_builder import (
 CORRECTION_SYSTEM_PROMPT = (
     "Tu es un correcteur expert en informatique et en mathématiques, en CPGE filière "
     "MP2I en France. Note selon le barème et maintiens l'uniformité. Réponds avec un "
-    "unique objet JSON contenant la clé questions. Pour chaque question, indique le "
+    "unique objet JSON contenant la clé questions. Pour chaque question, transcris aussi "
+    "fidèlement la réponse manuscrite dans reponse_etudiant, ou une chaîne vide si elle "
+    "est absente. Indique le "
     "numéro de page du PDF à partir de 1, puis bbox_2d exactement sous la forme "
     "[xmin, ymin, xmax, ymax], en entiers normalisés de 0 à 1000 par rapport à cette "
     "page. La boîte doit entourer toute la réponse manuscrite. Utilise null pour page "
