@@ -45,12 +45,13 @@
 2.  **Configurer le projet** :
     *   L'application travaille par défaut dans le dossier `./exemple`.
     *   Le dossier de travail se change depuis l'onglet **Import** (champ "Dossier du projet").
-  *   Les dossiers validés sont mémorisés dans ce navigateur. Double-cliquez dans le champ ou appuyez sur ↓ pour retrouver les chemins récemment utilisés ; la saisie manuelle et le sélecteur de dossier restent disponibles.
+    *   Les dossiers validés sont mémorisés dans ce navigateur. Double-cliquez dans le champ ou appuyez sur ↓ pour retrouver les chemins récemment utilisés ; la saisie manuelle et le sélecteur de dossier restent disponibles.
     *   Fichiers requis : `sujet.md`, `corrige.md`, `liste-etudiants.csv`.
-    *   Le `bareme.csv` est **généré automatiquement** depuis l'onglet Import (via `subject_analysis.py`). Il sert de format intermédiaire : l'enseignant peut le vérifier et l'ajuster (Excel, tableur) avant qu'il soit chargé dans la base `korektor.db` pour la correction.
+    *   Le `bareme.csv` est **généré automatiquement** depuis l'onglet Import (via `subject_analysis.py`). L'onglet **Vérif Barème** permet de contrôler et modifier chaque question, y compris les réponses multilignes, avant la correction. Les changements enregistrés sont aussi reportés dans `korektor.db` si la base existe déjà.
 
 3.  **Procédure** :
     *   **Import** : Définissez le dossier projet, vérifiez la structure des fichiers, générez le barème, importez le PDF scanné et indiquez le nombre de pages A4 constituant une copie. La valeur proposée est 2 pour un PDF déjà en A4 et 4 pour un livret A3.
+    *   **Vérif Barème** : Recherchez, filtrez et modifiez les questions, leur type, leurs points et leurs réponses. Ajoutez ou réordonnez des questions, puis enregistrez avant de poursuivre vers Découpage. Une question déjà corrigée ne peut pas être supprimée.
     *   **Découpage** : Choisissez l'import direct A4 ou le découpage A3→A4, puis validez les débuts de copie et l'identification des étudiants. Le nombre de pages choisi à l'import détermine les aperçus et les PDF individuels générés.
     *   **OCR** : Lancez l'extraction OCR sur un lot de copies (bouton Annuler disponible).
     *   **Vérif OCR** : Relisez et corrigez le texte extrait page par page dans un éditeur CodeMirror Markdown avec numéros de ligne, puis contrôlez le rendu LaTeX dans l'aperçu.

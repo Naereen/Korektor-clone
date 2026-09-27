@@ -4,6 +4,7 @@ The Flask client is used to verify JSON API contracts for project discovery,
 directory selection, and generated rubric output without starting a server.
 """
 
+import csv
 import io
 import json
 import os
@@ -26,13 +27,16 @@ def client():
 
 
 @pytest.fixture
-def original_dir():
-    """Preserve and restore the application's configured project directory."""
+def original_dir(monkeypatch):
+    """Keep import tests from writing the real project selection to disk."""
     from app import config
 
     old = config.project_dir
+    old_name = config.project_name
+    monkeypatch.setattr(config, "save", lambda: None)
     yield old
     config.project_dir = old
+    config.project_name = old_name
 
 
 class TestImportPage:
@@ -214,13 +218,201 @@ class TestProjectSet:
         assert data["success"] is False
 
 
+class TestBaremeEditor:
+    def test_missing_rubric_points_back_to_import(self, client, original_dir, tmp_path):
+        """A new project shows a useful empty state before rubric generation."""
+        from app import config
+
+        config.project_dir = str(tmp_path)
+        response = client.get("/api/bareme/editor")
+        assert response.status_code == 404
+        assert "Import" in response.get_json()["error"]
+        page = client.get("/verify_bareme").data.decode("utf-8")
+        assert 'id="baremeEmpty"' in page
+        assert 'href="/import"' in page
+
+    def test_verification_page_is_between_import_and_split(self, client):
+        """The rubric editor is reachable in the intended workflow order."""
+        response = client.get("/verify_bareme")
+        assert response.status_code == 200
+        content = response.data.decode("utf-8")
+        assert content.index('href="/import"') < content.index('href="/verify_bareme"')
+        assert content.index('href="/verify_bareme"') < content.index('href="/split"')
+        assert 'id="baremeList"' in content
+        assert 'id="saveBareme"' in content
+
+    def test_expected_answer_uses_multiline_codemirror(self, client):
+        """The answer editor uses the OCR page's CodeMirror and a tall fallback."""
+        content = client.get("/verify_bareme").data.decode("utf-8")
+        assert 'id="answerField"' in content
+        assert 'rows="10"' in content
+        assert "CodeMirror.fromTextArea(answerField" in content
+        assert "answerEditor.on('change'" in content
+        assert ".rubric-detail .CodeMirror { height: 18rem;" in content
+
+    def test_import_leads_to_rubric_verification(self, client):
+        """Generation and successful PDF import point to rubric review."""
+        content = client.get("/import").data.decode("utf-8")
+        assert 'id="reviewBaremeLink" href="/verify_bareme"' in content
+        assert "window.location.href = '/verify_bareme'" in content
+
+    def test_edit_preserves_columns_multiline_values_and_rejects_stale_save(
+        self, client, original_dir, tmp_path
+    ):
+        """The editor round-trips a real CSV and refuses concurrent overwrites."""
+        from app import config
+
+        config.project_dir = str(tmp_path)
+        path = tmp_path / "bareme.csv"
+        path.write_text(
+            "question,qcm (oui/non),réponse attendue,points,note,commentaires\n"
+            'Q22a,Non,"Ligne 1\ncode { return 2; }",2,,\n',
+            encoding="utf-8",
+        )
+
+        initial = client.get("/api/bareme/editor")
+        assert initial.status_code == 200
+        payload = initial.get_json()
+        assert payload["fields"] == [
+            "question",
+            "qcm (oui/non)",
+            "réponse attendue",
+            "points",
+            "note",
+            "commentaires",
+        ]
+        assert payload["rows"][0]["réponse attendue"] == "Ligne 1\ncode { return 2; }"
+        assert payload["revision"]
+
+        updated = payload["rows"]
+        updated[0]["réponse attendue"] += "\nConclusion"
+        updated[0]["points"] = "2.5"
+        saved = client.put(
+            "/api/bareme/editor",
+            json={"revision": payload["revision"], "fields": payload["fields"], "rows": updated},
+        )
+        assert saved.status_code == 200
+        assert saved.get_json()["revision"] != payload["revision"]
+        with path.open(newline="", encoding="utf-8") as file:
+            assert next(csv.DictReader(file))["réponse attendue"] == (
+                "Ligne 1\ncode { return 2; }\nConclusion"
+            )
+
+        stale = client.put(
+            "/api/bareme/editor",
+            json={"revision": payload["revision"], "fields": payload["fields"], "rows": updated},
+        )
+        assert stale.status_code == 409
+
+    def test_edit_updates_loaded_sqlite_rubric(self, client, original_dir, tmp_path):
+        """Editing CSV also updates a rubric already loaded for correction."""
+        from app import config
+        from database import get_db, init_db
+
+        config.project_dir = str(tmp_path)
+        path = tmp_path / "bareme.csv"
+        path.write_text(
+            "question,qcm (oui/non),réponse attendue,points\n" "Q1,Oui,A,1\nQ2,Non,Explication,2\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "sujet.md").write_text(
+            "Texte de Q1 (--Q1)\nTexte de Q2 (--Q2)\n", encoding="utf-8"
+        )
+        db = get_db(str(tmp_path))
+        init_db(db)
+        db.execute("INSERT INTO bareme (question, type_qcm, points) VALUES ('Q1', 0, 1)")
+        db.execute("INSERT INTO bareme (question, type_qcm, points) VALUES ('Q2', 0, 2)")
+        db.commit()
+
+        payload = client.get("/api/bareme/editor").get_json()
+        edited = [dict(payload["rows"][0], points="3.5")]
+        response = client.put(
+            "/api/bareme/editor",
+            json={"revision": payload["revision"], "fields": payload["fields"], "rows": edited},
+        )
+        assert response.status_code == 200
+        stored = db.execute(
+            "SELECT question, points, type_qcm, texte_question FROM bareme"
+        ).fetchall()
+        assert [tuple(row) for row in stored] == [("Q1", 3.5, 1, "Texte de Q1")]
+        db.close()
+
+    def test_edit_rejects_invalid_points_and_corrected_question_removal(
+        self, client, original_dir, tmp_path
+    ):
+        """Rejected edits leave the CSV and existing correction links unchanged."""
+        from app import config
+        from database import get_db, init_db
+
+        config.project_dir = str(tmp_path)
+        path = tmp_path / "bareme.csv"
+        original = "question,qcm (oui/non),réponse attendue,points\n" "Q1,Oui,A,1\nQ2,Non,Texte,2\n"
+        path.write_text(original, encoding="utf-8")
+        db = get_db(str(tmp_path))
+        init_db(db)
+        db.execute("INSERT INTO bareme (id, question, type_qcm, points) VALUES (1, 'Q1', 1, 1)")
+        db.execute(
+            "INSERT INTO corrections (copie_id, bareme_id, reponse_etudiant) VALUES (1, 1, 'A')"
+        )
+        db.commit()
+
+        payload = client.get("/api/bareme/editor").get_json()
+        invalid = [dict(payload["rows"][0], points="-1"), payload["rows"][1]]
+        assert (
+            client.put(
+                "/api/bareme/editor",
+                json={
+                    "revision": payload["revision"],
+                    "fields": payload["fields"],
+                    "rows": invalid,
+                },
+            ).status_code
+            == 400
+        )
+        assert (
+            client.put(
+                "/api/bareme/editor",
+                json={
+                    "revision": payload["revision"],
+                    "fields": payload["fields"],
+                    "rows": [payload["rows"][1]],
+                },
+            ).status_code
+            == 409
+        )
+        renamed = [dict(payload["rows"][0], question="q1"), payload["rows"][1]]
+        assert (
+            client.put(
+                "/api/bareme/editor",
+                json={
+                    "revision": payload["revision"],
+                    "fields": payload["fields"],
+                    "rows": renamed,
+                },
+            ).status_code
+            == 409
+        )
+        assert path.read_text(encoding="utf-8") == original
+        assert db.execute("SELECT COUNT(*) FROM corrections").fetchone()[0] == 1
+        db.close()
+
+
 class TestBaremeGenerate:
-    def test_generate_bareme(self, client, original_dir):
+    def test_generate_bareme(self, client, original_dir, tmp_path, monkeypatch):
         """Verify rubric generation returns the expected CSV fields."""
         from app import config
 
-        config.project_dir = os.path.join(PROJECT_ROOT, "exemple")
-        config.save()
+        config.project_dir = str(tmp_path)
+
+        def generate_in_temp_project(*args, **kwargs):
+            (tmp_path / "bareme.csv").write_text(
+                "question,qcm (oui/non),réponse attendue,points,note,commentaires\n"
+                'Q22a,Non,"Première ligne\nSeconde ligne",2,,\n',
+                encoding="utf-8",
+            )
+            return type("Result", (), {"returncode": 0, "stdout": "OK", "stderr": ""})()
+
+        monkeypatch.setattr("subprocess.run", generate_in_temp_project)
 
         resp = client.post("/api/bareme/generate")
         assert resp.status_code == 200
@@ -232,6 +424,7 @@ class TestBaremeGenerate:
         assert "question" in row
         assert "réponse attendue" in row
         assert "points" in row
+        assert row["réponse attendue"] == "Première ligne\nSeconde ligne"
 
     def test_generate_bareme_no_subject(self, client, original_dir):
         """Verify rubric generation reports a missing subject as an error."""

@@ -18,17 +18,21 @@ import base64
 import collections
 import copy
 import csv
+import hashlib
 import io
 import json
 import os
 import re
 import shutil
+import sqlite3
 import sys
+import tempfile
 import threading
 import time
 from collections import defaultdict
 from contextlib import closing
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 import pymupdf
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
@@ -290,6 +294,12 @@ def import_page():
     return render_template("import.html", active_page="import", current_dir=config.project_dir)
 
 
+@app.route("/verify_bareme")
+def verify_bareme_page():
+    """Render the file-backed rubric review and editing screen."""
+    return render_template("verify_bareme.html", active_page="verify_bareme")
+
+
 # --- API ROUTES: Project Management ---
 
 
@@ -429,6 +439,158 @@ def api_bareme_generate():
             )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+def read_bareme_editor(path):
+    """Read a rubric without flattening quoted multiline CSV fields."""
+    with open(path, "rb") as file:
+        raw = file.read()
+    reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""), strict=True)
+    fields = reader.fieldnames
+    if not fields or len(fields) != len(set(fields)) or "question" not in fields:
+        raise ValueError("En-têtes CSV absents, dupliqués ou sans colonne question")
+    rows = list(reader)
+    if any(None in row or any(value is None for value in row.values()) for row in rows):
+        raise ValueError("Le CSV contient des lignes dont le nombre de colonnes est incorrect")
+    return raw, fields, rows
+
+
+@app.route("/api/bareme/editor", methods=["GET", "PUT"])
+def api_bareme_editor():
+    """Expose the active project's CSV rubric with optimistic concurrency."""
+    path = config.get_path("bareme.csv")
+    try:
+        raw, fields, rows = read_bareme_editor(path)
+    except FileNotFoundError:
+        return jsonify({"error": "Aucun barème dans ce projet. Générez-le depuis Import."}), 404
+    except (OSError, UnicodeError, csv.Error, ValueError) as error:
+        return jsonify({"error": f"Impossible de lire le barème : {error}"}), 422
+
+    revision = hashlib.sha256(raw).hexdigest()
+    if request.method == "GET":
+        return jsonify({"fields": fields, "rows": rows, "revision": revision})
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get("revision") != revision:
+        return jsonify({"error": "Le barème a changé. Rechargez la page avant d'enregistrer."}), 409
+    incoming = data.get("rows")
+    if data.get("fields") != fields or not isinstance(incoming, list) or not incoming:
+        return jsonify({"error": "Colonnes modifiées ou liste de questions vide."}), 400
+
+    seen = set()
+    for number, row in enumerate(incoming, start=1):
+        if (
+            not isinstance(row, dict)
+            or set(row) != set(fields)
+            or any(not isinstance(value, str) for value in row.values())
+        ):
+            return (
+                jsonify({"error": f"La ligne {number} ne correspond pas aux colonnes du CSV."}),
+                400,
+            )
+        question = row["question"].strip()
+        if not question or question.casefold() in seen:
+            return (
+                jsonify({"error": f"Identifiant de question manquant ou répété (ligne {number})."}),
+                400,
+            )
+        seen.add(question.casefold())
+        if "points" in fields:
+            try:
+                points = Decimal(row["points"].strip())
+                if not points.is_finite() or points < 0:
+                    raise ValueError
+            except (InvalidOperation, ValueError):
+                return jsonify({"error": f"Points invalides pour {question}."}), 400
+        if "qcm (oui/non)" in fields and row["qcm (oui/non)"].strip().casefold() not in (
+            "oui",
+            "non",
+        ):
+            return jsonify({"error": f"QCM : utilisez Oui ou Non pour {question}."}), 400
+
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(
+        buffer, fieldnames=fields, lineterminator="\r\n" if b"\r\n" in raw else "\n"
+    )
+    writer.writeheader()
+    writer.writerows(incoming)
+    encoding = "utf-8-sig" if raw.startswith(b"\xef\xbb\xbf") else "utf-8"
+    temp_path = None
+    db = None
+    try:
+        if os.path.isfile(config.get_path("korektor.db")):
+            if not {"qcm (oui/non)", "réponse attendue", "points"}.issubset(fields):
+                return jsonify({"error": "Colonnes de correction manquantes dans le CSV."}), 400
+            db = get_db(config.project_dir)
+            db.execute("BEGIN IMMEDIATE")
+            old_questions = db.execute("SELECT id, question FROM bareme").fetchall()
+            new_questions = {row["question"].strip() for row in incoming}
+            removed = [entry for entry in old_questions if entry["question"] not in new_questions]
+            for entry in removed:
+                if db.execute(
+                    "SELECT 1 FROM corrections WHERE bareme_id = ? LIMIT 1", (entry["id"],)
+                ).fetchone():
+                    return (
+                        jsonify(
+                            {"error": f"La question {entry['question']} a déjà des corrections."}
+                        ),
+                        409,
+                    )
+
+            sujet = db.execute("SELECT contenu FROM sujet LIMIT 1").fetchone()
+            sujet_content = sujet[0] if sujet else ""
+            sujet_path = config.get_path("sujet.md")
+            if not sujet_content and os.path.isfile(sujet_path):
+                with open(sujet_path, encoding="utf-8") as file:
+                    sujet_content = file.read()
+            parts = re.split(r"\(--(Q[\w.\-]+)\)", sujet_content) if sujet_content else []
+            question_texts = {
+                parts[index + 1]: parts[index].strip() for index in range(0, len(parts) - 1, 2)
+            }
+            for entry in removed:
+                db.execute("DELETE FROM bareme WHERE id = ?", (entry["id"],))
+            for row in incoming:
+                db.execute(
+                    """INSERT INTO bareme
+                       (question, texte_question, type_qcm, reponse_attendue, points)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(question) DO UPDATE SET
+                         texte_question = COALESCE(NULLIF(excluded.texte_question, ''), bareme.texte_question),
+                         type_qcm = excluded.type_qcm,
+                         reponse_attendue = excluded.reponse_attendue,
+                         points = excluded.points""",
+                    (
+                        row["question"].strip(),
+                        question_texts.get(row["question"].strip(), ""),
+                        row["qcm (oui/non)"].strip().casefold() == "oui",
+                        row["réponse attendue"],
+                        row["points"].strip(),
+                    ),
+                )
+        with tempfile.NamedTemporaryFile(
+            dir=config.project_dir, prefix=".bareme-", delete=False
+        ) as file:
+            temp_path = file.name
+            file.write(buffer.getvalue().encode(encoding))
+        os.replace(temp_path, path)
+        if db:
+            db.commit()
+    except (OSError, sqlite3.Error) as error:
+        if db:
+            db.rollback()
+        return jsonify({"error": f"Écriture du barème impossible : {error}"}), 500
+    finally:
+        if db:
+            db.close()
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+    return jsonify(
+        {
+            "success": True,
+            "revision": hashlib.sha256(buffer.getvalue().encode(encoding)).hexdigest(),
+        }
+    )
 
 
 # --- UTILS: Student Loading ---

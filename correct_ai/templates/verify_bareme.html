@@ -1,0 +1,476 @@
+{% extends "layout.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<style>
+    .rubric-shell {
+        --rubric-ink: #243831;
+        --rubric-line: #d9e1dd;
+        --rubric-accent: #13785a;
+        color: var(--rubric-ink);
+        background: #fff;
+        border: 1px solid var(--rubric-line);
+        min-height: calc(100vh - 170px);
+    }
+
+    .rubric-header {
+        background: #f5f8f7;
+        border-bottom: 1px solid var(--rubric-line);
+        padding: 18px 24px;
+    }
+
+    .rubric-header h1 { font-size: 1.55rem; font-weight: 650; margin: 0; }
+    .rubric-file { color: #64756d; font-size: .82rem; }
+    .rubric-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .rubric-actions .btn { white-space: nowrap; }
+    .rubric-save { background: var(--rubric-accent); border-color: var(--rubric-accent); color: #fff; }
+    .rubric-save:hover, .rubric-save:focus { background: #0d5c45; border-color: #0d5c45; color: #fff; }
+    .rubric-save:disabled { background: #abc8bb; border-color: #abc8bb; color: #fff; }
+    .rubric-status { min-height: 0; font-size: .86rem; }
+    .rubric-status:not(:empty) { padding: 8px 24px; border-bottom: 1px solid var(--rubric-line); }
+    .rubric-status[data-tone="error"] { color: #a32129; background: #fff2f1; }
+    .rubric-status[data-tone="success"] { color: #13634a; background: #ebf8f1; }
+    .rubric-status[data-tone="info"] { color: #365067; background: #edf4f8; }
+
+    .rubric-metrics { display: flex; flex-wrap: wrap; gap: 20px; padding: 12px 24px; border-bottom: 1px solid var(--rubric-line); }
+    .rubric-metric { display: flex; align-items: baseline; gap: 7px; }
+    .rubric-metric strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+    .rubric-metric span { color: #64756d; font-size: .8rem; }
+    .rubric-workspace { display: grid; grid-template-columns: minmax(250px, 32%) minmax(0, 1fr); }
+    .rubric-workspace[hidden], .rubric-empty[hidden] { display: none; }
+    .rubric-sidebar { border-right: 1px solid var(--rubric-line); min-width: 0; }
+    .rubric-sidebar-tools { padding: 15px 16px 12px; border-bottom: 1px solid var(--rubric-line); }
+    .rubric-tabs { display: flex; gap: 4px; margin-top: 12px; }
+    .rubric-tabs .btn { flex: 1; padding: 5px 6px; font-size: .78rem; }
+    .rubric-tabs .btn.active { background: #e3f3ec; color: #0c674b; border-color: #8bbca5; }
+    .rubric-list { height: min(62vh, 730px); min-height: 300px; overflow-y: auto; }
+    .rubric-item { width: 100%; border: 0; border-bottom: 1px solid #e8edeb; border-left: 3px solid transparent; background: #fff; padding: 11px 16px; text-align: left; color: inherit; }
+    .rubric-item:hover { background: #f5f8f7; }
+    .rubric-item.active { background: #eaf5ef; border-left-color: var(--rubric-accent); }
+    .rubric-item-title { font-weight: 650; font-size: .91rem; }
+    .rubric-item-subtitle { color: #5d7168; font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rubric-type { font-size: .72rem; font-weight: 650; padding: 2px 6px; border-radius: 3px; }
+    .rubric-type.qcm { background: #f8eccb; color: #725412; }
+    .rubric-type.open { background: #e5eef7; color: #315c85; }
+    .rubric-sidebar-footer { border-top: 1px solid var(--rubric-line); padding: 12px 16px; }
+    .rubric-detail { padding: 22px clamp(18px, 3vw, 46px) 40px; min-width: 0; }
+    .rubric-detail { scroll-margin-top: 85px; }
+    .rubric-detail-header { border-bottom: 1px solid var(--rubric-line); padding-bottom: 15px; margin-bottom: 22px; }
+    .rubric-detail-header h2 { font-size: 1.2rem; font-weight: 650; margin: 0; }
+    .rubric-detail .form-label { font-weight: 600; font-size: .84rem; }
+    .rubric-answer { min-height: 18rem; resize: vertical; white-space: pre-wrap; font-size: .85rem; line-height: 1.55; background: #f8faf9; }
+    .rubric-detail .CodeMirror { height: 18rem; min-height: 18rem; border: 1px solid #ced4da; border-radius: 4px; background: #f8faf9; font-size: .85rem; line-height: 1.55; }
+    .rubric-extra textarea { min-height: 90px; resize: vertical; }
+    .rubric-empty { padding: 60px 24px; text-align: center; }
+    .rubric-empty i { font-size: 2rem; color: #7a9487; }
+    .rubric-empty h2 { font-size: 1.15rem; margin-top: 14px; }
+
+    @media (max-width: 767.98px) {
+        .rubric-header { padding: 16px; }
+        .rubric-header h1 { font-size: 1.35rem; }
+        .rubric-actions { margin-top: 12px; }
+        .rubric-metrics { padding: 12px 16px; gap: 8px 18px; }
+        .rubric-workspace { grid-template-columns: minmax(0, 1fr); }
+        .rubric-sidebar { border-right: 0; border-bottom: 1px solid var(--rubric-line); }
+        .rubric-list { height: auto; min-height: 0; max-height: 34vh; }
+        .rubric-detail { padding: 20px 16px 34px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="rubric-shell" aria-labelledby="rubricTitle">
+    <header class="rubric-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <h1 id="rubricTitle"><i class="bi bi-ui-checks me-2" aria-hidden="true"></i>Vérif Barème</h1>
+            <div class="rubric-file mt-1">{{ current_project_name }} <span aria-hidden="true">·</span> bareme.csv</div>
+        </div>
+        <div class="rubric-actions">
+            <button type="button" id="reloadBareme" class="btn btn-sm btn-outline-secondary" title="Recharger le fichier" aria-label="Recharger le fichier"><i class="bi bi-arrow-clockwise"></i></button>
+            <button type="button" id="discardBareme" class="btn btn-sm btn-outline-secondary" title="Annuler les modifications" aria-label="Annuler les modifications" disabled><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button type="button" id="saveBareme" class="btn btn-sm rubric-save" disabled><i class="bi bi-floppy me-1"></i> Enregistrer</button>
+            <button type="button" id="continueBareme" class="btn btn-sm btn-outline-secondary">Découpage <i class="bi bi-arrow-right ms-1"></i></button>
+        </div>
+    </header>
+    <div id="baremeStatus" class="rubric-status" role="status" aria-live="polite"></div>
+    <div class="rubric-metrics" id="baremeMetrics" hidden>
+        <div class="rubric-metric"><strong id="questionCount">0</strong><span>questions</span></div>
+        <div class="rubric-metric"><strong id="pointsTotal">0</strong><span>points</span></div>
+        <div class="rubric-metric"><strong id="qcmCount">0</strong><span>QCM</span></div>
+        <div class="rubric-metric"><strong id="openCount">0</strong><span>ouvertes</span></div>
+    </div>
+    <div id="baremeEmpty" class="rubric-empty" hidden>
+        <i class="bi bi-file-earmark-x" aria-hidden="true"></i>
+        <h2>Aucun barème disponible</h2>
+        <p id="baremeEmptyMessage" class="text-muted"></p>
+        <a class="btn btn-outline-secondary" href="/import"><i class="bi bi-arrow-left me-1"></i> Retour à l'import</a>
+    </div>
+    <div id="baremeWorkspace" class="rubric-workspace" hidden>
+        <aside class="rubric-sidebar" aria-label="Questions du barème">
+            <div class="rubric-sidebar-tools">
+                <label class="visually-hidden" for="baremeSearch">Chercher une question</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                    <input id="baremeSearch" class="form-control" type="search" placeholder="Chercher une question…">
+                </div>
+                <div class="rubric-tabs" role="group" aria-label="Filtrer les questions">
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" data-filter="all" aria-pressed="true">Toutes</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-filter="qcm" aria-pressed="false">QCM</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-filter="open" aria-pressed="false">Ouvertes</button>
+                </div>
+            </div>
+            <div id="baremeList" class="rubric-list"></div>
+            <div class="rubric-sidebar-footer">
+                <button type="button" id="addQuestion" class="btn btn-sm btn-outline-success w-100"><i class="bi bi-plus-lg me-1"></i> Ajouter une question</button>
+            </div>
+        </aside>
+        <div class="rubric-detail">
+            <div class="rubric-detail-header d-flex align-items-center justify-content-between gap-2">
+                <h2 id="activeQuestion">Question</h2>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Ordre des questions">
+                    <button type="button" id="moveQuestionUp" class="btn btn-outline-secondary" title="Monter" aria-label="Monter"><i class="bi bi-arrow-up"></i></button>
+                    <button type="button" id="moveQuestionDown" class="btn btn-outline-secondary" title="Descendre" aria-label="Descendre"><i class="bi bi-arrow-down"></i></button>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-sm-5">
+                    <label class="form-label" for="questionField">Identifiant</label>
+                    <input id="questionField" class="form-control" type="text" autocomplete="off">
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label" for="pointsField">Points</label>
+                    <input id="pointsField" class="form-control" type="number" min="0" step="any" inputmode="decimal">
+                </div>
+                <div class="col-sm-4">
+                    <div class="form-label">Type de question</div>
+                    <div class="btn-group w-100" role="group" aria-label="Type de question" id="questionKind">
+                        <button type="button" class="btn btn-outline-secondary" data-kind="oui" aria-pressed="false">QCM</button>
+                        <button type="button" class="btn btn-outline-secondary" data-kind="non" aria-pressed="false">Ouverte</button>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="answerField">Réponse attendue</label>
+                    <textarea id="answerField" class="form-control font-monospace rubric-answer" rows="10" spellcheck="false"></textarea>
+                </div>
+                <div id="extraFields" class="col-12 rubric-extra row g-3 mx-0 px-0"></div>
+            </div>
+            <div class="d-flex justify-content-end mt-4 pt-3 border-top">
+                <button type="button" id="deleteQuestion" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i> Supprimer la question</button>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+<script>
+const rubricNodes = {
+    status: document.getElementById('baremeStatus'),
+    workspace: document.getElementById('baremeWorkspace'),
+    empty: document.getElementById('baremeEmpty'),
+    list: document.getElementById('baremeList'),
+    save: document.getElementById('saveBareme'),
+    discard: document.getElementById('discardBareme'),
+    search: document.getElementById('baremeSearch')
+};
+const primaryFields = ['question', 'qcm (oui/non)', 'réponse attendue', 'points'];
+let rubric = null;
+let savedRows = '';
+let selectedIndex = 0;
+let activeFilter = 'all';
+let saving = false;
+const answerField = document.getElementById('answerField');
+const answerEditor = typeof CodeMirror === 'undefined' ? null : CodeMirror.fromTextArea(answerField, {
+    mode: 'markdown',
+    lineNumbers: true,
+    lineWrapping: true
+});
+
+function showRubricStatus(message, tone = 'info') {
+    rubricNodes.status.textContent = message;
+    rubricNodes.status.dataset.tone = tone;
+}
+
+function isRubricDirty() {
+    return rubric && JSON.stringify(rubric.rows) !== savedRows;
+}
+
+function updateRubricActions() {
+    rubricNodes.save.disabled = !rubric || !isRubricDirty() || saving;
+    rubricNodes.discard.disabled = !rubric || !isRubricDirty() || saving;
+    document.getElementById('continueBareme').disabled = !rubric || saving;
+    document.getElementById('moveQuestionUp').disabled = !rubric || selectedIndex === 0;
+    document.getElementById('moveQuestionDown').disabled = !rubric || selectedIndex === rubric.rows.length - 1;
+    document.getElementById('deleteQuestion').disabled = !rubric || rubric.rows.length === 1;
+}
+
+function updateRubricMetrics() {
+    const rows = rubric.rows;
+    const qcm = rows.filter(row => (row['qcm (oui/non)'] || '').trim().toLowerCase() === 'oui').length;
+    const points = rows.reduce((total, row) => total + (Number(row.points) || 0), 0);
+    document.getElementById('questionCount').textContent = rows.length;
+    document.getElementById('pointsTotal').textContent = new Intl.NumberFormat('fr-FR', {maximumFractionDigits: 3}).format(points);
+    document.getElementById('qcmCount').textContent = qcm;
+    document.getElementById('openCount').textContent = rows.length - qcm;
+}
+
+function renderRubricList() {
+    rubricNodes.list.replaceChildren();
+    const query = rubricNodes.search.value.trim().toLocaleLowerCase('fr');
+    const visibleRows = rubric.rows.map((row, index) => ({row, index})).filter(({row}) => {
+        const isQcm = (row['qcm (oui/non)'] || '').trim().toLowerCase() === 'oui';
+        const kindMatches = activeFilter === 'all' || (activeFilter === 'qcm' ? isQcm : !isQcm);
+        const textMatches = [row.question, row['réponse attendue']].some(value =>
+            (value || '').toLocaleLowerCase('fr').includes(query));
+        return kindMatches && textMatches;
+    });
+    if (!visibleRows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'text-muted small text-center py-4 px-3';
+        empty.textContent = 'Aucune question trouvée.';
+        rubricNodes.list.appendChild(empty);
+        return;
+    }
+    visibleRows.forEach(({row, index}) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'rubric-item' + (index === selectedIndex ? ' active' : '');
+        item.setAttribute('aria-current', index === selectedIndex ? 'true' : 'false');
+        const top = document.createElement('div');
+        top.className = 'd-flex align-items-center gap-2';
+        const title = document.createElement('span');
+        title.className = 'rubric-item-title me-auto';
+        title.textContent = row.question || 'Sans identifiant';
+        const kind = document.createElement('span');
+        const isQcm = (row['qcm (oui/non)'] || '').trim().toLowerCase() === 'oui';
+        kind.className = 'rubric-type ' + (isQcm ? 'qcm' : 'open');
+        kind.textContent = isQcm ? 'QCM' : 'Ouverte';
+        const points = document.createElement('span');
+        points.className = 'small text-nowrap';
+        points.textContent = (row.points || '0') + ' pt';
+        top.append(title, kind, points);
+        const subtitle = document.createElement('div');
+        subtitle.className = 'rubric-item-subtitle mt-1';
+        subtitle.textContent = (row['réponse attendue'] || '').replace(/\s+/g, ' ').trim() || 'Réponse vide';
+        item.append(top, subtitle);
+        item.addEventListener('click', () => {
+            selectedIndex = index;
+            renderRubricList();
+            renderRubricDetail();
+            if (window.matchMedia('(max-width: 767.98px)').matches) {
+                document.querySelector('.rubric-detail').scrollIntoView({behavior: 'smooth'});
+            }
+        });
+        rubricNodes.list.appendChild(item);
+    });
+}
+
+function updateRubricField(field, value) {
+    rubric.rows[selectedIndex][field] = value;
+    if (field === 'question') document.getElementById('activeQuestion').textContent = value || 'Sans identifiant';
+    renderRubricList();
+    updateRubricMetrics();
+    updateRubricActions();
+}
+
+function renderRubricDetail() {
+    const row = rubric.rows[selectedIndex];
+    document.getElementById('activeQuestion').textContent = row.question || 'Sans identifiant';
+    document.getElementById('questionField').value = row.question;
+    document.getElementById('pointsField').value = row.points || '';
+    const answer = row['réponse attendue'] || '';
+    if (answerEditor) {
+        if (answerEditor.getValue() !== answer) answerEditor.setValue(answer);
+        answerEditor.refresh();
+    } else {
+        answerField.value = answer;
+    }
+    document.getElementById('pointsField').closest('.col-sm-3').hidden = !rubric.fields.includes('points');
+    document.getElementById('questionKind').closest('.col-sm-4').hidden = !rubric.fields.includes('qcm (oui/non)');
+    document.getElementById('answerField').closest('.col-12').hidden = !rubric.fields.includes('réponse attendue');
+    document.querySelectorAll('#questionKind [data-kind]').forEach(button => {
+        const active = (row['qcm (oui/non)'] || '').trim().toLowerCase() === button.dataset.kind;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    const extra = document.getElementById('extraFields');
+    extra.replaceChildren();
+    rubric.fields.filter(field => !primaryFields.includes(field)).forEach(field => {
+        const wrapper = document.createElement('div');
+        wrapper.className = field.toLowerCase().includes('comment') ? 'col-12' : 'col-md-6';
+        const label = document.createElement('label');
+        label.className = 'form-label';
+        label.textContent = field;
+        const control = document.createElement(field.toLowerCase().includes('comment') || (row[field] || '').includes('\n') ? 'textarea' : 'input');
+        control.className = 'form-control';
+        control.id = 'extraField' + rubric.fields.indexOf(field);
+        control.value = row[field] || '';
+        if (control.tagName === 'TEXTAREA') control.rows = 3;
+        control.addEventListener('input', () => updateRubricField(field, control.value));
+        label.htmlFor = control.id;
+        wrapper.append(label, control);
+        extra.appendChild(wrapper);
+    });
+    updateRubricActions();
+}
+
+function renderRubric() {
+    document.getElementById('baremeMetrics').hidden = false;
+    rubricNodes.workspace.hidden = false;
+    rubricNodes.empty.hidden = true;
+    updateRubricMetrics();
+    renderRubricList();
+    renderRubricDetail();
+}
+
+async function loadRubric() {
+    showRubricStatus('Chargement du barème…');
+    try {
+        const response = await fetch('/api/bareme/editor', {cache: 'no-store'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Lecture impossible.');
+        rubric = data;
+        savedRows = JSON.stringify(data.rows);
+        selectedIndex = 0;
+        renderRubric();
+        showRubricStatus('');
+    } catch (error) {
+        rubric = null;
+        rubricNodes.workspace.hidden = true;
+        document.getElementById('baremeMetrics').hidden = true;
+        rubricNodes.empty.hidden = false;
+        document.getElementById('baremeEmptyMessage').textContent = error.message;
+        showRubricStatus(error.message, 'error');
+        updateRubricActions();
+    }
+}
+
+function validateRubric() {
+    if (!rubric.rows.length) return 'Le barème doit contenir au moins une question.';
+    const names = new Set();
+    for (const row of rubric.rows) {
+        const name = (row.question || '').trim();
+        if (!name || names.has(name.toLocaleLowerCase('fr'))) return 'Chaque question doit avoir un identifiant unique.';
+        names.add(name.toLocaleLowerCase('fr'));
+        if (rubric.fields.includes('points') && (row.points.trim() === '' || !Number.isFinite(Number(row.points)) || Number(row.points) < 0)) {
+            return 'Les points doivent être des nombres positifs ou nuls.';
+        }
+    }
+    return '';
+}
+
+async function saveRubric() {
+    if (!rubric || !isRubricDirty()) return Boolean(rubric);
+    const error = validateRubric();
+    if (error) {
+        showRubricStatus(error, 'error');
+        return false;
+    }
+    saving = true;
+    updateRubricActions();
+    const snapshot = JSON.stringify(rubric.rows);
+    try {
+        const response = await fetch('/api/bareme/editor', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({revision: rubric.revision, fields: rubric.fields, rows: rubric.rows})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Enregistrement impossible.');
+        rubric.revision = data.revision;
+        savedRows = snapshot;
+        showRubricStatus('Barème enregistré.', 'success');
+        return true;
+    } catch (saveError) {
+        showRubricStatus(saveError.message, 'error');
+        return false;
+    } finally {
+        saving = false;
+        updateRubricActions();
+    }
+}
+
+document.getElementById('questionField').addEventListener('input', event => updateRubricField('question', event.target.value));
+document.getElementById('pointsField').addEventListener('input', event => updateRubricField('points', event.target.value));
+if (answerEditor) {
+    answerEditor.on('change', editor => {
+        if (rubric && editor.getValue() !== rubric.rows[selectedIndex]['réponse attendue']) {
+            updateRubricField('réponse attendue', editor.getValue());
+        }
+    });
+} else {
+    answerField.addEventListener('input', event => updateRubricField('réponse attendue', event.target.value));
+}
+document.querySelectorAll('#questionKind [data-kind]').forEach(button => button.addEventListener('click', () => {
+    updateRubricField('qcm (oui/non)', button.dataset.kind === 'oui' ? 'Oui' : 'Non');
+    renderRubricDetail();
+}));
+rubricNodes.search.addEventListener('input', renderRubricList);
+document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {
+    activeFilter = button.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach(tab => {
+        const active = tab === button;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-pressed', String(active));
+    });
+    renderRubricList();
+}));
+document.getElementById('addQuestion').addEventListener('click', () => {
+    let number = 0;
+    while (rubric.rows.some(row => row.question.toLowerCase() === 'q' + number)) number++;
+    const row = Object.fromEntries(rubric.fields.map(field => [field, field === 'question' ? 'Q' + number : field === 'points' ? '1' : field === 'qcm (oui/non)' ? 'Non' : '']));
+    selectedIndex++;
+    rubric.rows.splice(selectedIndex, 0, row);
+    activeFilter = 'all';
+    rubricNodes.search.value = '';
+    document.querySelector('[data-filter="all"]').click();
+    renderRubric();
+    document.getElementById('questionField').focus();
+});
+document.getElementById('deleteQuestion').addEventListener('click', () => {
+    if (rubric.rows.length <= 1 || !window.confirm('Supprimer cette question du barème ?')) return;
+    rubric.rows.splice(selectedIndex, 1);
+    selectedIndex = Math.min(selectedIndex, rubric.rows.length - 1);
+    renderRubric();
+});
+function moveRubricQuestion(direction) {
+    const destination = selectedIndex + direction;
+    if (destination < 0 || destination >= rubric.rows.length) return;
+    [rubric.rows[selectedIndex], rubric.rows[destination]] = [rubric.rows[destination], rubric.rows[selectedIndex]];
+    selectedIndex = destination;
+    renderRubric();
+}
+document.getElementById('moveQuestionUp').addEventListener('click', () => moveRubricQuestion(-1));
+document.getElementById('moveQuestionDown').addEventListener('click', () => moveRubricQuestion(1));
+rubricNodes.save.addEventListener('click', saveRubric);
+rubricNodes.discard.addEventListener('click', () => {
+    if (!window.confirm('Annuler les modifications non enregistrées ?')) return;
+    rubric.rows = JSON.parse(savedRows);
+    selectedIndex = Math.min(selectedIndex, rubric.rows.length - 1);
+    renderRubric();
+    showRubricStatus('Modifications annulées.');
+});
+document.getElementById('reloadBareme').addEventListener('click', () => {
+    if (!isRubricDirty() || window.confirm('Recharger le fichier et perdre les modifications non enregistrées ?')) loadRubric();
+});
+document.getElementById('continueBareme').addEventListener('click', async () => {
+    if (!rubric || (isRubricDirty() && !await saveRubric())) return;
+    window.location.href = '/split';
+});
+document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        saveRubric();
+    }
+});
+window.addEventListener('beforeunload', event => {
+    if (isRubricDirty()) {
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});
+loadRubric();
+</script>
+{% endblock %}

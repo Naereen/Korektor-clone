@@ -321,6 +321,19 @@ class TestLoadSujetCorrige:
 class TestLoadBareme:
     """Tests du chargement du barème."""
 
+    def test_load_bareme_accepts_capitalized_qcm(self, test_db_with_schema, tmp_path):
+        """The uploaded rubric's Oui/Non values retain their QCM meaning."""
+        from correct_ai.database import load_bareme
+
+        path = tmp_path / "bareme.csv"
+        path.write_text(
+            "question,qcm (oui/non),réponse attendue,points\nQ1,Oui,A,1\nQ2,Non,Texte,2\n",
+            encoding="utf-8",
+        )
+        load_bareme(test_db_with_schema, str(path))
+        rows = test_db_with_schema.execute("SELECT question, type_qcm FROM bareme ORDER BY id")
+        assert [(row["question"], row["type_qcm"]) for row in rows] == [("Q1", 1), ("Q2", 0)]
+
     # CSV synthétique utilisé par plusieurs tests
     SYNTHETIC_CSV = (
         "question,qcm (oui/non),réponse attendue,points\n"

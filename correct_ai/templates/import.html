@@ -88,10 +88,13 @@
                 <h5 class="mb-0"><i class="bi bi-table"></i> Barème</h5>
             </div>
             <div class="card-body" id="baremeSection">
-                <p class="text-muted small">Le barème est généré automatiquement depuis <code>sujet.md</code> et <code>corrige.md</code>. Vous pouvez ensuite modifier le fichier <code>bareme.csv</code> dans un tableur pour ajuster les réponses ou les points, puis le recharger. Il sera utilisé pour toute la correction.</p>
+                <p class="text-muted small">Le barème est généré depuis <code>sujet.md</code> et <code>corrige.md</code>. Vérifiez les réponses et les points avant de passer au découpage.</p>
                 <button class="btn btn-warning" id="btnGenerateBareme" onclick="generateBareme()">
                     <i class="bi bi-magic"></i> Générer le barème
                 </button>
+                <a class="btn btn-outline-secondary ms-2" id="reviewBaremeLink" href="/verify_bareme">
+                    <i class="bi bi-ui-checks"></i> Vérif Barème
+                </a>
                 <div id="baremeResult" class="mt-2"></div>
             </div>
         </div>
@@ -393,30 +396,18 @@ async function generateBareme() {
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-magic"></i> Générer le barème';
-            
+            const result = document.getElementById('baremeResult');
+            result.replaceChildren();
             if (data.success) {
-                let html = '<div class="table-responsive" style="max-height:400px;overflow-y:auto;">';
-                html += '<table class="table table-sm table-striped small">';
-                html += '<thead class="table-dark"><tr>';
-                if (data.bareme.length > 0) {
-                    Object.keys(data.bareme[0]).forEach(k => {
-                        html += '<th>' + k + '</th>';
-                    });
-                }
-                html += '</tr></thead><tbody>';
-                data.bareme.forEach(row => {
-                    html += '<tr>';
-                    Object.values(row).forEach(v => {
-                        html += '<td>' + (v || '') + '</td>';
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-                html += '<p class="text-success small mt-1"><i class="bi bi-check-circle"></i> Barème généré (' + data.bareme.length + ' questions)</p>';
-                document.getElementById('baremeResult').innerHTML = html;
+                const message = document.createElement('p');
+                message.className = 'text-success small mt-1';
+                message.textContent = `Barème généré (${data.bareme.length} questions). Ouvrez Vérif Barème pour le relire.`;
+                result.appendChild(message);
             } else {
-                document.getElementById('baremeResult').innerHTML =
-                    '<div class="alert alert-danger small">' + data.error + '</div>';
+                const message = document.createElement('div');
+                message.className = 'alert alert-danger small';
+                message.textContent = data.error;
+                result.appendChild(message);
             }
         })
         .catch(err => {
@@ -448,8 +439,8 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
         const resp = await fetch('/api/import', {method: 'POST', body: formData});
         const result = await resp.json();
         if (result.success) {
-            alert('Import réussi ! Redirection vers le découpage...');
-            window.location.href = '/split';
+            alert('Import réussi ! Vérifiez le barème avant le découpage.');
+            window.location.href = '/verify_bareme';
         } else {
             alert('Erreur : ' + result.error);
         }

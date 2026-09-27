@@ -218,7 +218,7 @@ def load_bareme(
                 [
                     row["question"],
                     question_texts.get(row["question"], ""),
-                    row["qcm (oui/non)"] == "oui",
+                    row["qcm (oui/non)"].strip().casefold() == "oui",
                     row["réponse attendue"],
                     row["points"],
                 ],
