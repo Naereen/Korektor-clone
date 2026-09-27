@@ -1,9 +1,10 @@
 bareme.csv
 copiesA4_sorted.pdf
-copies_anonymes_validees/
 correspondance.csv
-debug_responses/
 structure.json
 korektor.db
+debug_responses/
+copies_anonymes_validees/
 rapports_etudiants/
 exports_pdf/
+cropped_questions/
