@@ -31,7 +31,7 @@ import pymupdf
 from PIL import Image
 
 from correct_ai.image_processing import (
-    crop_and_annotate_question,
+    crop_and_annotate_question_locations,
     crop_for_bbox_refinement,
     is_valid_question_box,
     qwen_crop_bbox_to_page,
@@ -81,10 +81,11 @@ CORRECTION_SYSTEM_PROMPT = (
     "unique objet JSON contenant la clé questions. Pour chaque question, transcris aussi "
     "fidèlement la réponse manuscrite dans reponse_etudiant, ou une chaîne vide si elle "
     "est absente. Indique le "
-    "numéro de page du PDF à partir de 1, puis bbox_2d exactement sous la forme "
-    "[xmin, ymin, xmax, ymax], en entiers normalisés de 0 à 1000 par rapport à cette "
-    "page. La boîte doit entourer toute la réponse manuscrite. Utilise null pour page "
-    "et bbox_2d si la localisation visuelle n'est pas fiable."
+    "clé locations, liste d'objets contenant page (numéro à partir de 1) et bbox "
+    "[xmin, ymin, xmax, ymax] en entiers normalisés de 0 à 1000 sur cette page. "
+    "Si une réponse continue sur plusieurs pages, renvoie une localisation distincte "
+    "pour chaque page, dans l'ordre. Utilise une liste vide si la localisation n'est "
+    "pas fiable."
 )
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", flags=re.DOTALL | re.IGNORECASE)
@@ -141,7 +142,7 @@ def _valid_bounding_boxes(value: Any, page: Any = None) -> List[Dict[str, Any]]:
     for item in value:
         if not isinstance(item, dict):
             continue
-        bounds = item.get("bbox_2d")
+        bounds = item.get("bbox_2d", item.get("bbox"))
         item_page = item.get("page", page)
         if not is_valid_question_box(bounds) or (
             item_page is not None and (type(item_page) is not int or item_page < 1)
@@ -208,7 +209,9 @@ def _prepare_correction_data(
 ) -> Dict[str, Any]:
     """Refine explicit-page boxes and create an annotated high-resolution crop."""
     prepared = dict(data)
-    raw_boxes = data.get("bbox_2d")
+    raw_boxes = data.get("locations")
+    if raw_boxes is None:
+        raw_boxes = data.get("bbox_2d")
     if raw_boxes is None:
         raw_boxes = data.get("bounding_boxes", [])
     boxes = _valid_bounding_boxes(raw_boxes, data.get("page"))
@@ -222,101 +225,116 @@ def _prepare_correction_data(
             if not document:
                 prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
                 return prepared
-            box = boxes[0] if boxes else None
-            explicit_page = _integer_page_number(box.get("page") if box else data.get("page"))
             estimated_page = 1 + ((max(1, q_index) - 1) * len(document) // max(1, total_questions))
-            valid_explicit_page = (
-                explicit_page
-                if explicit_page is not None and 1 <= explicit_page <= len(document)
-                else None
-            )
-            has_explicit_page = valid_explicit_page is not None
-            if explicit_page is not None and not has_explicit_page:
-                logger.warning(
-                    "Page invalide (%s) pour la copie %s, retour à la page estimée",
-                    explicit_page,
-                    copy_id,
-                )
-                boxes = []
-                box = None
-            page_number: int = estimated_page
-            if valid_explicit_page is not None:
-                page_number = valid_explicit_page
             relative_path = os.path.join(
                 "cropped_questions", f"copie_{copy_id}_question_{bareme_id}.png"
             )
             try:
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    page = document[page_number - 1]
-                    page_image = os.path.join(temp_dir, "page.png")
-                    page.get_pixmap(dpi=300, alpha=False).save(page_image)
-
-                    if box and has_explicit_page and provider:
-                        try:
-                            with Image.open(page_image) as rendered_page:
-                                refinement_crop, crop_bounds = crop_for_bbox_refinement(
-                                    rendered_page, box["bbox_2d"]
-                                )
-                                refinement_image = os.path.join(temp_dir, "refinement.png")
-                                refinement_crop.save(refinement_image, format="PNG")
-                                refinement_prompt = build_bbox_refinement_prompt(
-                                    question_label=question_label,
-                                    question_text=question_text,
-                                    page_number=page_number,
-                                    response_text=str(data.get("reponse_etudiant") or "")[:4000],
-                                    page_ocr_text=page_ocr_text[:12000],
-                                )
-                                refinement_response = ask_llm_with_image(
-                                    provider=provider,
-                                    image_path=refinement_image,
-                                    prompt_text=refinement_prompt,
-                                    system_prompt=(
-                                        "Tu es un outil de localisation visuelle. Retourne uniquement "
-                                        "le JSON demandé et n'invente pas de coordonnées."
-                                        "Mieux vaut que tu voies trop que pas assez, je préfère une bounding-box qui soit un peu trop grande plutôt que trop petite."
-                                        "Sur l'axe horizontal, privilégie une bounding-box légèrement plus large si nécessaire."
-                                        "Sur l'axe vertical, privilégie une bounding-box légèrement plus haute si nécessaire."
-                                    ),
-                                    inference_callback=inference_callback,
-                                )
-                                refined_crop_box = _refined_bbox_from_response(refinement_response)
-                                if refined_crop_box:
-                                    refined_page_box = qwen_crop_bbox_to_page(
-                                        refined_crop_box, crop_bounds, rendered_page.size
-                                    )
-                                    box["bbox_2d"] = refined_page_box
-                                    logger.info(
-                                        "BBox affinée pour la copie %s, question %s, page %s",
-                                        copy_id,
-                                        question_label,
-                                        page_number,
-                                    )
-                                else:
-                                    logger.info(
-                                        "Raffinement incertain pour la copie %s, question %s; "
-                                        "conservation de la bbox initiale",
-                                        copy_id,
-                                        question_label,
-                                    )
-                        except Exception as error:
+                    page_image_paths: Dict[int, str] = {}
+                    page_to_box: List[Dict[str, Any]] = []
+                    for index, box in enumerate(boxes):
+                        explicit_page = _integer_page_number(
+                            box.get("page", data.get("page"))
+                        )
+                        page_number = explicit_page or estimated_page
+                        if not 1 <= page_number <= len(document):
                             logger.warning(
-                                "Raffinement bbox impossible pour la copie %s, question %s : %s",
+                                "Page invalide (%s) pour la copie %s, question %s",
+                                page_number,
                                 copy_id,
                                 question_label,
-                                error,
                             )
+                            continue
 
-                    result_path = crop_and_annotate_question(
-                        page_image,
-                        box["bbox_2d"] if box else None,
+                        box["page"] = page_number
+                        if page_number not in page_image_paths:
+                            page_image = os.path.join(temp_dir, f"page_{page_number}.png")
+                            document[page_number - 1].get_pixmap(dpi=300, alpha=False).save(
+                                page_image
+                            )
+                            page_image_paths[page_number] = page_image
+
+                        if explicit_page is not None and provider:
+                            try:
+                                with Image.open(page_image_paths[page_number]) as rendered_page:
+                                    refinement_crop, crop_bounds = crop_for_bbox_refinement(
+                                        rendered_page, box["bbox_2d"]
+                                    )
+                                    refinement_image = os.path.join(
+                                        temp_dir, f"refinement_{index}.png"
+                                    )
+                                    refinement_crop.save(refinement_image, format="PNG")
+                                    refinement_prompt = build_bbox_refinement_prompt(
+                                        question_label=question_label,
+                                        question_text=question_text,
+                                        page_number=page_number,
+                                        response_text=str(data.get("reponse_etudiant") or "")[:4000],
+                                        page_ocr_text=(
+                                            _ocr_text_for_page(page_ocr_text, page_number)
+                                            or page_ocr_text
+                                        )[:12000],
+                                    )
+                                    refinement_response = ask_llm_with_image(
+                                        provider=provider,
+                                        image_path=refinement_image,
+                                        prompt_text=refinement_prompt,
+                                        system_prompt=(
+                                            "Tu es un outil de localisation visuelle. Retourne uniquement "
+                                            "le JSON demandé et n'invente pas de coordonnées. "
+                                            "Privilégie une boîte légèrement trop grande plutôt que trop petite."
+                                        ),
+                                        inference_callback=inference_callback,
+                                    )
+                                    refined_crop_box = _refined_bbox_from_response(
+                                        refinement_response
+                                    )
+                                    if refined_crop_box:
+                                        box["bbox_2d"] = qwen_crop_bbox_to_page(
+                                            refined_crop_box, crop_bounds, rendered_page.size
+                                        )
+                            except Exception as error:
+                                logger.warning(
+                                    "Raffinement bbox impossible pour la copie %s, question %s, page %s : %s",
+                                    copy_id,
+                                    question_label,
+                                    page_number,
+                                    error,
+                                )
+                        page_to_box.append(box)
+
+                    boxes = page_to_box
+                    if not boxes:
+                        fallback_locations = [
+                            {"page": estimated_page, "bbox_2d": None, "fallback": True}
+                        ]
+                        if estimated_page < len(document):
+                            fallback_locations.append(
+                                {
+                                    "page": estimated_page + 1,
+                                    "bbox_2d": None,
+                                    "fallback": True,
+                                }
+                            )
+                        for location in fallback_locations:
+                            page_number = location["page"]
+                            if page_number not in page_image_paths:
+                                page_image = os.path.join(temp_dir, f"page_{page_number}.png")
+                                document[page_number - 1].get_pixmap(dpi=300, alpha=False).save(
+                                    page_image
+                                )
+                                page_image_paths[page_number] = page_image
+                        boxes = fallback_locations
+
+                    result_path = crop_and_annotate_question_locations(
+                        page_image_paths,
+                        boxes,
                         os.path.join(project_dir, relative_path),
                         q_index,
                         total_questions,
                     )
                 if result_path and os.path.isfile(result_path):
                     prepared["crop_image_path"] = relative_path
-                    if not boxes:
-                        boxes = [{"bbox_2d": None, "fallback": True}]
             except (OSError, ValueError, RuntimeError) as error:
                 logger.warning("Boîte non recadrable pour la copie %s : %s", copy_id, error)
             prepared["bounding_boxes"] = json.dumps(boxes, ensure_ascii=False)
@@ -640,10 +658,6 @@ def correct_copy_incremental(
             for question, data in correction_data.items():
                 bareme_id = bareme_map.get(question)
                 if bareme_id and isinstance(data, dict):
-                    ocr_page_number: int = 0
-                    data_page = _integer_page_number(data.get("page"))
-                    if data_page is not None:
-                        ocr_page_number = data_page
                     prepared = _prepare_correction_data(
                         data,
                         copy_id,
@@ -656,10 +670,7 @@ def correct_copy_incremental(
                         inference_callback=inference_callback,
                         question_label=question,
                         question_text=bareme_details[question]["texte_question"] or question,
-                        page_ocr_text=_ocr_text_for_page(
-                            current_copy["extraction_texte"],
-                            ocr_page_number,
-                        ),
+                        page_ocr_text=current_copy["extraction_texte"] or "",
                     )
                     save_correction(db, copy_id, bareme_id, prepared, is_prof=False)
                     saved_count += 1

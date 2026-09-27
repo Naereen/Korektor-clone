@@ -12,6 +12,7 @@ import sys
 
 import pymupdf
 import pytest
+from PIL import Image
 
 # Ajouter le répertoire parent au path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -150,6 +151,26 @@ Texte final."""
         assert result["Q1"]["reponse_etudiant"] == ""
         assert result["Q1"]["raisonnement"] == ""
 
+    def test_parse_page_scoped_locations(self):
+        """The new locations format is preserved for multi-page answers."""
+        response = json.dumps(
+            {
+                "questions": [
+                    {
+                        "num_question": 2,
+                        "locations": [
+                            {"page": 1, "bbox": [100, 750, 900, 980]},
+                            {"page": 2, "bbox": [100, 50, 900, 300]},
+                        ],
+                    }
+                ]
+            }
+        )
+
+        result = parse_llm_response(response)
+
+        assert result["Q2"]["locations"][1]["page"] == 2
+
     def test_parse_uses_first_valid_json_fence(self):
         """An invalid fenced candidate is skipped in favor of the first valid one."""
         response = '```json\nnot json\n```\n```json\n{"Q2": {"note": 1}}\n```'
@@ -226,8 +247,9 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
         )
         assert inference_events == [True, False]
         assert '"questions": [' in prompts[0][0]
-        assert '"bbox_2d": null' in prompts[0][0]
-        assert "[xmin, ymin, xmax, ymax]" in prompts[0][1]
+        assert '"locations": []' in prompts[0][0]
+        assert "clé locations" in prompts[0][1]
+        assert "plusieurs pages" in prompts[0][1]
         rows = {
             row["question"]: row
             for row in db.execute(
@@ -236,11 +258,19 @@ def test_multimodal_boxes_are_saved_and_cropped(tmp_path, monkeypatch):
             )
         }
         assert len(rows) == 4
-        assert json.loads(rows["Q1"]["bounding_boxes"]) == [{"bbox_2d": [100, 250, 900, 450]}]
-        fallback_metadata = [{"bbox_2d": None, "fallback": True}]
-        assert json.loads(rows["Q2"]["bounding_boxes"]) == fallback_metadata
-        assert json.loads(rows["Q3"]["bounding_boxes"]) == fallback_metadata
-        assert json.loads(rows["Q4"]["bounding_boxes"]) == [{"bbox_2d": [100, 250, 900, 450]}]
+        assert json.loads(rows["Q1"]["bounding_boxes"]) == [
+            {"bbox_2d": [100, 250, 900, 450], "page": 1}
+        ]
+        assert json.loads(rows["Q2"]["bounding_boxes"]) == [
+            {"bbox_2d": None, "fallback": True, "page": 1},
+            {"bbox_2d": None, "fallback": True, "page": 2},
+        ]
+        assert json.loads(rows["Q3"]["bounding_boxes"]) == [
+            {"bbox_2d": None, "fallback": True, "page": 2}
+        ]
+        assert json.loads(rows["Q4"]["bounding_boxes"]) == [
+            {"bbox_2d": [100, 250, 900, 450], "page": 2}
+        ]
         for row in rows.values():
             crop = tmp_path / row["crop_image_path"]
             assert crop.is_file() and crop.suffix == ".png"
@@ -337,6 +367,58 @@ def test_explicit_page_and_refined_bbox_are_saved(tmp_path, monkeypatch):
     assert (tmp_path / prepared["crop_image_path"]).is_file()
     assert boxes[0]["page"] == 2
     assert boxes[0]["bbox_2d"] != [100, 100, 500, 500]
+
+
+def test_multi_page_locations_are_refined_and_saved_as_composite(tmp_path, monkeypatch):
+    """Each consecutive-page location is refined and included in one composite crop."""
+    from correct_ai import batch_correction_v2
+
+    pdf_path = tmp_path / "copy.pdf"
+    with pymupdf.open() as document:
+        document.new_page(width=200, height=200)
+        document.new_page(width=200, height=200)
+        document.save(pdf_path)
+    calls = []
+
+    def fake_refinement(**kwargs):
+        calls.append(kwargs)
+        return '{"bbox_2d": [200, 200, 800, 800]}'
+
+    monkeypatch.setattr(batch_correction_v2, "ask_llm_with_image", fake_refinement)
+    extraction = (
+        "<!-- ====== page 1 ====== -->\nRéponse en bas de page 1\n"
+        "<!-- ====== page 2 ====== -->\nSuite en haut de page 2\n"
+    )
+    prepared = _prepare_correction_data(
+        {
+            "note": 1,
+            "locations": [
+                {"page": 1, "bbox": [100, 700, 900, 980]},
+                {"page": 2, "bbox": [100, 50, 900, 300]},
+            ],
+            "reponse_etudiant": "Réponse sur deux pages.",
+        },
+        8,
+        4,
+        "copy.pdf",
+        str(tmp_path),
+        2,
+        4,
+        provider=ProviderConfig("vision", "http://test", "model"),
+        page_ocr_text=extraction,
+    )
+
+    locations = json.loads(prepared["bounding_boxes"])
+    assert [location["page"] for location in locations] == [1, 2]
+    assert all(location["bbox_2d"] != [100, 700, 900, 980] for location in locations)
+    assert len(calls) == 2
+    assert "Réponse en bas de page 1" in calls[0]["prompt_text"]
+    assert "Suite en haut de page 2" in calls[1]["prompt_text"]
+    crop_path = tmp_path / prepared["crop_image_path"]
+    assert crop_path.is_file()
+    with Image.open(crop_path) as composite:
+        assert composite.format == "PNG"
+        assert composite.width > 0 and composite.height > 0
 
 
 # =============================================================================

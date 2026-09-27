@@ -41,8 +41,7 @@ def _qwen_output_template(bareme: List[Dict[str, Any]]) -> str:
                 "bareme": float(question["points"]),
                 "reponse_etudiant": "",
                 "commentaire": "Non répondu.",
-                "page": None,
-                "bbox_2d": None,
+                "locations": [],
             }
             for question in bareme
         ]
@@ -135,7 +134,7 @@ def build_incremental_prompt(
 ---
 
 Complète EXACTEMENT le template JSON ci-dessous. Tu ne dois NI supprimer NI ajouter de clés.
-Remplace uniquement les valeurs de note, reponse_etudiant, commentaire, page et bbox_2d.
+Remplace uniquement les valeurs de note, reponse_etudiant, commentaire et locations.
 
 ```json
 """
@@ -150,10 +149,11 @@ Remplace uniquement les valeurs de note, reponse_etudiant, commentaire, page et 
 3. UTILISE les corrections précédentes comme REFÉRENCE pour maintenir la même sévérité.
 4. Si un étudiant a écrit exactement la même chose qu'un précédent, donne la même note.
 5. Le commentaire doit être assez détaillé pour l'étudiant, et les équations de maths seront entourées de $ ... $.
-6. Si l'étudiant n'a pas répondu, conserve note=0.0, reponse_etudiant="", commentaire="Non répondu.", page=null et bbox_2d=null.
+6. Si l'étudiant n'a pas répondu, conserve note=0.0, reponse_etudiant="", commentaire="Non répondu." et locations=[].
 7. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
-8. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
-9. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse, y compris les codes (réponse contenant de la programmation), et le numéro de question avant (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
+8. locations est une liste d'objets {"page": numéro, "bbox": [xmin, ymin, xmax, ymax]}. Chaque page est numérotée à partir de 1 et chaque bbox est relative à cette page.
+9. Si une réponse s'étend sur plusieurs pages consécutives, ajoute une localisation pour chaque page contenant une partie de la réponse, dans l'ordre des pages. Ne fusionne jamais des coordonnées de pages différentes dans une seule bbox.
+10. Pour chaque localisation, bbox contient quatre entiers normalisés entre 0 et 1000, origine en haut à gauche, couvrant l'encre manuscrite réellement visible de la réponse sur cette page (y compris les codes et le numéro de question si présent). Sa largeur et sa hauteur doivent dépasser 20 unités. Si aucune localisation n'est fiable, utilise locations=[].
 """
 
     return prompt
@@ -227,11 +227,11 @@ Complète EXACTEMENT le template JSON ci-dessous. Ne supprime ni n'ajoute de cl�
 ---
 # INSTRUCTIONS:
 1. Pour chaque entrée de questions, remplace les valeurs par défaut.
-2. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu.", page=null et bbox_2d=null.
+2. Si l'étudiant n'a pas répondu, conserve note=0.0, commentaire="Non répondu." et locations=[].
 3. Le commentaire doit être assez détaillé pour l'étudiant, et les équations de maths seront entourées de $ ... $.
 4. NE SUPPRIME ET N'AJOUTE AUCUNE CLÉ. Ne modifie pas num_question ni bareme.
-5. page est le numéro de page du PDF, à partir de 1. Indique toujours cette page pour une bbox; ne la déduis pas du numéro de question. Si la réponse s'étend sur plusieurs pages ou si la page est incertaine, utilise page=null et bbox_2d=null.
-6. bbox_2d vaut exactement [xmin, ymin, xmax, ymax], avec quatre entiers normalisés entre 0 et 1000 et l'origine en haut à gauche de la page indiquée. La boîte doit entourer l'encre manuscrite réellement visible de TOUTE la réponse (et mieux vaut viser un peu plus, avec une boîte trop grande, que pas assez). Sa largeur et sa hauteur doivent chacune dépasser 20 unités. Si la localisation visuelle n'est pas certaine, utilise null.
+5. locations est une liste d'objets {"page": numéro, "bbox": [xmin, ymin, xmax, ymax]}; les pages sont numérotées à partir de 1 et les coordonnées sont relatives à chaque page.
+6. Si une réponse s'étend sur plusieurs pages consécutives, ajoute une localisation par page, dans l'ordre, sans fusionner leurs coordonnées. Chaque bbox couvre toute l'encre manuscrite de la réponse sur cette page avec quatre entiers normalisés de 0 à 1000; largeur et hauteur supérieures à 20. Si la localisation n'est pas fiable, utilise locations=[].
 """
 
     return prompt

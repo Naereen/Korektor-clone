@@ -1,7 +1,8 @@
 """Crop and annotate scanned question regions using Qwen coordinates."""
 
 from pathlib import Path
-from typing import Optional, Tuple
+from tempfile import TemporaryDirectory
+from typing import Dict, List, Optional, Tuple, cast
 
 from PIL import Image, ImageDraw
 
@@ -158,3 +159,80 @@ def crop_and_annotate_question(
             return str(destination)
     except (OSError, TypeError, ValueError, ZeroDivisionError):
         return ""
+
+
+def crop_and_annotate_question_locations(
+    page_image_paths: Dict[int, str],
+    locations: List[Dict[str, object]],
+    output_path: str,
+    q_index: int,
+    total_questions: int,
+    padding_x_pct: float = 0.04,
+    padding_y_pct: float = 0.03,
+) -> str:
+    """Save per-page answer crops as one vertically stacked PNG composite."""
+    try:
+        crops: List[Image.Image] = []
+        with TemporaryDirectory() as temp_dir:
+            for index, location in enumerate(
+                sorted(locations, key=_location_page_sort_key)
+            ):
+                page_number = location.get("page")
+                if type(page_number) is not int or page_number not in page_image_paths:
+                    continue
+                bbox = location.get("bbox_2d")
+                if bbox is not None and not is_valid_question_box(bbox):
+                    continue
+                crop_path = Path(temp_dir) / f"segment_{index}.png"
+                result_path = crop_and_annotate_question(
+                    page_image_paths[page_number],
+                    cast(Optional[list[int]], bbox),
+                    str(crop_path),
+                    q_index,
+                    total_questions,
+                    padding_x_pct,
+                    padding_y_pct,
+                )
+                if result_path:
+                    with Image.open(result_path) as crop:
+                        crops.append(crop.convert("RGBA"))
+
+            if not crops:
+                return ""
+
+            separator_height = 3
+            composite_width = max(crop.width for crop in crops)
+            composite_height = sum(crop.height for crop in crops) + separator_height * (
+                len(crops) - 1
+            )
+            composite = Image.new("RGBA", (composite_width, composite_height), "white")
+            y_offset = 0
+            for index, crop in enumerate(crops):
+                x_offset = (composite_width - crop.width) // 2
+                composite.alpha_composite(crop, (x_offset, y_offset))
+                y_offset += crop.height
+                if index < len(crops) - 1:
+                    ImageDraw.Draw(composite).line(
+                        (
+                            0,
+                            y_offset + separator_height // 2,
+                            composite_width,
+                            y_offset + separator_height // 2,
+                        ),
+                        fill=(128, 128, 128, 255),
+                        width=1,
+                    )
+                    y_offset += separator_height
+
+            destination = Path(output_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            composite.save(destination, format="PNG")
+            return str(destination)
+    except (OSError, TypeError, ValueError, ZeroDivisionError):
+        return ""
+
+
+def _location_page_sort_key(location: Dict[str, object]) -> int:
+    """Return a numeric page sort key for a validated location."""
+    page_number = location.get("page")
+    return page_number if type(page_number) is int else 0

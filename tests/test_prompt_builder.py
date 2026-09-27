@@ -141,14 +141,14 @@ class TestBuildIncrementalPrompt:
         assert "TEMPLATE JSON" in prompt, "Template JSON manquant"
         assert '"questions": [' in prompt, "Tableau questions manquant"
         assert prompt.count('"num_question"') == len(bareme_data)
-        assert prompt.count('"bbox_2d": null') == len(bareme_data)
-        assert prompt.count('"page": null') == len(bareme_data)
+        assert prompt.count('"locations": []') == len(bareme_data)
         assert prompt.count('"reponse_etudiant": ""') == len(bareme_data)
         assert "Transcris fidèlement dans reponse_etudiant" in prompt
         assert "[xmin, ymin, xmax, ymax]" in prompt
-        assert "numéro de page du PDF, à partir de 1" in prompt
+        assert "Chaque page est numérotée à partir de 1" in prompt
         assert "entiers normalisés entre 0 et 1000" in prompt
-        assert "entourer l'encre manuscrite réellement visible" in prompt
+        assert "couvrant l'encre manuscrite réellement visible" in prompt
+        assert "plusieurs pages consécutives" in prompt
         assert "dépasser 20 unités" in prompt
 
     def test_prompt_with_previous_corrections(self, bareme_data, previous_corrections_data):

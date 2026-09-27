@@ -4,6 +4,7 @@ from PIL import Image
 
 from correct_ai.image_processing import (
     crop_and_annotate_question,
+    crop_and_annotate_question_locations,
     crop_for_bbox_refinement,
     is_valid_question_box,
     qwen_crop_bbox_to_page,
@@ -71,6 +72,33 @@ def test_crop_and_annotate_question_accepts_custom_padding(tmp_path):
     assert result_path == str(destination)
     with Image.open(destination) as result:
         assert result.size == (200, 30)
+
+
+def test_multi_page_locations_are_stacked_in_page_order(tmp_path):
+    """Page-scoped answer segments produce one vertically ordered composite."""
+    first_page = tmp_path / "page-1.png"
+    second_page = tmp_path / "page-2.png"
+    Image.new("RGB", (100, 100), "blue").save(first_page)
+    Image.new("RGB", (100, 100), "green").save(second_page)
+    destination = tmp_path / "composite.png"
+
+    result_path = crop_and_annotate_question_locations(
+        {1: str(first_page), 2: str(second_page)},
+        [
+            {"page": 2, "bbox_2d": [100, 100, 500, 500]},
+            {"page": 1, "bbox_2d": [100, 100, 500, 500]},
+        ],
+        str(destination),
+        1,
+        2,
+    )
+
+    assert result_path == str(destination)
+    with Image.open(destination) as result:
+        assert result.size == (48, 95)
+        assert result.getpixel((24, 24))[2] > result.getpixel((24, 24))[1]
+        assert result.getpixel((24, 72))[1] > result.getpixel((24, 72))[2]
+        assert result.getpixel((24, 47))[:3] == (128, 128, 128)
 
 
 def test_invalid_box_uses_horizontal_fallback(tmp_path):

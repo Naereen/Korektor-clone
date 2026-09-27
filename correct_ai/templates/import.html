@@ -390,7 +390,7 @@ async function generateBareme() {
     const btn = document.getElementById('btnGenerateBareme');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération...';
-    
+
     fetch('/api/bareme/generate', {method: 'POST'})
         .then(r => r.json())
         .then(data => {

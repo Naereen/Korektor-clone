@@ -812,7 +812,11 @@
         boxes.forEach((box, index) => {
             if (!box || typeof box !== 'object') return;
             const item = document.createElement('li');
-            item.textContent = `Zone ${index + 1} : ${typeof box.label === 'string' ? box.label : 'Remarque'}`;
+            const label = box.fallback
+                ? 'Zone de secours'
+                : (typeof box.label === 'string' ? box.label : 'Remarque');
+            const pageLabel = Number.isInteger(box.page) ? `, page ${box.page}` : '';
+            item.textContent = `Zone ${index + 1}${pageLabel} : ${label}`;
             cropZones.appendChild(item);
         });
         cropZonesWrapper.hidden = cropZones.childElementCount === 0;
