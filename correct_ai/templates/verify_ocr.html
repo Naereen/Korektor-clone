@@ -295,7 +295,23 @@ async function loadCopies() {
         const res = await fetch('/api/ocr/copies');
         const copies = await res.json();
         copySelect.innerHTML = '<option value="">-- Choisir une copie --</option>';
-        copies.forEach(c => { const opt = document.createElement('option'); opt.value = c; opt.innerText = c; copySelect.appendChild(opt); });
+        const students = await Promise.all(copies.map(async copyId => {
+            try {
+                const studentRes = await fetch(`/api/ocr/student/${copyId}`);
+                return studentRes.ok ? await studentRes.json() : null;
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
+        }));
+        copies.forEach((copyId, index) => {
+            const opt = document.createElement('option');
+            const student = students[index];
+            const name = [student?.firstname, student?.name].filter(Boolean).join(' ');
+            opt.value = copyId;
+            opt.innerText = name ? `${copyId} - ${name}` : copyId;
+            copySelect.appendChild(opt);
+        });
     } catch(e) { console.error(e); }
 }
 
