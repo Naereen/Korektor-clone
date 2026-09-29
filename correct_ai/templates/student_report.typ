@@ -127,7 +127,7 @@
     #if get-field(question, "crop_image_path", "") != "" {
       v(8pt)
       align(center)[
-        #image(get-field(question, "crop_image_path", ""), width: 85%)
+        #image(get-field(question, "crop_image_path", ""), width: 75%)
       ]
     }
     #v(13pt)
