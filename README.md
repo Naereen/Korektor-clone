@@ -221,3 +221,16 @@ L'onglet **Vérif OCR** permet de vérifier et corriger manuellement l'extractio
 - **Détection d'erreurs LaTeX** (dollars impairs, backslashs non échappés)
 - Confirmation avant de quitter une page modifiée
 - Reconstruction de `extraction.md` à partir de toutes les pages
+
+---
+
+## :scroll: Licence ? [![GitHub license](https://img.shields.io/github/license/Naereen/Korektor-clone)](https://github.com/Naereen/Korektor-clone/blob/master/LICENSE)
+
+[Licence MIT](https://lbesson.mit-license.org/) (file [LICENSE](LICENSE)).
+© [Lilian Besson](https://GitHub.com/Naereen), Septembre 2026.
+
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://GitHub.com/Naereen/Korektor-clone/graphs/commit-activity)
+[![Ask Me Anything !](https://img.shields.io/badge/Ask%20me-anything-1abc9c.svg)](https://GitHub.com/Naereen/ama)
+[![ForTheBadge uses-badges](http://ForTheBadge.com/images/badges/uses-badges.svg)](http://ForTheBadge.com)
+[![ForTheBadge uses-git](http://ForTheBadge.com/images/badges/uses-git.svg)](https://GitHub.com/)
+[![ForTheBadge vide-coded](https://forthebadge.com/api/badges/community/019a860c-9668-7b53-95d1-a5c3dccb4b04.svg)](https://forthebadge.com)
