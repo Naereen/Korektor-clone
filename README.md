@@ -31,18 +31,21 @@
     uv pip install -r requirements.txt
     ```
 3.  **Configurer une clé d'API LLM** correspondant au fournisseur choisi dans Paramètres. ILAAS reste le choix par défaut :
-    ```bash
-  export ILAAS_API_KEY="votre_cle_ici"
-  # Pour utiliser Google Gemini à la place :
-  export GEMINI_API_KEY="votre_cle_ici"
-    ```
+
+```bash
+export ILAAS_API_KEY="votre_cle_ici"
+# Pour utiliser Google Gemini à la place :
+export GEMINI_API_KEY="votre_cle_ici"
+```
 
 ## Utilisation
 
 1.  **Lancer l'application** :
-    ```bash
-    uv run python correct_ai/app.py
-    ```
+
+```bash
+uv run python correct_ai/app.py
+```
+
     L'interface est accessible sur [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
 2.  **Configurer le projet** :
@@ -227,7 +230,8 @@ L'onglet **Vérif OCR** permet de vérifier et corriger manuellement l'extractio
 ## :scroll: Licence ? [![GitHub license](https://img.shields.io/github/license/Naereen/Korektor-clone)](https://github.com/Naereen/Korektor-clone/blob/master/LICENSE)
 
 [Licence MIT](https://lbesson.mit-license.org/) (file [LICENSE](LICENSE)).
-© [Lilian Besson](https://GitHub.com/Naereen), Septembre 2026.
+© [Philippe HELLUY](https://irma.math.unistra.fr/~helluy/), 2025/2026 ;
+[Lilian BESSON](https://GitHub.com/Naereen), Septembre 2026.
 
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://GitHub.com/Naereen/Korektor-clone/graphs/commit-activity)
 [![Ask Me Anything !](https://img.shields.io/badge/Ask%20me-anything-1abc9c.svg)](https://GitHub.com/Naereen/ama)
